@@ -80,10 +80,36 @@ class abstract():
                                      width=64, height=64,
                                      relief=tkinter.FLAT, borderwidth=0) # Creates Tkinter Label widget inside gallery_frame container
         self.__label.pack(side=tkinter.LEFT, padx=2, pady=2)
-        self.__label.bind("<Button-1>", self.on_click) # for simple frame selection
-        self.__label.bind("<Control-Button-1>", self.on_multi_toggle) # for frame selection for segmentation
-        self.__label.bind("<Command-Button-1>", self.on_multi_toggle) 
-        
+        self.__label.config(width=64, height=64)
+
+        # --- SAFE BIND SETUP -------------------------------------------------
+        self.__label._abs = self  # back reference
+        self.__label.lift()       # bring to front
+
+        # rebuild bindtags: widget tag must come first
+        wname = str(self.__label)
+        tags = [t for t in self.__label.bindtags() if t != wname]
+        tags.insert(0, wname)
+        self.__label.bindtags(tuple(tags))
+        print("[thumb] bindtags:", self.__label.bindtags())
+
+        # main bindings, but add="+" so we don’t overwrite each other
+        self.__label.bind("<Button-1>", self.on_click, add="+")
+        self.__label.bind("<Button-2>", self.on_click, add="+")
+        self.__label.bind("<Button-3>", self.on_click, add="+")
+        self.__label.bind("<Control-Button-1>", self.on_multi_toggle, add="+")
+        self.__label.bind("<Control-Button-3>", self.on_multi_toggle, add="+")
+
+        # debug taps so you can see raw delivery
+        def _dbg(seq):
+            return lambda e: print(f"[thumb] HIT {seq} num={getattr(e,'num',None)} state={getattr(e,'state',None)}")
+
+        self.__label.bind("<Button-1>", _dbg("<Button-1>"), add="+")
+        self.__label.bind("<Button-3>", _dbg("<Button-3>"), add="+")
+        self.__label.bind("<Control-Button-1>", _dbg("<Control-Button-1>"), add="+")
+        self.__label.bind("<Control-Button-3>", _dbg("<Control-Button-3>"), add="+")
+        self.__label.bind("<Enter>", _dbg("<Enter>"), add="+")
+  
         # --- Thumbnail variants for different GUI states --- 
         self.__img_pil_thumbnail_bbox = None # image with bbox overlay - blue dot
         self.__img_pil_thumbnail_select = None # image with selection overlay - green dot
@@ -332,6 +358,8 @@ class abstract():
         they are in when the user clicks on the thumbnail and sets
         it to focus
         """
+        if event:
+            print("clicked", event.num, event.state)
         self.gui.getSeasoning().update_channel_selector_for_image(self)
         self.gui.getStove().bufferSetCurrent(3)
         self.gui.getStove().dump()
@@ -339,6 +367,11 @@ class abstract():
         prev_thumbnail = SessionManager.getBuffer()
         if prev_thumbnail: del prev_thumbnail.highlighted
         self.highlighted = "red"
+
+        print(f"select={self.gui.getFuncButton().selectButtonPressed()}, "
+        f"frameSeg={self.gui.getFuncButton().frameSegButtonPressed()}, "
+        f"bbox={self.gui.getFuncButton().bboxButtonPressed()}, "
+        f"seg={self.gui.getFuncButton().segButtonPressed()}, ")
 
         func_btn = self.gui.getFuncButton()
         bbox_on = func_btn.bboxButtonPressed()

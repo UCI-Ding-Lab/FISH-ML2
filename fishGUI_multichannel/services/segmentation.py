@@ -4,6 +4,7 @@ from skimage.restoration import estimate_sigma
 from scipy import ndimage as ndi
 import cv2
 import logging
+import time
 
 from ..gui.canvas.segment import segment
 from ..utils.image_preprocessing import (
@@ -54,6 +55,7 @@ def run_basic_watershed(
     """
     Perform segmentation for both channels and return (seg_647, seg_488)
     """
+    start = time.time()
     boxes = gui.getBackEnd().AppIntDINOwrapper(nucleus_img)
     centers = [((x0 + x1) / 2, (y0 + y1) / 2) for x0, y0, x1, y1 in boxes]
 
@@ -111,6 +113,9 @@ def run_basic_watershed(
             seg_647 = [segment(gui, m) for m in channel_masks]
         else:
             seg_488 = [segment(gui, m) for m in channel_masks]
+    
+    end = time.time()
+    logger.info(f"Segmentation completed in {end - start:.2f} seconds")
         
     return seg_647, seg_488
 

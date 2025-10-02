@@ -308,7 +308,7 @@ class funcButton():
                             mask = np.zeros((1, 1), dtype=np.uint8)  # keep shape valid
                         mask_list.append(mask)
 
-                    names.append(name)
+                    names.append(name) # TODO ensure that there is directory name
                     all_xy.append(xy_list)
                     all_masks.append(mask_list)
 

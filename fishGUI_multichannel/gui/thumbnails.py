@@ -15,6 +15,8 @@ class tifSequence():
         self.gui = gui
         container = gui.getLowerFrame().getFrameB()
         self.base = tkinter.Canvas(container, height=74)
+        # --- DEBUG: see if Canvas is catching the click ---
+        self.base.bind("<Button-1>", lambda e: print("[DEBUG] Canvas got click", e, "at", e.x, e.y, "widget:", e.widget))
 
         self.scrollbar = tkinter.Scrollbar(container, orient=tkinter.HORIZONTAL, command=self.base.xview)
         self.base.configure(xscrollcommand=self.scrollbar.set)
@@ -27,6 +29,9 @@ class tifSequence():
         self.base.bind_all("<Button-4>", self.on_mouse_wheel)
         self.base.bind_all("<Button-5>", self.on_mouse_wheel)
 
+        # --- FIX: delegate clicks that Canvas eats back to labels ---
+        self.base.bind("<Button-1>", self._delegate_thumb_click, add="+")
+        
     def update_scrollregion(self):
         self.base.update_idletasks()
         self.base.config(scrollregion=self.base.bbox("all"))
@@ -111,3 +116,17 @@ class tifSequence():
 
         SessionManager.sendFirst()
         self.update_scrollregion()
+    
+    def _delegate_thumb_click(self, event):
+        """If the Canvas eats a click, find the Label under the pointer and call its on_click."""
+        w = self.base.winfo_containing(event.x_root, event.y_root)
+        cur = w
+        while cur is not None:
+            if hasattr(cur, "_abs"):
+                try:
+                    return cur._abs.on_click(event)
+                except Exception as ex:
+                    print("[DEBUG] delegate failed:", ex)
+                    return "break"
+            cur = getattr(cur, "master", None)
+        return None

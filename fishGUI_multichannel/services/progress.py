@@ -97,29 +97,63 @@ class Progress:
                 valid_paths = return_valid_paths(nucleus_path, cytoplasm_paths) 
                 if valid_paths is None: # prevent loading frames and its data with at least one invalid path
                     continue
-                create_abstract_object(sample_id, nucleus_path, cytoplasm_paths, bbox_list, seg_dict, gui)
+                abs_obj =create_abstract_object(sample_id, nucleus_path, cytoplasm_paths, bbox_list, seg_dict, gui)
+                gui.getSeasoning().update_channel_menu(abs_obj.available_channels)     
+                gui.getSeasoning().update_channel_selector_for_image(abs_obj)
             except Exception as error:
                 messagebox.showwarning("Skipped one row", f"Reason:{error}")
         SessionManager.sendFirst()
 
+    # @staticmethod
+    # def generateBbox(gui, list_of_abstract_objects: list[abstract]):
+    #     """
+    #     Generates bounding boxes using multithreading
+    #     Called in gui/buttons.py, IMPORT_call method
+    #     This ensures that boundary boxes are generate once images are imported
+    #     """
+    #     # --- Helper functions ---
+    #     def generate_bbox_for_object(single_abstract_object: abstract):
+    #         t0 = time.perf_counter()
+    #         start_time = time.time()
+    #         _ = single_abstract_object.bbox
+    #         end_time = time.time()
+    #         print(f"Generated bbox for {single_abstract_object.getNucleusPath()} in {end_time - start_time:.4f} seconds")
+
+    #     def generate_bboxes():
+    #         max_workers = min(3, len(list_of_abstract_objects))
+    #         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+    #             executor.map(generate_bbox_for_object, list_of_abstract_objects)
+
+    #     # --- Main Logic ---
+    #     t1 = time.perf_counter()
+    #     print(f"[BBOX] ALL {len(list_of_abstract_objects)} images finished in {t1 - t0:.2f}s total")
+    #     threading.Thread(target=generate_bboxes, daemon=True).start() # Start the thread of generating bboxes
+
+    import time, sys, threading, concurrent.futures
+
     @staticmethod
-    def generateBbox(gui, list_of_abstract_objects: list[abstract]):
+    def generateBbox(gui, list_of_abstract_objects: list['abstract']):
         """
-        Generates bounding boxes using multithreading
-        Called in gui/buttons.py, IMPORT_call method
-        This ensures that boundary boxes are generate once images are imported
+        Generates bounding boxes using multithreading.
+        Called in gui/buttons.py, IMPORT_call method.
         """
-        # --- Helper functions ---
-        def generate_bbox_for_object(single_abstract_object: abstract):
-            start_time = time.time()
-            _ = single_abstract_object.bbox
-            end_time = time.time()
-            print(f"Generated bbox for {single_abstract_object.getNucleusPath()} in {end_time - start_time:.4f} seconds")
+
+        def generate_bbox_for_object(single_abstract_object: 'abstract'):
+            t_start = time.perf_counter()
+            try:
+                print(f"[BBOX] START {single_abstract_object.getNucleusPath()}", flush=True)
+                _ = single_abstract_object.bbox
+                print(f"[BBOX] DONE  {single_abstract_object.getNucleusPath()} "
+                    f"in {time.perf_counter() - t_start:.2f}s", flush=True)
+            except Exception as e:
+                print(f"[BBOX] ERROR {single_abstract_object.getNucleusPath()} -> {e}", flush=True)
 
         def generate_bboxes():
+            t0 = time.perf_counter()
             max_workers = min(3, len(list_of_abstract_objects))
             with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-                executor.map(generate_bbox_for_object, list_of_abstract_objects)
+                list(executor.map(generate_bbox_for_object, list_of_abstract_objects))
+            print(f"[BBOX] ALL {len(list_of_abstract_objects)} images finished "
+                f"in {time.perf_counter() - t0:.2f}s total", flush=True)
 
-        # --- Main Logic ---
-        threading.Thread(target=generate_bboxes, daemon=True).start() # Start the thread of generating bboxes
+        threading.Thread(target=generate_bboxes, daemon=False).start()

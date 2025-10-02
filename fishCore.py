@@ -258,7 +258,7 @@ class Fish():
     
     @staticmethod
     def dino_bbox(gdino_model, img: np.ndarray) -> dict:
-        
+        print("DEBUG: Running dino_bbox")
         image_source, image = Fish.helper__imageTransform4Dino(img)
 
         TEXT_PROMPT = "white flower"
@@ -273,6 +273,7 @@ class Fish():
             text_threshold=TEXT_TRESHOLD,
             device="cpu"
         )
+        print(f"DEBUG: DINO predicted {boxes.shape[0]} boxes")
         
         finalized_bboxes = Fish.helper__filterAlgorithm(image_source, boxes)
         return finalized_bboxes
