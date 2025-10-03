@@ -6,6 +6,7 @@ import threading
 import concurrent.futures
 import time
 import logging
+from pathlib import Path
 from .abstract import abstract
 from ..services.session_manager import SessionManager
 
@@ -292,7 +293,14 @@ class funcButton():
 
                 for abs_obj in toSave:
                     # Prefer sample_id; fall back to nucleus path string
-                    name = str(getattr(abs_obj, "sample_id", None) or abs_obj.getNucleusPath())
+                    # name = str(getattr(abs_obj, "sample_id", None) or abs_obj.getNucleusPath())
+                    if hasattr(abs_obj, "getNucleusPath"):
+                        print("nucleus path attr activated")
+                        name = Path(abs_obj.getNucleusPath()).name
+                    else:
+                        # fallback if no path method exists
+                        print("fallback activated")
+                        name = str(getattr(abs_obj, "sample_id", "")) or "unknown.tif"
                     segs = list(getattr(abs_obj, "seg", []))  # do NOT call abs_obj.segment (that can trigger work)
 
                     xy_list = []
@@ -308,13 +316,15 @@ class funcButton():
                             mask = np.zeros((1, 1), dtype=np.uint8)  # keep shape valid
                         mask_list.append(mask)
 
+                    print("Name", name)
+
                     names.append(name) # TODO ensure that there is directory name
                     all_xy.append(xy_list)
                     all_masks.append(mask_list)
 
                 # Write MAT file
                 try:
-                    create(names, all_xy, all_masks, pathlib.Path(save_to))
+                    create(names, all_xy, all_masks, pathlib.Path(save_to)) # Called from matPacker.py
                     ok_msg = f"Export completed:\n{save_to}"
                     logger.debug("Export job: wrote %d frames to MAT", len(names))
                     self.gui.getRoot().after(0, lambda: self.gui.popBox("i", "Export", ok_msg))
