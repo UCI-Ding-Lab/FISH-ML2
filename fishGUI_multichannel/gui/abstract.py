@@ -6,8 +6,8 @@ import tifffile
 import tkinter
 from PIL import Image, ImageTk, ImageDraw
 import logging
-import re
 from .canvas.box import box
+from .canvas.segment import segment
 from ..utils.image_preprocessing import (
     normalize_to_uint8,
     grayscale_to_rgb,
@@ -223,8 +223,14 @@ class abstract():
                 ((x0 + x1) / 2, (y0 + y1) / 2)
                 for x0, y0, x1, y1 in nuc_boxes
             ]
-            cyto_boxes = self.gui.getBackEnd().AppIntDINOwrapperB(self.__current_channel, centers)
-            self.__bbox = [box(b, self.gui) for b in cyto_boxes]
+            self._abstract__nucleus_centers = centers
+            cyto_boxes = self.gui.getBackEnd().AppIntDINOwrapperB(self.__current_channel, centers) # TODO - ERROR!
+            # TODO - use mask_to_bbox instead?
+            boxes = []
+            for idx, cbox in enumerate(cyto_boxes):
+                center_point = centers[idx] if idx < len(centers) else None
+                boxes.append(box(cbox, self.gui, center=center_point))
+            self.__bbox = boxes
             self.bbox_generated = True
         return self.__bbox
     
@@ -254,7 +260,7 @@ class abstract():
     
     # ---  Segmentation Logic ----
     @property
-    def segment(self) -> list:
+    def segment(self) -> list[segment]:
         """
         Runs when user turns segmentation mode
         """
@@ -416,18 +422,7 @@ class abstract():
             # Only toggle if Control key (0x0004) is pressed
             if event is not None and (event.state & 0x0004):
                 self.__selected_for_segmentation = not self.__selected_for_segmentation
-                # TODO compare logic with updatethumbnail and clean 
                 self.update_thumbnail()
-                # if self.__selected_for_segmentation:
-                #     if self.segment_generated:
-                #         self.thumbnail = "segmentation_selected_and_segmented"
-                #     else:
-                #         self.thumbnail = "segmentation_selected"
-                # else:
-                #     if self.segment_generated:
-                #         self.thumbnail = "segmented"
-                #     else:
-                #         self.thumbnail = "bbox"
 
     def _get_seg_list_for_channel(self, ch: str):
         if ch == "647": return getattr(self, "_abstract__seg_647", [])
@@ -625,4 +620,5 @@ class abstract():
         return not len(self.__bbox)
     def noSegment(self) -> bool:
         return not len(self.__current_channel_mask)
-
+    def getNucleusCenters(self) -> list[tuple]:
+        return getattr(self, "_abstract__nucleus_centers", []) # TODO - or define self._abstract__nucleus_centers: list[tuple] = []  in init

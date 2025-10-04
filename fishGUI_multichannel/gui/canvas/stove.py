@@ -69,9 +69,16 @@ class stove():
         self.ax_img = self.subplot.imshow(self.getLoaded().getImgNumpyRGB())
         self.subplot.set_axis_off()
         # Draw segmentation masks for the current channel - abs.seg is the getter for the private variable current_channel_mask 
-        if hasattr(abs, "seg"):
-            for seg in abs.seg:
-                seg.draw = True  
+        centers = abs.getNucleusCenters() or []
+        patches = []
+        for cx, cy in centers:
+            try:
+                cpatch = Circle((cx, cy), radius=5, color='lime', fill=True)
+                self.subplot.add_patch(cpatch)
+                patches.append(cpatch)
+            except Exception:
+                continue
+        abs._nuc_center_patches = patches
         self.canvas.draw()
 
     def dump(self):

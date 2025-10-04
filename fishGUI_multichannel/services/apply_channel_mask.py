@@ -71,7 +71,7 @@ def _apply_masks_on_main(frame, target_channels, finalized_mask_list):
                 target_channel,
                 [segment(frame.gui, mask) for mask in finalized_mask_list] if finalized_mask_list else []
             )
-        frame._abstract__seg = frame._get_seg_list_for_channel(frame.selected_channel)
+        frame.seg = frame._get_seg_list_for_channel(frame.selected_channel)
         frame.segment_generated = True
     except Exception as e:
         dprint(f"[ERROR] _apply_masks_on_main failed for {getattr(frame,'sample_id','?')}: {e}\n{traceback.format_exc()}")

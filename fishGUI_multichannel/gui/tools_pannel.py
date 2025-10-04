@@ -74,19 +74,6 @@ class seasoning():
         self.channel_var = tkinter.StringVar(value="647")
         self.channel_selector = tkinter.OptionMenu(self.toolbank, self.channel_var, "")
 
-    def update_channel_menu(self, channels: list[str]):
-        menu = self.channel_selector["menu"]
-        menu.delete(0, "end")
-        for ch in channels:
-            menu.add_command(label=ch,
-                            command=lambda v=ch: self.on_channel_change(v))
-        # set default
-        if channels:
-            self.channel_var.set(channels[0])
-        # disable the widget if there's only one choice
-        state = "normal" if len(channels) > 1 else "disabled"
-        self.channel_selector.configure(state=state)
-
     def pack(self):
         self.toolbank.pack(side=tkinter.RIGHT, fill=tkinter.BOTH)
         self.button1.pack(side=tkinter.TOP, fill=tkinter.X)
@@ -243,3 +230,18 @@ class seasoning():
     def update_channel_selector_for_image(self, abs_obj):
         # Set the OptionMenu to match the current image's selected channel - used in abstract.py
         self.channel_var.set(abs_obj.selected_channel)
+
+    def update_channel_menu(self, channels: list[str]):
+        # Always include DAPI 
+        opts = ["DAPI"] + (channels or [])
+        menu = self.channel_selector["menu"]
+        menu.delete(0, "end")
+        for ch in opts:
+            menu.add_command(label=ch, command=lambda v=ch: self.on_channel_change(v))
+
+        # Preserve current selection if valid, else default to first
+        cur = self.channel_var.get()
+        self.channel_var.set(cur if cur in opts else opts[0])
+
+        # Enable menu only if more than one option
+        self.channel_selector.configure(state="normal" if len(opts) > 1 else "disabled")

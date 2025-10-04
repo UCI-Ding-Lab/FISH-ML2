@@ -76,9 +76,9 @@ class Progress:
             abstract_object._abstract__seg_488 = seg_488
             # Set current channel mask to the selected channel TODO - clean with abstractpy
             if getattr(abstract_object, "selected_channel", "647") == "647":
-                abstract_object._abstract__current_channel_mask = seg_647
+                abstract_object.seg = seg_647 
             else:
-                abstract_object._abstract__current_channel_mask = seg_488
+                abstract_object.seg = seg_488
             if seg_647 or seg_488:
                 abstract_object.segment_generated = True
             return abstract_object
@@ -90,7 +90,6 @@ class Progress:
         if session_data is None: return
         clear_previous_session()
         for item in session_data:
-            print(type(item))
             try:
                 single_bundle : bundle = item
                 sample_id, nucleus_path, cytoplasm_paths, bbox_list, seg_dict = single_bundle.extract_data_from_bundles() 
@@ -104,56 +103,44 @@ class Progress:
                 messagebox.showwarning("Skipped one row", f"Reason:{error}")
         SessionManager.sendFirst()
 
-    # @staticmethod
-    # def generateBbox(gui, list_of_abstract_objects: list[abstract]):
-    #     """
-    #     Generates bounding boxes using multithreading
-    #     Called in gui/buttons.py, IMPORT_call method
-    #     This ensures that boundary boxes are generate once images are imported
-    #     """
-    #     # --- Helper functions ---
-    #     def generate_bbox_for_object(single_abstract_object: abstract):
-    #         t0 = time.perf_counter()
-    #         start_time = time.time()
-    #         _ = single_abstract_object.bbox
-    #         end_time = time.time()
-    #         print(f"Generated bbox for {single_abstract_object.getNucleusPath()} in {end_time - start_time:.4f} seconds")
-
-    #     def generate_bboxes():
-    #         max_workers = min(3, len(list_of_abstract_objects))
-    #         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-    #             executor.map(generate_bbox_for_object, list_of_abstract_objects)
-
-    #     # --- Main Logic ---
-    #     t1 = time.perf_counter()
-    #     print(f"[BBOX] ALL {len(list_of_abstract_objects)} images finished in {t1 - t0:.2f}s total")
-    #     threading.Thread(target=generate_bboxes, daemon=True).start() # Start the thread of generating bboxes
-
-    import time, sys, threading, concurrent.futures
+    @staticmethod
+    def export(gui):
+        f = filedialog.asksaveasfilename(defaultextension=".mat", 
+                                         filetypes=[("Matlab files", "*.mat")],
+                                         title="Export Results As")
+        if not f: 
+            return
+        toSave = [i for i in SessionManager.getPool() if i.selected and len(i.segmentExplict)]
+        d = {"name":[],"image":[],"xy":[],"masks":[]}
+        # TODO - O(n^2) -  think of ways to improve effiiency
+        for abs in toSave:
+            cyto_paths = abs.getCytoplasmPaths()
+            for path in cyto_paths:
+                d["name"].append(path.name)
+                d["image"].append(abs.getImgNumpyRGB())
+                d["xy"].append([mask.xy for mask in abs.segment])
+                d["masks"].append([mask.box for mask in abs.segment])
+        create(d["name"], d["xy"], d["masks"], f)
 
     @staticmethod
-    def generateBbox(gui, list_of_abstract_objects: list['abstract']):
+    def generateBbox(gui, list_of_abstract_objects: list[abstract]):
         """
-        Generates bounding boxes using multithreading.
-        Called in gui/buttons.py, IMPORT_call method.
+        Generates bounding boxes using multithreading
+        Called in gui/buttons.py, IMPORT_call method
+        This ensures that boundary boxes are generate once images are imported
         """
-
-        def generate_bbox_for_object(single_abstract_object: 'abstract'):
-            t_start = time.perf_counter()
-            try:
-                print(f"[BBOX] START {single_abstract_object.getNucleusPath()}", flush=True)
-                _ = single_abstract_object.bbox
-                print(f"[BBOX] DONE  {single_abstract_object.getNucleusPath()} "
-                    f"in {time.perf_counter() - t_start:.2f}s", flush=True)
-            except Exception as e:
-                print(f"[BBOX] ERROR {single_abstract_object.getNucleusPath()} -> {e}", flush=True)
+        # --- Helper functions ---
+        def generate_bbox_for_object(single_abstract_object: abstract):
+            _ = single_abstract_object.bbox
 
         def generate_bboxes():
-            t0 = time.perf_counter()
             max_workers = min(3, len(list_of_abstract_objects))
             with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-                list(executor.map(generate_bbox_for_object, list_of_abstract_objects))
-            print(f"[BBOX] ALL {len(list_of_abstract_objects)} images finished "
-                f"in {time.perf_counter() - t0:.2f}s total", flush=True)
-
-        threading.Thread(target=generate_bboxes, daemon=False).start()
+                executor.map(generate_bbox_for_object, list_of_abstract_objects)
+        if list_of_abstract_objects:
+            first_abs = list_of_abstract_objects[0]
+            gui.getRoot().after(0, lambda: gui.getStove().cook(first_abs))
+            
+                
+        # --- Main Logic ---
+        threading.Thread(target=generate_bboxes, daemon=True).start() # Start the thread of generating bboxes

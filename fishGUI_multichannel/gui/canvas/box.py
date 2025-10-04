@@ -3,7 +3,7 @@ from .anchor import anchor
 
 class box():
     __buffer: 'box' = None
-    def __init__(self, bbox: list, gui):
+    def __init__(self, bbox: list, gui, center: tuple = None):
         self.gui = gui
         self.__bbox = bbox
         min_x, min_y, max_x, max_y = self.__bbox
@@ -13,7 +13,7 @@ class box():
                                 linewidth=float(self.gui.getBackEnd().config["info"]["bbox_preview_line_width"]),
                                 edgecolor='r',
                                 facecolor='none')
-        self.__center = Circle(self.__rect.get_center(), radius=5, color='lime', fill=True)
+        # self.__center = Circle(center, radius=5, color='lime', fill=True)
         self.__anchors = {"bottom-left": anchor(min_x, min_y, gui, self, "bottom-left"),
                           "bottom-right": anchor(max_x, min_y, gui, self, "bottom-right"),
                           "top-left": anchor(min_x, max_y, gui, self, "top-left"),
@@ -25,12 +25,12 @@ class box():
     @property
     def rect(self) -> Rectangle:
         return self.__rect
-    @property
-    def center(self) -> Circle:
-        return self.__center
-    @center.setter
-    def center(self, c) -> Circle:
-        self.__center = Circle(c, radius=5, color='lime', fill=True)
+    # @property
+    # def center(self) -> Circle:
+    #     return self.__center
+    # @center.setter
+    # def center(self, c) -> Circle:
+    #     self.__center = Circle(c, radius=5, color='lime', fill=True)
     @property
     def anchors(self) -> dict[str, anchor]:
         return self.__anchors
@@ -85,13 +85,12 @@ class box():
             if value:
                 if hasattr(self.gui.getStove().subplot, 'patches') and self.rect not in self.gui.getStove().subplot.patches:
                     self.gui.getStove().subplot.add_patch(self.rect)
-                    nuc_center = Circle(self.rect.get_center(), radius=5, color='lime', fill=True)
-                    self.gui.getStove().subplot.add_patch(self.center)
+                    # self.gui.getStove().subplot.add_patch(self.center) TODO - change logic after bbox bug fixed
             else:
                 if hasattr(self.gui.getStove().subplot, 'patches'):
                     try:
                         self.rect.remove()
-                        self.center.remove() # Removes circles when BBOX mode is exited
+                        # self.center.remove() # Removes circles when BBOX mode is exited
                     except (NotImplementedError, ValueError):
                         patches = self.gui.getStove().subplot.patches
                         if self.rect in patches:
@@ -117,24 +116,24 @@ class box():
                 return k
         return None
 
-    def anchorUpdate(self):
-        self.anchors["bottom-left"].patch.set_center((self.rect.get_x(), self.rect.get_y()))
-        self.anchors["bottom-right"].patch.set_center((self.rect.get_x() + self.rect.get_width(), self.rect.get_y()))
-        self.anchors["top-left"].patch.set_center((self.rect.get_x(), self.rect.get_y() + self.rect.get_height()))
-        self.anchors["top-right"].patch.set_center((self.rect.get_x() + self.rect.get_width(), self.rect.get_y() + self.rect.get_height()))
-        self.anchors["pos-anchor"].patch.set_center((self.rect.get_x() + self.rect.get_width() / 2, self.rect.get_y() + self.rect.get_height()))
+    # def anchorUpdate(self):
+    #     self.anchors["bottom-left"].patch.set_center((self.rect.get_x(), self.rect.get_y()))
+    #     self.anchors["bottom-right"].patch.set_center((self.rect.get_x() + self.rect.get_width(), self.rect.get_y()))
+    #     self.anchors["top-left"].patch.set_center((self.rect.get_x(), self.rect.get_y() + self.rect.get_height()))
+    #     self.anchors["top-right"].patch.set_center((self.rect.get_x() + self.rect.get_width(), self.rect.get_y() + self.rect.get_height()))
+    #     self.anchors["pos-anchor"].patch.set_center((self.rect.get_x() + self.rect.get_width() / 2, self.rect.get_y() + self.rect.get_height()))
 
-    @classmethod
-    def removeCenter(cls, gui, center: Circle):
-        patches = list(gui.getStove().subplot.patches)
-        if center in patches:
-            patches.remove(center)
+    # @classmethod
+    # def removeCenter(cls, gui, center: Circle):
+    #     patches = list(gui.getStove().subplot.patches)
+    #     if center in patches:
+    #         patches.remove(center)
 
-        try:
-            center.remove()
-            print("Previous nucleus center is removed")
-        except NotImplementedError as e:
-            print("Previous circle has already been removed", e)
+    #     try:
+    #         center.remove()
+    #         print("Previous nucleus center is removed")
+    #     except NotImplementedError as e:
+    #         print("Previous circle has already been removed", e)
    
     @classmethod
     def setBuffer(cls, box: 'box'):

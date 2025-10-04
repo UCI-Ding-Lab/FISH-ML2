@@ -84,7 +84,8 @@ class tifSequence():
                 if sample_id and channel_name:
                     grouped.setdefault(sample_id, {})[channel_name] = path
             return grouped
-
+        
+        # TODO - can be replaced by getCytoplasmPaths in abstract.py? -- no since its not instantiated yet 
         def get_cytoplasm_paths(channels: dict):
             """Return list of cytoplasm channel paths (647, 488) if present."""
             cyto_paths = []
@@ -117,6 +118,7 @@ class tifSequence():
         SessionManager.sendFirst()
         self.update_scrollregion()
     
+    # TODO - unnnecessary now?
     def _delegate_thumb_click(self, event):
         """If the Canvas eats a click, find the Label under the pointer and call its on_click."""
         w = self.base.winfo_containing(event.x_root, event.y_root)

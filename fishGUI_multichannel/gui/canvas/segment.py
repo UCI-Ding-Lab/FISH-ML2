@@ -17,7 +17,7 @@ class segment():
     @property
     def xy(self):
         xs, ys = np.where(self.__data.T == 1)
-        return xs.min(), ys.min()
+        return xs.min(), ys.min() # TODO -- understand why top left instead of center -- does it affect DOFish compatibility?
     
     @property
     def box(self):

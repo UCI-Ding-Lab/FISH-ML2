@@ -9,7 +9,12 @@ import logging
 from pathlib import Path
 from .abstract import abstract
 from ..services.session_manager import SessionManager
+from ..services.progress import Progress
 
+logging.basicConfig(
+    level=logging.DEBUG,            
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 
@@ -110,7 +115,6 @@ class funcButton():
         return self.toggle["SEGMENT"].get()
     
     def IMPORT_call(self):
-        from .abstract import abstract
         folder_path = filedialog.askdirectory()
         logger.debug(f"IMPORT_call → user picked folder: {folder_path!r}")
         if not folder_path:
@@ -122,7 +126,7 @@ class funcButton():
         logger.debug(f"IMPORT_call → found {len(tif_files)} .tif files")
 
         try:
-            self.gui.getTifSequence().addToGallery(tif_files)
+            self.gui.getTifSequence().addToGallery(tif_files) # getTifSequence defined in app.py
         except Exception as e:
             logger.exception("IMPORT_call → addToGallery raised exception")
             self.gui.popBox("e", "Import Error", str(e))
@@ -135,6 +139,7 @@ class funcButton():
             return
 
         progress.generateBbox(self.gui, abstracts=pool)
+        
 
     def SELECT_call(self):
         if self.selectButtonPressed():
@@ -145,8 +150,8 @@ class funcButton():
             for abs in SessionManager.getPool():
                 abs.thumbnail = "bbox" if abs.bbox_generated else "default"
             SessionManager.sendFirst()
+
     def BBOX_call(self):
-        from .abstract import abstract
         if not self.gui.getStove().isLoaded():
             self.gui.popBox("w", "Image Not Loaded", "Please select an image first")
             self.toggle["BBOX"].set(0)
@@ -209,189 +214,25 @@ class funcButton():
                     buf.drawSegmentation = False
         
     def EXPORT_call(self):
-        import threading, time, pathlib, numpy as np
-        from ..services.session_manager import SessionManager
-        from ..services.matPacker import create  # writes the .mat file
-
-        logger.debug("EXPORT_call: invoked")
-
-        # Guardrails + log state
-        is_loaded = self.gui.getStove().isLoaded()
-        bbox_mode = self.bboxButtonPressed()
-        seg_mode  = self.segButtonPressed()
-        logger.debug("EXPORT_call: isLoaded=%s, bboxMode=%s, segMode=%s", is_loaded, bbox_mode, seg_mode)
-
-        if not is_loaded:
-            logger.warning("EXPORT_call: blocked (no image loaded)")
-            self.gui.popBox("w", "Image Not Loaded", "Please select an image first")
+        # TODO - understand why an image has to be loaded for export
+        if not self.gui.getStove().isLoaded():
+            tkinter.messagebox.showwarning("Image Not Loaded", "Please select an image first")
             self.toggle["EXPORT"].set(0)
             return
-        if bbox_mode:
-            logger.warning("EXPORT_call: blocked (BBOX mode active)")
-            self.gui.popBox("w", "BBOX Mode", "Please exit BBOX mode first")
+        if self.bboxButtonPressed():
+            tkinter.messagebox.showwarning("BBOX Mode", "Please exit BBOX mode first")
             self.toggle["EXPORT"].set(0)
             return
-        if seg_mode:
-            logger.warning("EXPORT_call: blocked (Segmentation mode active)")
-            self.gui.popBox("w", "Segmentation Mode", "Please exit Segmentation mode first")
+        if self.segButtonPressed():
+            tkinter.messagebox.showwarning("Segmentation Mode", "Please exit Segmentation mode first")
             self.toggle["EXPORT"].set(0)
             return
-
-        # Ask save path on the MAIN thread (Tk is not thread-safe)
-        from tkinter import filedialog
-        save_path = filedialog.asksaveasfilename(
-            defaultextension=".mat",
-            filetypes=[("Matlab files", "*.mat")],
-            title="Export Results As"
-        )
-        if not save_path:
-            logger.info("Export job: user cancelled save dialog")
-            self.toggle["EXPORT"].set(0)
-            return
-
-        self.gui.indicateWait("Exporting to MATLAB…")
-        self.EXPORT.config(state="disabled")
-
-        def job(save_to: str):
-            t0 = time.perf_counter()
-            logger.debug("Export job: thread started -> %r", save_to)
-
-            try:
-                pool = SessionManager.getPool()
-                selected = [i for i in pool if getattr(i, "selected", False)]
-
-                # Only export frames that already have segmentation in memory
-                toSave = [i for i in selected if getattr(i, "segment_generated", False) and len(getattr(i, "seg", [])) > 0]
-                logger.debug("Export job: selectable=%d, with segments=%d",
-                            len(selected), len(toSave))
-
-                if not toSave:
-                    self.gui.getRoot().after(0, lambda: (
-                        self.gui.popBox("w", "Nothing to Export", "No selected frames with segmentation found."),
-                        self.EXPORT.config(state="normal"),
-                        self.gui.dismissWait(),
-                        self.toggle["EXPORT"].set(0),
-                    ))
-                    return
-
-                names: list[str] = []
-                all_xy: list[list] = []
-                all_masks: list[list] = []
-
-                # Helper to extract a 2D mask array from a seg object robustly
-                def _seg_to_mask(seg_obj):
-                    m = getattr(seg_obj, "_segment__data", None)
-                    if m is not None:
-                        arr = np.array(m)
-                        return arr.T if arr.ndim == 2 else arr
-                    # fallbacks used in older code
-                    if hasattr(seg_obj, "box"):
-                        return np.array(getattr(seg_obj, "box"))
-                    if hasattr(seg_obj, "mask"):
-                        return np.array(getattr(seg_obj, "mask"))
-                    return None
-
-                for abs_obj in toSave:
-                    # Prefer sample_id; fall back to nucleus path string
-                    # name = str(getattr(abs_obj, "sample_id", None) or abs_obj.getNucleusPath())
-                    if hasattr(abs_obj, "getNucleusPath"):
-                        print("nucleus path attr activated")
-                        name = Path(abs_obj.getNucleusPath()).name
-                    else:
-                        # fallback if no path method exists
-                        print("fallback activated")
-                        name = str(getattr(abs_obj, "sample_id", "")) or "unknown.tif"
-                    segs = list(getattr(abs_obj, "seg", []))  # do NOT call abs_obj.segment (that can trigger work)
-
-                    xy_list = []
-                    mask_list = []
-                    for s in segs:
-                        # XY: list of (x,y) tuples; if missing, store empty list
-                        xy = getattr(s, "xy", None)
-                        xy_list.append(list(xy) if xy is not None else [])
-
-                        # Mask: 2D ndarray
-                        mask = _seg_to_mask(s)
-                        if mask is None:
-                            mask = np.zeros((1, 1), dtype=np.uint8)  # keep shape valid
-                        mask_list.append(mask)
-
-                    print("Name", name)
-
-                    names.append(name) # TODO ensure that there is directory name
-                    all_xy.append(xy_list)
-                    all_masks.append(mask_list)
-
-                # Write MAT file
-                try:
-                    create(names, all_xy, all_masks, pathlib.Path(save_to)) # Called from matPacker.py
-                    ok_msg = f"Export completed:\n{save_to}"
-                    logger.debug("Export job: wrote %d frames to MAT", len(names))
-                    self.gui.getRoot().after(0, lambda: self.gui.popBox("i", "Export", ok_msg))
-                except Exception as e:
-                    logger.exception("Export job: MAT write failed")
-                    self.gui.getRoot().after(0, lambda: self.gui.popBox("e", "Export Error", f"Failed to write MAT:\n{e}"))
-
-            except Exception:
-                logger.exception("Export job: failed with exception")
-                self.gui.getRoot().after(0, lambda: self.gui.popBox("e", "Export Error", "See console for details"))
-            finally:
-                elapsed = time.perf_counter() - t0
-                logger.debug("Export job: finished in %.2fs", elapsed)
-                self.gui.getRoot().after(0, lambda: (
-                    self.gui.dismissWait(),
-                    self.EXPORT.config(state="normal"),
-                    self.toggle["EXPORT"].set(0),
-                ))
-
-        threading.Thread(target=job, args=(save_path,), daemon=True, name="ExportThread").start()
-
-
-    
-    # def EXPORT_call(self):
-    #     from .thumbnails import abstract
-    #     if not self.gui.getStove().isLoaded():
-    #         self.gui.popBox("w", "Image Not Loaded", "Please select an image first")
-    #         self.toggle["EXPORT"].set(0)
-    #         return
-    #     if self.bboxButtonPressed():
-    #         self.gui.popBox("w", "BBOX Mode", "Please exit BBOX mode first")
-    #         self.toggle["EXPORT"].set(0)
-    #         return
-    #     if self.segButtonPressed():
-    #         self.gui.popBox("w", "Segmentation Mode", "Please exit Segmentation mode first")
-    #         self.toggle["EXPORT"].set(0)
-    #         return
+        self.gui.indicateWait("Dataset conversion")
+        def job():
+            Progress.export(self.gui)
+            self.gui.getRoot().after(0, self.gui.dismissWait)
+        threading.Thread(target=job, daemon=True).start()
         
-    
-        # # Export functionality
-        # self.gui.indicateWait("Dataset conversion")
-        # def job():
-        #     logger.debug("Export job: thread started")
-        #     try:
-        #         from tkinter import filedialog
-        #         logger.debug("Export job: opening save dialog (running from worker thread)")
-        #         f = filedialog.asksaveasfilename(defaultextension=".mat", 
-        #                                        filetypes=[("Matlab files", "*.mat")],
-        #                                        title="Export Results As")
-                
-        #         logger.debug("Export job: save path selected=%r", f)
-        #         if f:
-        #             toSave = [i for i in abstract.getPool() if i.selected and len(i.segmentExplict)]
-        #             d = {"name":[],"image":[],"xy":[],"masks":[]}
-        #             for abs in toSave:
-        #                 d["name"].append(str(abs.getAbsPath()))
-        #                 d["image"].append(abs.getImgNumpyRGB())
-        #                 d["xy"].append([seg.xy for seg in abs.segment])
-        #                 d["masks"].append([seg.box for seg in abs.segment])
-        #             # Note: You'll need to implement matPacker.create or use scipy.io.savemat
-        #             logger.debug("Export job: data prepared (counts) names=%d, images=%d, xy=%d, masks=%d",
-        #                  len(d["name"]), len(d["image"]), len(d["xy"]), len(d["masks"]))
-        #             self.gui.popBox("i", "Export", f"Export completed to {f}")
-        #     except Exception as e:
-        #         self.gui.popBox("e", "Export Error", f"Failed to export: {e}")
-        #     finally:
-        #         self.gui.getRoot().after(0, self.gui.dismissWait)
     
     def APPLY_CHANNEL_MASK_call(self):
         # Make modes mutually exclusive
@@ -478,76 +319,6 @@ class funcButton():
             FrameSelectPopup(self.gui.getRoot(), frame_names, frame_callback)
 
         ChannelSelectPopup(self.gui.getRoot(), available_channels, channel_callback)
-
-
-    # def APPLY_CHANNEL_MASK_call(self):
-    #     # When turning on, unselect other modes
-    #     self.toggle["BBOX"].set(0)
-    #     self.toggle["SEGMENTATION_SELECTION"].set(0)
-    #     self.toggle["SEGMENT"].set(0)
-    #     # Keep this button pressed
-    #     self.toggle["APPLY_CHANNEL_MASK"].set(1)
-
-    #     available_channels = ["488", "647"]
-
-    #     def channel_callback(selected_channel):
-    #         # Quick current-frame sanity check (e.g., Vadym’s frame with no 647)
-    #         buf = SessionManager.getBuffer()
-    #         if buf and selected_channel not in getattr(buf, "available_channels", []):
-    #             self.gui.popBox("w", "Channel Not Available",
-    #                             f"Current frame {getattr(buf, 'sample_id', '?')} has no channel {selected_channel}.")
-    #             return
-
-    #         frame_names = [a.sample_id for a in SessionManager.getPool()]
-
-    #         def frame_callback(selection):
-    #             pool = SessionManager.getPool()
-
-    #             # Resolve which indices we’ll act on
-    #             if selection == "all":
-    #                 idxs = range(len(pool))
-    #                 frames_sel = "all"
-    #             elif selection == "next5":
-    #                 try:
-    #                     start = pool.index(SessionManager.getBuffer())
-    #                 except ValueError:
-    #                     start = 0
-    #                 idxs = range(start, min(start + 5, len(pool)))
-    #                 frames_sel = idxs
-    #             else:
-    #                 # default to all
-    #                 idxs = range(len(pool))
-    #                 frames_sel = "all"
-
-    #             # Validate channel availability across chosen frames
-    #             missing = [pool[i].sample_id for i in idxs
-    #                     if selected_channel not in getattr(pool[i], "available_channels", [])]
-    #             if missing:
-    #                 # Warn and abort (don’t flip Segment mode on)
-    #                 preview = ", ".join(missing[:5]) + ("..." if len(missing) > 5 else "")
-    #                 self.gui.popBox("w", "Channel Not Available",
-    #                                 f"Channel {selected_channel} is missing for: {preview}")
-    #                 self.toggle["SEGMENT"].set(0)
-    #                 return
-
-    #             # All good → apply masks
-    #             SessionManager.apply_channel_mask_to_frames(
-    #                 source_channel=selected_channel,
-    #                 selected_frames=frames_sel,
-    #                 target_channels="all_channels",
-    #             )
-
-    #             # turn segment mode ON only if current buffer exists, has BBOX, and has masks
-    #             buf = SessionManager.getBuffer()
-    #             if buf and buf.bbox_generated and (buf.segment_generated or buf._get_seg_list_for_channel(buf.selected_channel)):
-    #                 self.toggle["SEGMENT"].set(1)
-    #                 buf.drawSegmentation = True
-    #             else:
-    #                 self.toggle["SEGMENT"].set(0)
-
-    #         FrameSelectPopup(self.gui.getRoot(), frame_names, frame_callback)
-
-    #     ChannelSelectPopup(self.gui.getRoot(), available_channels, channel_callback)
 
 
 class ChannelSelectPopup(tk.Toplevel):
