@@ -67,7 +67,7 @@ class tifSequence():
         def parse_sampleID_and_channel(path: pathlib.Path):
             stem = path.stem
             sample_match = re.search(r"s(\d{1,4})", stem, re.IGNORECASE)
-            channel_match = re.search(r"w[-_]?(?:.*?)?(DAPI|488|647)", stem, re.IGNORECASE)
+            channel_match = re.search(r"w[-_]?(?:.*?)?(DAPI|488|647|555|594)", stem, re.IGNORECASE)
             if not (sample_match and channel_match):
                 logger.warning(f"addToGallery → skipping {stem!r}, couldn't parse s### or w###")
                 return None, None
@@ -93,6 +93,10 @@ class tifSequence():
                 cyto_paths.append(channels["647"])
             if "488" in channels:
                 cyto_paths.append(channels["488"])
+            if "555" in channels:
+                cyto_paths.append(channels["555"])
+            if "594" in channels:
+                cyto_paths.append(channels["594"])
             return cyto_paths
 
         grouped = group_files_by_sample_and_channel(tif_files)

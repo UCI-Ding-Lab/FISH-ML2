@@ -240,7 +240,7 @@ class funcButton():
         self.toggle["SEGMENTATION_SELECTION"].set(0)
         self.toggle["SEGMENT"].set(0)
 
-        available_channels = ["488", "647"]
+        available_channels = ["488", "647", "555", "594"]
 
         def channel_callback(selected_channel: str):
             # Quick sanity check: current buffer has this channel?

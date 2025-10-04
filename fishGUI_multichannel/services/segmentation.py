@@ -49,6 +49,8 @@ def run_basic_watershed(
     nucleus_img: np.ndarray,
     cyto_647: np.ndarray,
     cyto_488: np.ndarray,
+    cyto_555: np.ndarray,
+    cyto_594: np.ndarray,
     gui,
     selected_channel: str
 ) -> tuple[list[segment], list[segment]]:
@@ -61,14 +63,20 @@ def run_basic_watershed(
 
     # process 647 first (cyto1), then 488 (cyto2)
     # TODO - O(n^2) -- consider improving time complexity
-    seg_647, seg_488 = [], []
-    for image, channel in [(cyto_647, "647"), (cyto_488, "488")]:
+    seg_647, seg_488, seg_555, seg_549 = [], [], [], []
+    channels_images = {
+        "647": cyto_647,
+        "488": cyto_488,
+        "555": cyto_555,
+        "549": cyto_594
+    }
+    for image, channel in channels_images.items():
         if image is None:
             continue
         # image = remove_outliers(image) # TODO check with margaret - is this necessary?
         # image = normalize_to_uint8(image) # remove_outlier does nt guarantee that the output is 0-255 so calling this method once again is necessary
 
-        if channel == "647":
+        if channel in ("647", "555", "594"): 
             clahe_img = clahe(image, clip_limit=2.0, tile_size=(8,8))
             grad  = gradient(clahe_img, ksize=5)
             proc = clahe_img
@@ -109,15 +117,20 @@ def run_basic_watershed(
             except Exception as e:
                 logger.error(f"SAM refine failed on {channel} box {bb}: {str(e)}")
         
+        seg_objs = [segment(gui, m) for m in channel_masks]
         if channel == "647":
-            seg_647 = [segment(gui, m) for m in channel_masks]
-        else:
-            seg_488 = [segment(gui, m) for m in channel_masks]
+            seg_647 = seg_objs
+        elif channel == "488":
+            seg_488 = seg_objs
+        elif channel == "555":
+            seg_555 = seg_objs
+        elif channel == "594":
+            seg_594 = seg_objs
     
     end = time.time()
     logger.info(f"Segmentation completed in {end - start:.2f} seconds")
         
-    return seg_647, seg_488
+    return seg_647, seg_488, seg_555, seg_594
 
 
 # TODO remove if unnecessary

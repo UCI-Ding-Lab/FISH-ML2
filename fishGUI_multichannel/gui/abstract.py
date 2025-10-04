@@ -39,7 +39,7 @@ class abstract():
 
         # Load images
         self.__img_np_nucleus = self._load_nucleus(nucleus_path) # TODO use .resolve() if loading session data generates an error due to path issues; .resolve() ensures absolute path
-        self.__img_np_647, self.__img_np_488 = self._load_cytoplasms(cyto_paths)
+        self.__img_np_647, self.__img_np_488,  self.__img_np_555, self.__img_np_594 = self._load_cytoplasms(cyto_paths)
 
         # Get available channels and set current channel
         self.available_channels = self._get_available_channels()
@@ -52,8 +52,12 @@ class abstract():
         # Set __current_channel with appropriate image array
         if self.selected_channel == "647":
             self.__current_channel = self.__img_np_647
-        else:
+        elif self.selected_channel == "488":
             self.__current_channel = self.__img_np_488
+        elif self.selected_channel == "555":
+            self.__current_channel = self.__img_np_555
+        elif self.selected_channel == "594":
+            self.__current_channel = self.__img_np_594
 
         # self.__img_np_cyto1 = self.__img_np_647 # TODO Are these two necessary? 
         # self.__img_np_cyto2 = self.__img_np_647
@@ -64,6 +68,10 @@ class abstract():
             thumbnail_img = self.__img_np_647
         elif self.__img_np_488 is not None:
             thumbnail_img = self.__img_np_488
+        elif self.__img_np_555 is not None:
+            thumbnail_img = self.__img_np_555
+        elif self.__img_np_594 is not None:
+            thumbnail_img = self.__img_np_594
         else:
             thumbnail_img = self.__img_np_nucleus
         
@@ -166,7 +174,7 @@ class abstract():
         Returns the preprocessed image (normalized grayscale) for both 647 and 488
         If either channel does not exist, it returns None
         """
-        img_647, img_488 = None, None
+        img_647, img_488, img_555, img_594 = None, None, None, None
         for cyto_path in cyto_paths:
             cyto_array = tifffile.imread(cyto_path)
             zprojected = (
@@ -179,9 +187,13 @@ class abstract():
                 img_647 = zprojected
             elif "488" in stem:
                 img_488 = normalize_to_uint8(remove_outliers(zprojected, k=15.0, use_median=False)) # TODO - remove_outliers(zprojected, k=18.0, use_median=False) - should this be placed here or in segmentation.py def runbasicwatershed
+            elif "555" in stem:
+                img_555 = zprojected
+            elif "594" in stem:
+                img_594 = zprojected # TODO assuming 594 and 555 is similar to 647 for now
             else:
                 logger.warning(f"Unrecognized cytoplasm channel in file {cyto_path.name}")
-        return img_647, img_488
+        return img_647, img_488, img_555, img_594
     
     def _get_available_channels(self) -> list[str]:
         channels = []
@@ -189,6 +201,10 @@ class abstract():
             channels.append("647")
         if self.__img_np_488 is not None:
             channels.append("488")
+        if self.__img_np_555 is not None:
+            channels.append("555")
+        if self.__img_np_594 is not None:
+            channels.append("594")
         return channels
     
     # def get_cyto1(self) -> np.ndarray:
@@ -266,26 +282,33 @@ class abstract():
         """
         # --- Helper ---
         def job():
-            seg_647, seg_488 = run_basic_watershed(
+            seg_647, seg_488, seg_555, seg_594 = run_basic_watershed(
                 self.__img_np_nucleus,
                 self.__img_np_647,
                 self.__img_np_488,
+                self.__img_np_555,
+                self.__img_np_594,
                 self.gui,
                 self.selected_channel
             )
             self.__seg_647 = seg_647
             self.__seg_488 = seg_488
-            self.__current_channel_mask = seg_647 if self.selected_channel == "647" else seg_488 # TODO check - is this to identify which mask to draw on gui?
+            self.__seg_555 = seg_555
+            self.__seg_594 = seg_594
+            # Pick the segmentation mask to use based on currently selected channel
+            if self.selected_channel == "647":
+                self.__current_channel_mask = seg_647
+            elif self.selected_channel == "488":
+                self.__current_channel_mask = seg_488
+            elif self.selected_channel == "555":
+                self.__current_channel_mask = seg_555
+            elif self.selected_channel == "594":
+                self.__current_channel_mask = seg_594
+            else:
+                # Fallback: no segmentation for unknown channel
+                self.__current_channel_mask = []
             self.segment_generated = True
             logger.info(f"Generated {len(self.__current_channel_mask)} final segments ({self.selected_channel})")
-            if len(seg_647) != len(seg_488):
-                logger.info("Segmentation mask counts are different between channels.")
-                logger.info(f"647: {len(seg_647)}")
-                logger.info(f"488: {len(seg_488)}")
-            else:
-                same = all(np.array_equal(a._segment__data, b._segment__data) for a, b in zip(seg_647, seg_488))
-                logger.info(f"Segmentation masks are {'the same' if same else 'different'} between channels.")
-
             self.gui.getRoot().after(0, self.gui.dismissWait) # runs after the segemntation is finished. It safely closes the wait dialog
         
         # --- Main logic ---
@@ -427,11 +450,21 @@ class abstract():
     def _get_seg_list_for_channel(self, ch: str):
         if ch == "647": return getattr(self, "_abstract__seg_647", [])
         if ch == "488": return getattr(self, "_abstract__seg_488", [])
+        if ch == "555": return getattr(self, "_abstract__seg_555", [])
+        if ch == "594": return getattr(self, "_abstract__seg_594", [])
         return []
 
     def _set_seg_list_for_channel(self, ch: str, seg_objs: list):
-        if ch == "647": setattr(self, "_abstract__seg_647", seg_objs)
-        elif ch == "488": setattr(self, "_abstract__seg_488", seg_objs)
+        if ch == "647":
+            setattr(self, "_abstract__seg_647", seg_objs) # TODO - maybe just simply assigns
+        elif ch == "488":
+            setattr(self, "_abstract__seg_488", seg_objs)
+        elif ch == "555":
+            setattr(self, "_abstract__seg_555", seg_objs)
+        elif ch == "594":
+            setattr(self, "_abstract__seg_594", seg_objs)
+        else:
+            raise ValueError(f"Unsupported channel: {ch!r}. Must be one of '647', '488', '555', '594'")
 
     # --- Updating Thumbnail --- 
     @property
@@ -496,6 +529,10 @@ class abstract():
             base_img = self.__img_np_647
         elif self.selected_channel == "488" and self.__img_np_488 is not None:
             base_img = self.__img_np_488
+        elif self.selected_channel == "555" and self.__img_np_555 is not None:
+            base_img = self.__img_np_555
+        elif self.selected_channel == "594" and self.__img_np_594 is not None:
+            base_img = self.__img_np_594
         else:
             base_img = self.__img_np_nucleus
 
@@ -529,7 +566,7 @@ class abstract():
 
 
     # --- Helper functions ---
-    # TODO yet to check all methods
+    # TODO yet to check all methods -- where is it used? if not used, consider using it
     def getImgNumpyRGBSelectedChannel(self) -> np.ndarray:
         """
         Returns the RGB numpy array for the currently selected channel
@@ -538,6 +575,10 @@ class abstract():
             base = self.__img_np_647
         elif self.selected_channel == "488" and self.__img_np_488 is not None:
             base = self.__img_np_488
+        elif self.selected_channel == "555" and self.__img_np_555 is not None:
+            base = self.__img_np_555
+        elif self.selected_channel == "594" and self.__img_np_594 is not None:
+            base = self.__img_np_594
         else:
             base = self.__img_np_nucleus
         return grayscale_to_rgb(base)

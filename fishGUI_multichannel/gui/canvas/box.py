@@ -116,12 +116,12 @@ class box():
                 return k
         return None
 
-    # def anchorUpdate(self):
-    #     self.anchors["bottom-left"].patch.set_center((self.rect.get_x(), self.rect.get_y()))
-    #     self.anchors["bottom-right"].patch.set_center((self.rect.get_x() + self.rect.get_width(), self.rect.get_y()))
-    #     self.anchors["top-left"].patch.set_center((self.rect.get_x(), self.rect.get_y() + self.rect.get_height()))
-    #     self.anchors["top-right"].patch.set_center((self.rect.get_x() + self.rect.get_width(), self.rect.get_y() + self.rect.get_height()))
-    #     self.anchors["pos-anchor"].patch.set_center((self.rect.get_x() + self.rect.get_width() / 2, self.rect.get_y() + self.rect.get_height()))
+    def anchorUpdate(self):
+        self.anchors["bottom-left"].patch.set_center((self.rect.get_x(), self.rect.get_y()))
+        self.anchors["bottom-right"].patch.set_center((self.rect.get_x() + self.rect.get_width(), self.rect.get_y()))
+        self.anchors["top-left"].patch.set_center((self.rect.get_x(), self.rect.get_y() + self.rect.get_height()))
+        self.anchors["top-right"].patch.set_center((self.rect.get_x() + self.rect.get_width(), self.rect.get_y() + self.rect.get_height()))
+        self.anchors["pos-anchor"].patch.set_center((self.rect.get_x() + self.rect.get_width() / 2, self.rect.get_y() + self.rect.get_height()))
 
     # @classmethod
     # def removeCenter(cls, gui, center: Circle):

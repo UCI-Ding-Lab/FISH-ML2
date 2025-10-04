@@ -189,11 +189,17 @@ class seasoning():
         abs_obj.selected_channel = new_chan
         abs_obj.seg = abs_obj._get_seg_list_for_channel(new_chan)
 
-        abs_obj._abstract__img_np_cyto = (
-        abs_obj._abstract__img_np_647 if new_chan == "647" else abs_obj._abstract__img_np_488
-        )
+        if new_chan == "647":
+            abs_obj._abstract__img_np_cyto = abs_obj._abstract__img_np_647
+        elif new_chan == "488":
+            abs_obj._abstract__img_np_cyto = abs_obj._abstract__img_np_488
+        elif new_chan == "555":
+            abs_obj._abstract__img_np_cyto = abs_obj._abstract__img_np_555
+        elif new_chan == "594":
+            abs_obj._abstract__img_np_cyto = abs_obj._abstract__img_np_594
+        else:  # fallback for nucleus / DAPI
+            abs_obj._abstract__img_np_cyto = abs_obj._abstract__img_np_nucleus
         abs_obj._abstract__img_np_rgb = grayscale_to_rgb(abs_obj._abstract__img_np_cyto)
-
 
         # let abstract rebuild the image and thumbnails
         abs_obj.update_thumbnail()
