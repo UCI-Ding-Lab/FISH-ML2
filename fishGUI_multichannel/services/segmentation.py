@@ -70,20 +70,19 @@ def run_basic_watershed(
         "555": cyto_555,
         "549": cyto_594
     }
-    for image, channel in channels_images.items():
+    for channel, image in channels_images.items():
         if image is None:
             continue
-        # image = remove_outliers(image) # TODO check with margaret - is this necessary?
-        # image = normalize_to_uint8(image) # remove_outlier does nt guarantee that the output is 0-255 so calling this method once again is necessary
 
         if channel in ("647", "555", "594"): 
+            image = normalize_to_uint8(image)
             clahe_img = clahe(image, clip_limit=2.0, tile_size=(8,8))
             grad  = gradient(clahe_img, ksize=5)
             proc = clahe_img
             rgb  = np.stack([clahe_img, clahe_img, grad], axis=-1)
 
         else:  # chan == "488"
-            rem = remove_outliers(image) # TODO - check with margaret why we remove twice
+            rem = remove_outliers(image)
             noramlized_img= normalize_to_uint8(rem) 
             cyt_clahe = clahe(noramlized_img, clip_limit=4.0, tile_size=(8,8))
 
