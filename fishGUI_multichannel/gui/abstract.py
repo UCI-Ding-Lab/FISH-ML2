@@ -16,7 +16,6 @@ from ..utils.image_preprocessing import (
     remove_outliers
 )
 from ..services.segmentation import run_basic_watershed
-from ..services.session_manager import SessionManager
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -77,7 +76,7 @@ class abstract():
             thumbnail_img = self.__img_np_nucleus
         
         # Convert image to display on tkinter thumbnail
-        self.__img_np_rgb = grayscale_to_rgb(thumbnail_img) # Ensure compatibility with SAM
+        self.__img_np_rgb = grayscale_to_rgb(thumbnail_img) # rgb is for displaying image while SAM and groundingdino accepts 2D
         pil = Image.fromarray(self.__img_np_rgb).resize((64, 64))
         tk_img = ImageTk.PhotoImage(pil)
         self.__img_pil_thumbnail = pil # used for image processing, drawing or saving
@@ -152,7 +151,8 @@ class abstract():
         self.__selected: bool = True # selected for further evaluation? yes
         self.__selected_for_segmentation: bool = False # selected for segmentation? yes
         self.__highlighted: str = None # focused frame - red border TODO check where its used : def on_click
-
+        
+        from ..services.session_manager import SessionManager
         SessionManager.addToPool(self)
 
     # --- Helper Functions ---
@@ -163,6 +163,9 @@ class abstract():
         z-projected, it will apply manual z-projection; else returns 
         imported image in grayscale. np.squeeze() removes any dimensions of size 1
         while normalize_to_unit8 scales the image array to 0 and 255. 
+
+        Returns:
+        - gray-scale image to ensure compatibility with groundingdino and SAM
         """
         nucleus_array = tifffile.imread(nucleus_path)
         if nucleus_array.ndim == 3 and nucleus_array.shape[0] > 1:
@@ -173,6 +176,9 @@ class abstract():
         """
         Returns the preprocessed image (normalized grayscale) for both 647 and 488
         If either channel does not exist, it returns None
+
+        Returns:
+        - gray-scale image to ensure compatibility with groundingdino and SAM
         """
         img_647, img_488, img_555, img_594 = None, None, None, None
         for cyto_path in cyto_paths:
