@@ -13,6 +13,14 @@ class segment():
         self.__draw: bool = False
         self.__exist: bool = True
         self.__selected: bool = False
+        
+        # history containers
+        self._undo_stack = []
+        self._redo_stack = []
+        # capture original mask for reset
+        mask = self._get_mask()
+        self._original_mask = mask.copy() if mask is not None else None
+
 
     @property
     def xy(self):
@@ -124,7 +132,73 @@ class segment():
             self.draw = False
             segment.clearBuffer()
             self.gui.getStove().canvas.flush_events()
+    
+    
+    # --- Helper for undo, redo, and reset ---
+    def _get_mask(self):
+        return getattr(self, "_segment__data", getattr(self, "data", None))
 
+    def _set_mask(self, m):
+        if hasattr(self, "_segment__data"):
+            self._segment__data = m
+        elif hasattr(self, "data"):
+            self.data = m
+
+    def _ensure_history(self):
+        if not hasattr(self, "_undo_stack"):
+            self._undo_stack = []
+        if not hasattr(self, "_redo_stack"):
+            self._redo_stack = []
+        if not hasattr(self, "_original_mask"):
+            orig = self._get_mask()
+            self._original_mask = orig.copy() if orig is not None else None
+
+    def push_undo(self):
+        """Call once at stroke start to snapshot current mask; clears redo."""
+        self._ensure_history()
+        cur = self._get_mask()
+        if cur is None:
+            return
+        self._undo_stack.append(cur.copy())
+        self._redo_stack.clear()
+
+    def undo(self) -> bool:
+        self._ensure_history()
+        if not self._undo_stack:
+            return False
+        cur = self._get_mask()
+        self._redo_stack.append(cur.copy())
+        prev = self._undo_stack.pop()
+        self._set_mask(prev.copy())
+        # rebuild visual
+        try: self.recal_patch()
+        except Exception: pass
+        return True
+
+    def redo(self) -> bool:
+        self._ensure_history()
+        if not self._redo_stack:
+            return False
+        cur = self._get_mask()
+        self._undo_stack.append(cur.copy())
+        nxt = self._redo_stack.pop()
+        self._set_mask(nxt.copy())
+        try: self.recal_patch()
+        except Exception: pass
+        return True
+
+    def reset(self) -> bool:
+        self._ensure_history()
+        if self._original_mask is None:
+            return False
+        self._undo_stack.append(self._get_mask().copy())
+        self._set_mask(self._original_mask.copy())
+        self._redo_stack.clear()
+        try: self.recal_patch()
+        except Exception: pass
+        return True
+    
+    # -- End of helper for undo, redo and reset --
     @classmethod
     def setBuffer(cls, segment: 'segment'):
         cls.__buffer = segment
