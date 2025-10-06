@@ -151,7 +151,7 @@ class abstract():
         self.__selected: bool = True # selected for further evaluation? yes
         self.__selected_for_segmentation: bool = False # selected for segmentation? yes
         self.__highlighted: str = None # focused frame - red border TODO check where its used : def on_click
-        
+
         from ..services.session_manager import SessionManager
         SessionManager.addToPool(self)
 
@@ -569,18 +569,17 @@ class abstract():
 
 
     # --- Helper functions ---
-    # TODO yet to check all methods -- where is it used? if not used, consider using it
-    def getImgNumpyRGBSelectedChannel(self) -> np.ndarray:
+    def getImgNumpyRGBCyto(self, channel) -> np.ndarray:
         """
         Returns the RGB numpy array for the currently selected channel
         """
-        if self.selected_channel == "647" and self.__img_np_647 is not None:
+        if channel == "647" and self.__img_np_647 is not None:
             base = self.__img_np_647
-        elif self.selected_channel == "488" and self.__img_np_488 is not None:
+        elif channel == "488" and self.__img_np_488 is not None:
             base = self.__img_np_488
-        elif self.selected_channel == "555" and self.__img_np_555 is not None:
+        elif channel == "555" and self.__img_np_555 is not None:
             base = self.__img_np_555
-        elif self.selected_channel == "594" and self.__img_np_594 is not None:
+        elif channel == "594" and self.__img_np_594 is not None:
             base = self.__img_np_594
         else:
             base = self.__img_np_nucleus
