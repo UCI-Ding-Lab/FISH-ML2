@@ -75,16 +75,13 @@ def run_basic_watershed(
             continue
 
         if channel in ("647", "555", "594"): 
-            image = normalize_to_uint8(image)
             clahe_img = clahe(image, clip_limit=2.0, tile_size=(8,8))
             grad  = gradient(clahe_img, ksize=5)
             proc = clahe_img
             rgb  = np.stack([clahe_img, clahe_img, grad], axis=-1)
 
         else:  # chan == "488"
-            rem = remove_outliers(image)
-            noramlized_img= normalize_to_uint8(rem) 
-            cyt_clahe = clahe(noramlized_img, clip_limit=4.0, tile_size=(8,8))
+            cyt_clahe = clahe(image, clip_limit=4.0, tile_size=(8,8))
 
             sigma_est = estimate_sigma(cyt_clahe, channel_axis=None, average_sigmas=True)
             sigma_norm = sigma_est + 3.0
@@ -94,7 +91,7 @@ def run_basic_watershed(
             cyt_edge_preserved = cv2.edgePreservingFilter(cyt_clahe, flags=1, sigma_s=sigma_norm, sigma_r=0.4)
             cyt_bilat_edge = cv2.edgePreservingFilter(cyt_bilat, flags=1, sigma_s=sigma_weak, sigma_r=0.4)
 
-            laplacian = cv2.Laplacian(noramlized_img, cv2.CV_64F)
+            laplacian = cv2.Laplacian(image, cv2.CV_64F)
             laplacian = cv2.convertScaleAbs(laplacian)
             cyt_blended = cv2.addWeighted(cyt_bilat, 0.8, laplacian, 0.2, 0)
 

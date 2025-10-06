@@ -23,7 +23,7 @@ def preprocess_cytoplasm_stack(stack: np.ndarray, top_n: int = 8) -> np.ndarray:
     best_z.sort()
     zprojected = np.max(stack[best_z], axis=0)
     zprojected_normalized = normalize_to_uint8(zprojected)
-    return clahe(zprojected_normalized)
+    return zprojected_normalized
 
 def clahe(img, clip_limit=4.0, tile_size=(8, 8)):
     c = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_size)
