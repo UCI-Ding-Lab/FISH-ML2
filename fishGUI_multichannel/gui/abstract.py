@@ -16,6 +16,7 @@ from ..utils.image_preprocessing import (
     remove_outliers
 )
 from ..services.segmentation import run_basic_watershed
+from ..services.session_manager import SessionManager
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -148,11 +149,10 @@ class abstract():
         self.__drawSeg: bool = False
 
         # --- Selection state ---
-        self.__selected: bool = True # selected for further evaluation?
-        self.__selected_for_segmentation: bool = False # selected for segmentation?
-        self.__highlighted: str = None # focused frame - red border TODO check where its used
+        self.__selected: bool = True # selected for further evaluation? yes
+        self.__selected_for_segmentation: bool = False # selected for segmentation? yes
+        self.__highlighted: str = None # focused frame - red border TODO check where its used : def on_click
 
-        from ..services.session_manager import SessionManager
         SessionManager.addToPool(self)
 
     # --- Helper Functions ---
@@ -220,7 +220,7 @@ class abstract():
     @selected.setter
     def selected(self, value: bool):
         if value:
-            self.thumbnail = "selected" # TODO - thumbnail_state or thumbnail?
+            self.thumbnail = "selected" # TODO - thumbnail_state or thumbnail? -- calls setter for thumbnail
             self.__selected = True
         else:
             self.thumbnail = "crossout"
@@ -270,9 +270,6 @@ class abstract():
         self.__bbox_generated = value
         if not self.gui.getFuncButton().selectButtonPressed():
             self.thumbnail = "bbox" if value else "default"
-    
-    # --- Selection for Segmentation ---
-    
     
     # ---  Segmentation Logic ----
     @property
