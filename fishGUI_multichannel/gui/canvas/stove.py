@@ -125,6 +125,13 @@ class stove():
         self.canvas.draw()
         
     def onCanvasClick(self, event: MouseEvent):
+        # do not allow new selection if toolbar is active
+        try:
+            if self.toolbar.is_tool_active():
+                return
+        except Exception:
+            pass
+
         self.canvas.get_tk_widget().focus_set()  # ensure that any click on the canvas will receive keyboard events
         self.press = True
         if stove.isLeftClick(event):

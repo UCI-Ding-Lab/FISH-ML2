@@ -22,3 +22,29 @@ class FishToolBar(NavigationToolbar2Tk):
             self.mode = ""
             self.set_message("")
             self._update_buttons_checked()
+
+    def is_tool_active(self) -> bool:
+        """Return True if a navigation tool (zoom/pan/selector) is active."""
+        # NavigationToolbar2Tk uses .mode when zoom/pan active; some variants use _active
+        if getattr(self, "mode", ""):
+            return True
+        if getattr(self, "_active", ""):
+            return True
+        return False
+
+    def clear_active_tool(self):
+        """Clear any active nav tool and reset toolbar UI state."""
+        if getattr(self, "mode", ""):
+            self.mode = ""
+            self.set_message("")
+            try:
+                self._update_buttons_checked()
+            except Exception:
+                pass
+        # best-effort for alternate attribute
+        if getattr(self, "_active", ""):
+            try:
+                self._active = ""
+            except Exception:
+                pass
+
