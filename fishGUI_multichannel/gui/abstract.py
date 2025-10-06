@@ -152,12 +152,8 @@ class abstract():
         self.__selected: bool = True # selected for further evaluation? yes
         self.__selected_for_segmentation: bool = False # selected for segmentation? yes
         self.__highlighted: str = None # focused frame - red border TODO check where its used : def on_click
-<<<<<<< HEAD
         
         from ..services.session_manager import SessionManager
-=======
-
->>>>>>> additionalChannels
         SessionManager.addToPool(self)
 
     # --- Helper Functions ---
