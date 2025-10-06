@@ -30,7 +30,7 @@ def clahe(img, clip_limit=4.0, tile_size=(8, 8)):
     return c.apply(img)
 
 @staticmethod
-def remove_outliers(img, k=20.0, use_median=False):
+def remove_outliers(img, k=18.0, use_median=False):
     """
     Clip values that are more than k std-dev (or MAD units) above center.
     Args:

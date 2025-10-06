@@ -63,7 +63,7 @@ def run_basic_watershed(
 
     # process 647 first (cyto1), then 488 (cyto2)
     # TODO - O(n^2) -- consider improving time complexity
-    seg_647, seg_488, seg_555, seg_549 = [], [], [], []
+    seg_647, seg_488, seg_555, seg_594 = [], [], [], []
     channels_images = {
         "647": cyto_647,
         "488": cyto_488,
@@ -116,7 +116,7 @@ def run_basic_watershed(
             except Exception as e:
                 logger.error(f"SAM refine failed on {channel} box {bb}: {str(e)}")
         
-        seg_647, seg_488, seg_555, seg_594 = [], [], [], []
+        # seg_647, seg_488, seg_555, seg_594 = [], [], [], []
         seg_objs = [segment(gui, m) for m in channel_masks]
         
         if channel == "647":
