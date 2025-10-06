@@ -6,6 +6,8 @@ from ..gui.canvas.segment import segment
 from .bundle_data import bundle
 from .matPacker import create
 from .session_manager import SessionManager
+from ..utils.image_preprocessing import grayscale_to_rgb
+import re
 
 class Progress:
     @staticmethod
@@ -116,8 +118,11 @@ class Progress:
         for abs in toSave:
             cyto_paths = abs.getCytoplasmPaths()
             for path in cyto_paths:
+                stem = path.stem.lower()
+                channel = re.search(r"(647|488|555|594)", stem)
+                img = abs.getImgNumpyRGBCyto(channel) if channel else None
                 d["name"].append(path.name)
-                d["image"].append(abs.getImgNumpyRGB())
+                d["image"].append(img)
                 d["xy"].append([mask.xy for mask in abs.segment])
                 d["masks"].append([mask.box for mask in abs.segment])
         create(d["name"], d["xy"], d["masks"], f)

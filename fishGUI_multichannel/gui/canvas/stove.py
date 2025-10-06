@@ -42,10 +42,6 @@ class stove():
         
         self.__onLoad = None
 
-        # # Allow backspace to delete bbox
-        # self.canvas.get_tk_widget().bind("<BackSpace>", self.onDelete)
-        # self.canvas.get_tk_widget().focus_set()
-
     @property
     def biltbg(self):
         return self.canvas.copy_from_bbox(self.subplot.bbox)
@@ -156,27 +152,36 @@ class stove():
                     
             # Handle SEGMENT mode interactions (only if not handled by bbox above)
             if self.gui.getFuncButton().segButtonPressed():
+                brush_active = self.gui.getSeasoning().brushButtonPressed()
+                eraser_active = self.gui.getSeasoning().eraserButtonPressed()
+                buf = segment.getBuffer()
                 # Handle brush/eraser tools
-                if self.gui.getSeasoning().brushButtonPressed() and segment.getBuffer() and segment.getBuffer().selected:
-                    print("[DEBUG] Brush tool active, mask selected")
-                    self.xs = [event.xdata]
-                    self.ys = [event.ydata]
-                    self.bufferSetCurrent(1)
-                    self.bufferSetCurrent(2)
-                    self.canvas.restore_region(self.BILT_BUFFER1)
-                    self.marker_draw(event.xdata, event.ydata)
-                    self.canvas.blit(self.subplot.bbox)
-                elif self.gui.getSeasoning().eraserButtonPressed() and segment.getBuffer() and segment.getBuffer().selected:
-                    print("[DEBUG] Eraser tool active, mask selected")
-                    self.xs = [event.xdata]
-                    self.ys = [event.ydata]
-                    self.bufferSetCurrent(1)
-                    self.bufferSetCurrent(2)
-                    self.canvas.restore_region(self.BILT_BUFFER1)
-                    self.marker_draw(event.xdata, event.ydata)
-                    self.canvas.blit(self.subplot.bbox)
+                # If brush/eraser tool is active, DO NOT change selection on click.
+                # Only begin a stroke if there is an already-selected segment AND
+                # the click is within that selected segment. This prevents accidental
+                # switching to overlapping segments while editing.
+                if brush_active or eraser_active:
+                    if buf and buf.selected and buf.contains(event.xdata, event.ydata):
+                        print("[DEBUG] Brush/Eraser tool active, editing selected mask")
+                        self.xs = [event.xdata]
+                        self.ys = [event.ydata]
+                        self.bufferSetCurrent(1)
+                        self.bufferSetCurrent(2)
+                        try:
+                            self.canvas.restore_region(self.BILT_BUFFER1)
+                        except Exception:
+                            pass
+                        self.marker_draw(event.xdata, event.ydata)
+                        try:
+                            self.canvas.blit(self.subplot.bbox)
+                        except Exception:
+                            pass
+                    else:
+                        # ignore click when brush/eraser active but no valid selected buffer
+                        print("[DEBUG] Brush/Eraser active but click is outside selected mask -> ignoring")
+                        return
                 else:
-                    # Select segment if not using brush/eraser
+                    # Normal selection behavior (only when NOT in brush/eraser mode)
                     target = self.getLoaded().findSegFromPoint(event.xdata, event.ydata)
                     segment.clearBufferAndDeselect()
                     if target:
