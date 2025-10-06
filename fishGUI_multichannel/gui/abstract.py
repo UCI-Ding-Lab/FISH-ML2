@@ -220,7 +220,7 @@ class abstract():
     @selected.setter
     def selected(self, value: bool):
         if value:
-            self.thumbnail = "selected" # TODO - thumbnail_state or thumbnail?
+            self.thumbnail = "selected" # TODO - thumbnail_state or thumbnail? -- calls setter for thumbnail
             self.__selected = True
         else:
             self.thumbnail = "crossout"
@@ -270,9 +270,6 @@ class abstract():
         self.__bbox_generated = value
         if not self.gui.getFuncButton().selectButtonPressed():
             self.thumbnail = "bbox" if value else "default"
-    
-    # --- Selection for Segmentation ---
-    
     
     # ---  Segmentation Logic ----
     @property
