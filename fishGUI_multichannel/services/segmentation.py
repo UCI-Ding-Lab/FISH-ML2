@@ -68,7 +68,7 @@ def run_basic_watershed(
         "647": cyto_647,
         "488": cyto_488,
         "555": cyto_555,
-        "549": cyto_594
+        "594": cyto_594
     }
     for channel, image in channels_images.items():
         if image is None:
@@ -101,7 +101,7 @@ def run_basic_watershed(
             proc = cyt_bilat_edge
             rgb  = np.stack([cyt_blended, cyt_bilat, cyt_edge_preserved], axis=-1)
 
-        ws_masks = watershed_segment_with_centers(proc, centers)
+        ws_masks = watershed_segment_with_centers(proc, centers) 
         bboxes = [mask_to_bbox(m) for m in ws_masks]
         bboxes = [b for b in bboxes if b is not None]
 
