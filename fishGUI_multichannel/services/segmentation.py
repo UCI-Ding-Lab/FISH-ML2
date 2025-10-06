@@ -115,8 +115,7 @@ def run_basic_watershed(
                     channel_masks.append(postproc_mask(best))
             except Exception as e:
                 logger.error(f"SAM refine failed on {channel} box {bb}: {str(e)}")
-        
-        # seg_647, seg_488, seg_555, seg_594 = [], [], [], []
+
         seg_objs = [segment(gui, m) for m in channel_masks]
         
         if channel == "647":
