@@ -16,7 +16,6 @@ from ..utils.image_preprocessing import (
     remove_outliers
 )
 from ..services.segmentation import run_basic_watershed
-from ..services.session_manager import SessionManager
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -193,7 +192,7 @@ class abstract():
             if "647" in stem:
                 img_647 = zprojected
             elif "488" in stem:
-                img_488 = normalize_to_uint8(remove_outliers(zprojected, k=15.0, use_median=False)) # TODO - remove_outliers(zprojected, k=18.0, use_median=False) - should this be placed here or in segmentation.py def runbasicwatershed
+                img_488 = normalize_to_uint8(remove_outliers(zprojected, k=20.0, use_median=False)) 
             elif "555" in stem:
                 img_555 = zprojected
             elif "594" in stem:
