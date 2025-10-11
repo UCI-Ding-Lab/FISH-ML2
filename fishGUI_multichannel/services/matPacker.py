@@ -6,8 +6,9 @@ def read(mat: dict, img_number: int, target: str, cell: int, title: str):
     if target == "filename": return mat["Tracked"][0, img_number][target][0,0]
     else: return mat["Tracked"][0, img_number][target][0,0][0, cell][title][0,0]
 
-def create(name: list[str], xy: list[list[(float,float),],], masks: list[list[np.ndarray,],], saveFile: pathlib.Path):
+def create(name: list[str], xy: list[list[(float,float),],], masks: list[list[np.ndarray,],], saveFile: pathlib.Path, dirname: str = None):
     tracked_dtype = np.dtype([
+        ("dirname", "O"),
         ("filename", "O"),
         ("cells", "O")
     ])
@@ -36,8 +37,8 @@ def create(name: list[str], xy: list[list[(float,float),],], masks: list[list[np
         for eachCell in range(cellCount):
             cell_data = np.zeros((1, 1), dtype=cell_dtype)
             cell_data[0, 0]["mask"] = masks[eachImg][eachCell].astype(np.double)
-            cell_data[0, 0]["pos"] = np.array(xy[eachImg][eachCell]).T # flipped to match matlab's (x,y) order
-            cell_data[0, 0]["size"] = np.array([masks[eachImg][eachCell].shape[0], masks[eachImg][eachCell].shape[1]])
+            cell_data[0, 0]["pos"] = np.array(xy[eachImg][eachCell]).T.astype(np.double)  
+            cell_data[0, 0]["size"] = np.array([masks[eachImg][eachCell].shape[0], masks[eachImg][eachCell].shape[1]], dtype=np.double)
             cell_data[0, 0]["area"] = np.array([np.sum(masks[eachImg][eachCell])])
 
             # Those are all meant to be 'None' in python, but matlab needs them to be empty arrays
@@ -53,6 +54,7 @@ def create(name: list[str], xy: list[list[(float,float),],], masks: list[list[np
             cells[0, eachCell] = cell_data
 
         tracked[0, eachImg] = np.zeros((1, 1), dtype=tracked_dtype)
+        tracked[0, eachImg][0, 0]["dirname"]  = np.array([[dirname or ""]], dtype="O") 
         tracked[0, eachImg][0, 0]["filename"] = np.array([[name[eachImg]]], dtype="O")
         tracked[0, eachImg][0, 0]["cells"] = cells
     

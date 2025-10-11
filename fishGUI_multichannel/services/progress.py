@@ -6,8 +6,8 @@ from ..gui.canvas.segment import segment
 from .bundle_data import bundle
 from .matPacker import create
 from .session_manager import SessionManager
-from ..utils.image_preprocessing import grayscale_to_rgb
 import re
+import pathlib
 
 class Progress:
     @staticmethod
@@ -125,7 +125,9 @@ class Progress:
                 d["image"].append(img)
                 d["xy"].append([mask.xy for mask in abs.segment])
                 d["masks"].append([mask.box for mask in abs.segment])
-        create(d["name"], d["xy"], d["masks"], f)
+        export_dir = str(pathlib.Path(f).parent)  
+        create(d["name"], d["xy"], d["masks"], f, dirname=export_dir)
+
 
     @staticmethod
     def generateBbox(gui, list_of_abstract_objects: list[abstract]):

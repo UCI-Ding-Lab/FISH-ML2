@@ -332,8 +332,8 @@ class stove():
     def clearLoaded(self):
         self.__onLoad = None
 
-    # ---  Control + Z, Control + Y, Control + Z
-    def onUndo(self, event=None):
+    # ---  Control + Z, Control + Y, Control + R ---
+    def onUndo(self, event=None): 
         if not self.gui.getFuncButton().segButtonPressed():
             return
         buf = segment.getBuffer()
@@ -407,7 +407,8 @@ class stove():
                     self.gui.popBox('i', 'Reset', 'Nothing to reset')
                 except Exception:
                     pass
-    
+     # ---  End of Control + Z, Control + Y, Control + R
+     
     @staticmethod
     def isLeftClick(event: MouseEvent) -> bool:
         return event.button == 1
