@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 from skimage import filters, morphology, segmentation
 
+# TODO - grayscale to rgb is good for display/inference; helper__hdr2Rgb is good for finetuning ml models - look more into it
 def grayscale_to_rgb(grayscale_img) -> np.ndarray:
     img_normalized = cv2.normalize(grayscale_img, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
     img_rgb = cv2.cvtColor(img_normalized, cv2.COLOR_GRAY2RGB)

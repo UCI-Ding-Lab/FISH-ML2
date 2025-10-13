@@ -75,14 +75,11 @@ def run_basic_watershed(
             continue
 
         if channel in ("647", "555", "594"): 
-            clahe_img = clahe(image, clip_limit=2.0, tile_size=(8,8))
-            grad  = gradient(clahe_img, ksize=5)
-            proc = clahe_img
-            rgb  = np.stack([clahe_img, clahe_img, grad], axis=-1)
+            grad  = gradient(image, ksize=5)
+            proc = image
+            rgb  = np.stack([image, image, grad], axis=-1)
 
         else:  # chan == "488"
-            cyt_clahe = clahe(image, clip_limit=4.0, tile_size=(8,8))
-
             sigma_est = estimate_sigma(cyt_clahe, channel_axis=None, average_sigmas=True)
             sigma_norm = sigma_est + 3.0
             sigma_weak = sigma_est - 10.0
