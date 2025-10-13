@@ -79,7 +79,6 @@ class abstract():
         
         # Convert image to display on tkinter thumbnail
         self.__img_np_rgb = grayscale_to_rgb(remove_outliers(thumbnail_img, k=10.0)) if self.selected_channel == "488" else grayscale_to_rgb(thumbnail_img) # rgb is for displaying image while SAM and groundingdino accepts 2D
-        self.__img_np_rgb = grayscale_to_rgb(remove_outliers(thumbnail_img, k=10.0)) if self.selected_channel == "488" else grayscale_to_rgb(thumbnail_img) # rgb is for displaying image while SAM and groundingdino accepts 2D
         pil = Image.fromarray(self.__img_np_rgb).resize((64, 64))
         tk_img = ImageTk.PhotoImage(pil)
         self.__img_pil_thumbnail = pil # used for image processing, drawing or saving
