@@ -35,7 +35,7 @@ def watershed_segment_with_centers(cyt_img: np.ndarray,
         xi, yi = int(round(cx)), int(round(cy))
         if 0<=yi<cyt_img.shape[0] and 0<=xi<cyt_img.shape[1]:
             markers[yi,xi] = i
-
+            
     elev   = -dist + 5*filters.sobel(cyt_img)
     labels = segmentation.watershed(elev, markers=markers, mask=binary)
 
@@ -52,7 +52,9 @@ def run_basic_watershed(
     cyto_555: np.ndarray,
     cyto_594: np.ndarray,
     gui,
-    selected_channel: str
+    selected_channel: str,
+    bbox_mode = False,
+    seg_mode = False
 ) -> tuple[list[segment], list[segment]]:
     """
     Perform segmentation for both channels and return (seg_647, seg_488)
@@ -74,18 +76,18 @@ def run_basic_watershed(
         if image is None:
             continue
 
-        if channel in ("647", "555", "594"): 
+        if channel == "647": 
             grad  = gradient(image, ksize=5)
             proc = image
             rgb  = np.stack([image, image, grad], axis=-1)
 
         else:  # chan == "488"
-            sigma_est = estimate_sigma(cyt_clahe, channel_axis=None, average_sigmas=True)
+            sigma_est = estimate_sigma(image, channel_axis=None, average_sigmas=True)
             sigma_norm = sigma_est + 3.0
             sigma_weak = sigma_est - 10.0
 
-            cyt_bilat = cv2.bilateralFilter(cyt_clahe, d=9, sigmaColor=sigma_norm, sigmaSpace=15, borderType=cv2.BORDER_REFLECT_101)
-            cyt_edge_preserved = cv2.edgePreservingFilter(cyt_clahe, flags=1, sigma_s=sigma_norm, sigma_r=0.4)
+            cyt_bilat = cv2.bilateralFilter(image, d=9, sigmaColor=sigma_norm, sigmaSpace=15, borderType=cv2.BORDER_REFLECT_101)
+            cyt_edge_preserved = cv2.edgePreservingFilter(image, flags=1, sigma_s=sigma_norm, sigma_r=0.4)
             cyt_bilat_edge = cv2.edgePreservingFilter(cyt_bilat, flags=1, sigma_s=sigma_weak, sigma_r=0.4)
 
             laplacian = cv2.Laplacian(image, cv2.CV_64F)
@@ -95,36 +97,63 @@ def run_basic_watershed(
             proc = cyt_bilat_edge
             rgb  = np.stack([cyt_blended, cyt_bilat, cyt_edge_preserved], axis=-1)
 
+            print("RGB Stack made")
+
         ws_masks = watershed_segment_with_centers(proc, centers) 
-        bboxes = [mask_to_bbox(m) for m in ws_masks]
-        bboxes = [b for b in bboxes if b is not None]
+        print("WS Masks made")
+        bboxes_cyto = [mask_to_bbox(m) for m in ws_masks]
+        print("BBoxes made from masks", bboxes_cyto)
+        bboxes_cyto = [b for b in bboxes_cyto if b is not None]
+        print("Check if empty boxes", bboxes_cyto)
+        bboxes_cyto = [
+            [float(x1), float(y1), float(x2), float(y2)] 
+            for (x1, y1, x2, y2) in bboxes_cyto
+        ]
 
-        channel_masks = []
-        for bb in bboxes:
-            try:
-                box_input = [[[float(bb[0]), float(bb[1]), float(bb[2]), float(bb[3])]]]
-                sets = gui.getBackEnd().finetune.AppIntPREDICTCytoplasmWrapper(rgb, box_input)
-                if sets is not None and len(sets) > 0 and sets[0] is not None and len(sets[0]) > 0:
-                    best = max(sets[0], key=lambda m: m.sum())
-                    channel_masks.append(postproc_mask(best))
-            except Exception as e:
-                logger.error(f"SAM refine failed on {channel} box {bb}: {str(e)}")
-
-        seg_objs = [segment(gui, m) for m in channel_masks]
+        if bbox_mode:
+            return bboxes_cyto
+        elif seg_mode:
+            seg_objs = [segment(gui, m) for m in ws_masks]
+            if channel == "647":
+                seg_647 = seg_objs
+            elif channel == "488":
+                seg_488 = seg_objs
+            elif channel == "555":
+                seg_555 = seg_objs
+            elif channel == "594":
+                seg_594 = seg_objs
         
-        if channel == "647":
-            seg_647 = seg_objs
-        elif channel == "488":
-            seg_488 = seg_objs
-        elif channel == "555":
-            seg_555 = seg_objs
-        elif channel == "594":
-            seg_594 = seg_objs
+        # end = time.time()
+        # logger.info(f"Segmentation completed in {end - start:.2f} seconds")
+            
+            return seg_647, seg_488, seg_555, seg_594
+
+        # channel_masks = []
+        # for bb in bboxes:
+        #     try:
+        #         box_input = [[[float(bb[0]), float(bb[1]), float(bb[2]), float(bb[3])]]]
+        #         sets = gui.getBackEnd().finetune.AppIntPREDICTCytoplasmWrapper(rgb, box_input)
+        #         if sets is not None and len(sets) > 0 and sets[0] is not None and len(sets[0]) > 0:
+        #             best = max(sets[0], key=lambda m: m.sum())
+        #             channel_masks.append(postproc_mask(best))
+        #     except Exception as e:
+        #         logger.error(f"SAM refine failed on {channel} box {bb}: {str(e)}")
+
+        # seg_objs = [segment(gui, m) for m in channel_masks]
+        
+        # if channel == "647":
+        #     seg_647 = seg_objs
+        # elif channel == "488":
+        #     seg_488 = seg_objs
+        # elif channel == "555":
+        #     seg_555 = seg_objs
+        # elif channel == "594":
+        #     seg_594 = seg_objs
     
-    end = time.time()
-    logger.info(f"Segmentation completed in {end - start:.2f} seconds")
+    # end = time.time()
+    # logger.info(f"Segmentation completed in {end - start:.2f} seconds")
         
-    return seg_647, seg_488, seg_555, seg_594
+    # return seg_647, seg_488, seg_555, seg_594
 
 
 # TODO remove if unnecessary
