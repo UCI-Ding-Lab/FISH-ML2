@@ -239,19 +239,36 @@ class abstract():
         Centers calculated and bboxes generated
         """
         if not self.bbox_generated:
+            from ..utils.image_preprocessing import mask_to_bbox
+
             print(f"Generating BBOX for sample {self.sample_id}")
             nuc_boxes = self.gui.getBackEnd().AppIntDINOwrapper(self.__img_np_nucleus)
+            print("Nuc boxes done...")
             centers = [
                 ((x0 + x1) / 2, (y0 + y1) / 2)
                 for x0, y0, x1, y1 in nuc_boxes
             ]
             self._abstract__nucleus_centers = centers
-            cyto_boxes = self.gui.getBackEnd().AppIntDINOwrapperB(self.__current_channel, centers) # TODO - ERROR!
-            # TODO - use mask_to_bbox instead?
+
+            # --- Creating BBoxes ---
+            bbox_cyto = run_basic_watershed(
+                self.__img_np_nucleus,
+                self.__img_np_647,
+                self.__img_np_488,
+                self.__img_np_555,
+                self.__img_np_594,
+                self.gui,
+                self.selected_channel,
+                bbox_mode=True
+            )
+
+            print("Bbox_cyto", bbox_cyto)
+
             boxes = []
-            for idx, cbox in enumerate(cyto_boxes):
+            for idx, cbox in enumerate(bbox_cyto):
                 center_point = centers[idx] if idx < len(centers) else None
                 boxes.append(box(cbox, self.gui, center=center_point))
+
             self.__bbox = boxes
             self.bbox_generated = True
         return self.__bbox
@@ -292,7 +309,8 @@ class abstract():
                 self.__img_np_555,
                 self.__img_np_594,
                 self.gui,
-                self.selected_channel
+                self.selected_channel,
+                seg_mode=True
             )
             self.__seg_647 = seg_647
             self.__seg_488 = seg_488
