@@ -26,6 +26,7 @@ def watershed_segment_with_centers(cyt_img: np.ndarray,
     Returns a list of binary masks. 
     """
     thresh = filters.threshold_otsu(cyt_img)
+    binary = cyt_img > thresh
     binary = morphology.remove_small_holes(cyt_img > thresh, area_threshold=1000)
     binary = morphology.remove_small_objects(binary, min_size=1000)
     dist   = ndi.distance_transform_edt(binary)
@@ -33,18 +34,85 @@ def watershed_segment_with_centers(cyt_img: np.ndarray,
     markers = np.zeros(cyt_img.shape, np.int32)
     for i,(cx,cy) in enumerate(centers, start=1):
         xi, yi = int(round(cx)), int(round(cy))
-        if 0<=yi<cyt_img.shape[0] and 0<=xi<cyt_img.shape[1]:
-            markers[yi,xi] = i
+        if 0 <= yi < cyt_img.shape[0] and 0 <= xi< cyt_img.shape[1]:
+            markers[yi, xi] = i
 
-    elev   = -dist + 5*filters.sobel(cyt_img)
+    elev = -dist + 5 * (filters.sobel(cyt_img))
     labels = segmentation.watershed(elev, markers=markers, mask=binary)
 
     masks = []
-    for lab in range(1, labels.max()+1):
-        m = (labels==lab)
-        if m.sum()>0: masks.append(postproc_mask(m))
+    for i in range(1, np.max(labels)+1):
+        mask = (labels == i)
+        if np.sum(mask) > 0:
+            masks.append(postproc_mask(mask))
     return masks
 
+def bbox_run_basic_watershed(
+    nucleus_img: np.ndarray,
+    cyto_647: np.ndarray,
+    cyto_488: np.ndarray,
+    cyto_555: np.ndarray,
+    cyto_594: np.ndarray,
+    gui,
+    selected_channel: str,
+    bbox_mode = False,
+    seg_mode = False
+) -> tuple[list[segment], list[segment]]:
+    """
+    Perform segmentation for both channels and return (seg_647, seg_488)
+    """
+
+    boxes = gui.getBackEnd().AppIntDINOwrapper(nucleus_img)
+    centers = [((x0 + x1) / 2, (y0 + y1) / 2) for x0, y0, x1, y1 in boxes]
+
+    # process 647 first (cyto1), then 488 (cyto2)
+    # TODO - O(n^2) -- consider improving time complexity
+    channels_images = {
+        "647": cyto_647,
+        "488": cyto_488,
+        "555": cyto_555,
+        "594": cyto_594
+    }
+    for channel, image in channels_images.items():
+        if image is None:
+            continue
+
+        if channel in ("647", "555", "594"): 
+            clahe_img = clahe(image, clip_limit=2.0, tile_size=(8,8))
+            grad  = gradient(clahe_img, ksize=5)
+            proc = clahe_img
+            rgb  = np.stack([clahe_img, clahe_img, grad], axis=-1)
+
+        else:  # chan == "488"
+            sigma_est = estimate_sigma(image) # Calculate sigma
+
+            cyt_clahe = clahe(image, clip_limit=4.0, tile_size=(8,8))
+
+            sigma_est = estimate_sigma(cyt_clahe, channel_axis=None, average_sigmas=True)
+            sigma_norm = sigma_est + 3.0
+            sigma_weak = sigma_est - 10.0
+
+            print("sigma_norm", sigma_norm, "sigma_weak", sigma_weak)
+
+            cyt_bilat = cv2.bilateralFilter(cyt_clahe, d=9, sigmaColor=sigma_norm, sigmaSpace=15, borderType=cv2.BORDER_REFLECT_101)
+            cyt_edge_preserved = cv2.edgePreservingFilter(cyt_clahe, flags=1, sigma_s=sigma_norm, sigma_r=0.4)
+            cyt_bilat_edge = cv2.edgePreservingFilter(cyt_bilat, flags=1, sigma_s=sigma_weak, sigma_r=0.4)
+
+            laplacian = cv2.Laplacian(image, cv2.CV_64F)
+            laplacian = cv2.convertScaleAbs(laplacian)
+
+            proc = cyt_bilat_edge
+
+            ws_masks = watershed_segment_with_centers(proc, centers) 
+            bboxes = [mask_to_bbox(m) for m in ws_masks]
+            bboxes = [b for b in bboxes if b is not None]
+            bboxes = [
+                [float(x1), float(y1), float(x2), float(y2)] 
+                for (x1, y1, x2, y2) in bboxes
+            ]
+
+            return bboxes
+        
 def run_basic_watershed(
     nucleus_img: np.ndarray,
     cyto_647: np.ndarray,

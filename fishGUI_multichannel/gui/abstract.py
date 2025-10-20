@@ -15,7 +15,7 @@ from ..utils.image_preprocessing import (
     preprocess_cytoplasm_stack,
     remove_outliers
 )
-from ..services.segmentation import run_basic_watershed
+from ..services.segmentation import run_basic_watershed, bbox_run_basic_watershed
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -186,17 +186,17 @@ class abstract():
             zprojected = (
                 preprocess_cytoplasm_stack(cyto_array, top_n=8)
                 if cyto_array.ndim == 3 and cyto_array.shape[0] > 1
-                else normalize_to_uint8(np.squeeze(cyto_array))
+                else np.squeeze(cyto_array)
             )
             stem = cyto_path.stem.lower()
             if "647" in stem:
-                img_647 = zprojected
+                img_647 = normalize_to_uint8(zprojected)
             elif "488" in stem:
                 img_488 = normalize_to_uint8(remove_outliers(zprojected, k=20.0, use_median=False)) 
             elif "555" in stem:
-                img_555 = zprojected
+                img_555 = normalize_to_uint8(zprojected)
             elif "594" in stem:
-                img_594 = zprojected # TODO assuming 594 and 555 is similar to 647 for now
+                img_594 = normalize_to_uint8(zprojected) # TODO assuming 594 and 555 is similar to 647 for now
             else:
                 logger.warning(f"Unrecognized cytoplasm channel in file {cyto_path.name}")
         return img_647, img_488, img_555, img_594
@@ -241,19 +241,37 @@ class abstract():
         if not self.bbox_generated:
             print(f"Generating BBOX for sample {self.sample_id}")
             nuc_boxes = self.gui.getBackEnd().AppIntDINOwrapper(self.__img_np_nucleus)
+            # print(nuc_boxes)
             centers = [
                 ((x0 + x1) / 2, (y0 + y1) / 2)
                 for x0, y0, x1, y1 in nuc_boxes
             ]
+            # print(centers)
             self._abstract__nucleus_centers = centers
-            cyto_boxes = self.gui.getBackEnd().AppIntDINOwrapperB(self.__current_channel, centers) # TODO - ERROR!
-            # TODO - use mask_to_bbox instead?
+
+            # Old Method
+            # cyto_boxes = self.gui.getBackEnd().AppIntDINOwrapperB(self.__current_channel, centers)
+
+            # (New Method) --- Creating BBoxes ---
+            cyto_boxes = bbox_run_basic_watershed(
+                self.__img_np_nucleus,
+                self.__img_np_647,
+                self.__img_np_488,
+                self.__img_np_555,
+                self.__img_np_594,
+                self.gui,
+                self.selected_channel
+            )
+
+            print("Bbox_cyto", cyto_boxes)
+
             boxes = []
             for idx, cbox in enumerate(cyto_boxes):
                 center_point = centers[idx] if idx < len(centers) else None
                 boxes.append(box(cbox, self.gui, center=center_point))
             self.__bbox = boxes
             self.bbox_generated = True
+
         return self.__bbox
     
     @bbox.setter
