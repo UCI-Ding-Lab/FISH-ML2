@@ -13,7 +13,9 @@ from ..utils.image_preprocessing import (
     grayscale_to_rgb,
     preprocess_nucleus_stack,
     preprocess_cytoplasm_stack,
-    remove_outliers
+    remove_outliers,
+    clahe,
+    gradient
 )
 from ..services.segmentation import run_basic_watershed, bbox_run_basic_watershed
 logging.basicConfig(level=logging.INFO)
@@ -172,6 +174,7 @@ class abstract():
             return preprocess_nucleus_stack(nucleus_array)
         return normalize_to_uint8(np.squeeze(nucleus_array)) # already z-projected
     
+    # TODO -  consider separating methods to two : loading and image preprocesing
     def _load_cytoplasms(self, cyto_paths: list[pathlib.Path]) -> tuple[np.ndarray, np.ndarray]:
         """
         Returns the preprocessed image (normalized grayscale) for both 647 and 488
@@ -190,13 +193,14 @@ class abstract():
             )
             stem = cyto_path.stem.lower()
             if "647" in stem:
-                img_647 = normalize_to_uint8(zprojected)
+                img_647 = clahe(normalize_to_uint8(zprojected), clip_limit=2.0, tile_size=(8,8))
             elif "488" in stem:
                 img_488 = normalize_to_uint8(remove_outliers(zprojected, k=20.0, use_median=False)) 
+                img_488 = clahe(img_488, clip_limit=4.0, tile_size=(8,8))
             elif "555" in stem:
-                img_555 = normalize_to_uint8(zprojected)
+                img_555 = clahe(normalize_to_uint8(zprojected), clip_limit=4.0, tile_size=(8,8))
             elif "594" in stem:
-                img_594 = normalize_to_uint8(zprojected) # TODO assuming 594 and 555 is similar to 647 for now
+                img_594 = clahe(normalize_to_uint8(zprojected), clip_limit=4.0, tile_size=(8,8))
             else:
                 logger.warning(f"Unrecognized cytoplasm channel in file {cyto_path.name}")
         return img_647, img_488, img_555, img_594
