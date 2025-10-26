@@ -77,18 +77,12 @@ def bbox_run_basic_watershed(
         if image is None:
             continue
 
-        if channel in ("647", "555", "594"): 
-            clahe_img = clahe(image, clip_limit=2.0, tile_size=(8,8))
-            grad  = gradient(clahe_img, ksize=5)
-            proc = clahe_img
-            rgb  = np.stack([clahe_img, clahe_img, grad], axis=-1)
+        if channel == "647": 
+            proc = image
 
         else:  # chan == "488"
+            cyt_clahe = image
             sigma_est = estimate_sigma(image) # Calculate sigma
-
-            cyt_clahe = clahe(image, clip_limit=4.0, tile_size=(8,8))
-
-            sigma_est = estimate_sigma(cyt_clahe, channel_axis=None, average_sigmas=True)
             sigma_norm = sigma_est + 3.0
             sigma_weak = sigma_est - 10.0
 
@@ -103,15 +97,15 @@ def bbox_run_basic_watershed(
 
             proc = cyt_bilat_edge
 
-            ws_masks = watershed_segment_with_centers(proc, centers) 
-            bboxes = [mask_to_bbox(m) for m in ws_masks]
-            bboxes = [b for b in bboxes if b is not None]
-            bboxes = [
-                [float(x1), float(y1), float(x2), float(y2)] 
-                for (x1, y1, x2, y2) in bboxes
-            ]
+    ws_masks = watershed_segment_with_centers(proc, centers) 
+    bboxes = [mask_to_bbox(m) for m in ws_masks]
+    bboxes = [b for b in bboxes if b is not None]
+    bboxes = [
+        [float(x1), float(y1), float(x2), float(y2)] 
+        for (x1, y1, x2, y2) in bboxes
+    ]
 
-            return bboxes
+    return bboxes
         
 def run_basic_watershed(
     nucleus_img: np.ndarray,
@@ -142,7 +136,7 @@ def run_basic_watershed(
         if image is None:
             continue
 
-        if channel in ("647", "555", "594"): 
+        if channel == "647": 
             grad  = gradient(image, ksize=5)
             proc = image
             rgb  = np.stack([image, image, grad], axis=-1)
