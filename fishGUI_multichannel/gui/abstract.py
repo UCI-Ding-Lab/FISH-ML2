@@ -267,8 +267,6 @@ class abstract():
                 self.selected_channel
             )
 
-            print("Bbox_cyto", cyto_boxes)
-
             boxes = []
             for idx, cbox in enumerate(cyto_boxes):
                 center_point = centers[idx] if idx < len(centers) else None
@@ -550,18 +548,23 @@ class abstract():
     def update_thumbnail(self):
         # Always rebuild the base thumbnail from the selected channel
         base_img = None
+        k = 0
         if self.selected_channel == "647" and self.__img_np_647 is not None:
             base_img = self.__img_np_647
+            k = 0
         elif self.selected_channel == "488" and self.__img_np_488 is not None:
             base_img = self.__img_np_488
+            k = 10
         elif self.selected_channel == "555" and self.__img_np_555 is not None:
             base_img = self.__img_np_555
+            k = 10
         elif self.selected_channel == "594" and self.__img_np_594 is not None:
             base_img = self.__img_np_594
+            k = 8
         else:
             base_img = self.__img_np_nucleus
 
-        self.__img_np_rgb = grayscale_to_rgb(remove_outliers(base_img, k=10.0)) if self.selected_channel == "488" else grayscale_to_rgb(base_img)
+        self.__img_np_rgb = grayscale_to_rgb(remove_outliers(base_img, k=k)) if k > 0 else grayscale_to_rgb(base_img)
         self.__img_pil_thumbnail = Image.fromarray(self.__img_np_rgb).resize((64, 64))
         self.__img_tk_thumbnail = ImageTk.PhotoImage(self.__img_pil_thumbnail)
 
