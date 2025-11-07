@@ -115,7 +115,7 @@ class tifSequence():
                 nucleus_path,
                 cyto_paths,
                 self.gallery_frame,
-                self.gui,
+                self.gui
             )
             self.gui.getSeasoning().update_channel_menu(abs_obj.available_channels)
 
