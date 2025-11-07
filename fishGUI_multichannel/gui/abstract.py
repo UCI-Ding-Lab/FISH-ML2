@@ -198,9 +198,11 @@ class abstract():
                 img_488 = normalize_to_uint8(remove_outliers(zprojected, k=20.0, use_median=False)) 
                 img_488 = clahe(img_488, clip_limit=4.0, tile_size=(8,8))
             elif "555" in stem:
-                img_555 = clahe(normalize_to_uint8(zprojected), clip_limit=4.0, tile_size=(8,8))
+                img_555 = normalize_to_uint8(remove_outliers(zprojected, k=20.0, use_median=False)) 
+                img_555 = clahe(img_555, clip_limit=4.0, tile_size=(8,8))
             elif "594" in stem:
-                img_594 = clahe(normalize_to_uint8(zprojected), clip_limit=4.0, tile_size=(8,8))
+                img_594 = normalize_to_uint8(remove_outliers(zprojected, k=20.0, use_median=False)) 
+                img_594 = clahe(img_594, clip_limit=4.0, tile_size=(8,8))
             else:
                 logger.warning(f"Unrecognized cytoplasm channel in file {cyto_path.name}")
         return img_647, img_488, img_555, img_594
