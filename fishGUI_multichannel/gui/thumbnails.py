@@ -60,7 +60,7 @@ class tifSequence():
         self.base.yview_moveto(0)
 
     # Called in buttons.py, IMPORT_call method    
-    def addToGallery(self, tif_files: list, folder: pathlib):
+    def addToGallery(self, tif_files: list):
         from .abstract import abstract # prevent circular imports
         logger.debug(f"addToGallery → starting with {len(tif_files)} files")
 
