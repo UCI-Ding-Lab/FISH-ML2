@@ -112,21 +112,41 @@ class Progress:
                                          title="Export Results As")
         if not f: 
             return
-        toSave = [i for i in SessionManager.getPool() if i.selected and len(i.segmentExplict)]
+        
+        # Check if any frames have segmentation data
+        toSave = [i for i in SessionManager.getPool()]
+        if not toSave:
+            messagebox.showwarning("No Data", "No frames with segmentation data found")
+            return
+        
         d = {"name":[],"image":[],"xy":[],"masks":[]}
+        
+        # get directory path
+        directory_name = SessionManager.getImportDirectory()
+        if not directory_name:
+            directory_name = str(pathlib.Path(f).parent) # fallback to directory where export is saved
+
         # TODO - O(n^2) -  think of ways to improve effiiency
         for abs in toSave:
             cyto_paths = abs.getCytoplasmPaths()
             for path in cyto_paths:
                 stem = path.stem.lower()
                 channel = re.search(r"(647|488|555|594)", stem)
-                img = abs.getImgNumpyRGBCyto(channel) if channel else None
+            
+                if not abs.selected or len(abs.segmentExplicit) <= 0:
+                    img = None
+                    xy = []
+                    masks = []
+                else:
+                    img = abs.getImgNumpyRGBCyto(channel) if channel else None
+                    xy = [mask.xy for mask in abs.segment]
+                    masks = [mask.box for mask in abs.segment]
+
                 d["name"].append(path.name)
                 d["image"].append(img)
-                d["xy"].append([mask.xy for mask in abs.segment])
-                d["masks"].append([mask.box for mask in abs.segment])
-        export_dir = str(pathlib.Path(f).parent)  
-        create(d["name"], d["xy"], d["masks"], f, dirname=export_dir)
+                d["xy"].append(xy)
+                d["masks"].append(masks) 
+        create(d["name"], d["xy"], d["masks"], f, dirname=str(directory_name))
 
 
     @staticmethod

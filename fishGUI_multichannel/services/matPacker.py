@@ -54,7 +54,7 @@ def create(name: list[str], xy: list[list[(float,float),],], masks: list[list[np
             cells[0, eachCell] = cell_data
 
         tracked[0, eachImg] = np.zeros((1, 1), dtype=tracked_dtype)
-        tracked[0, eachImg][0, 0]["dirname"]  = np.array([[dirname or ""]], dtype="O") 
+        tracked[0, eachImg][0, 0]["dirname"] = np.array(dirname, dtype="O")
         tracked[0, eachImg][0, 0]["filename"] = np.array([[name[eachImg]]], dtype="O")
         tracked[0, eachImg][0, 0]["cells"] = cells
     

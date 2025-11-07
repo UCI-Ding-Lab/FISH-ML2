@@ -363,7 +363,7 @@ class abstract():
         self.__current_channel_mask = []
 
     @property
-    def segmentExplict(self):
+    def segmentExplicit(self):
         return self.__current_channel_mask
     
     @property
@@ -496,7 +496,7 @@ class abstract():
     def thumbnail(self) -> str:
         return self.__thumbnail_state
     @thumbnail.setter
-    def thumbnail(self, value: str): # TODO when and how are these called? what is the flow after on_click or on_multitoggle
+    def thumbnail(self, value: str): 
         """
         Whenever self.thumbnail_state is assigned a value, this method is called to 
         update the image overlawy
@@ -591,8 +591,6 @@ class abstract():
                     self.thumbnail = "bbox"  # blue
         else:
             self.thumbnail = "default"  # no dot
-
-
 
 
     # --- Helper functions ---

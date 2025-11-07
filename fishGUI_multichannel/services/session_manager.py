@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 class SessionManager:
     __pool = []
     __buffer = None
+    __importPath = None
 
     """
     Responsible for handling operations that affect the entire session
@@ -105,6 +106,14 @@ class SessionManager:
             abstract_object.selected_for_segmentation = False  
 
     # --- Save/Segment/Batch Operations ---
+    @classmethod
+    def setImportDirectory(cls, folder):
+        cls.__importPath = folder
+    
+    @classmethod
+    def getImportDirectory(cls):
+        return cls.__importPath
+
     @classmethod
     def saveBboxChanges(cls):
         """

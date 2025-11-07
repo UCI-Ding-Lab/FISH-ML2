@@ -60,7 +60,7 @@ class tifSequence():
         self.base.yview_moveto(0)
 
     # Called in buttons.py, IMPORT_call method    
-    def addToGallery(self, tif_files: list):
+    def addToGallery(self, tif_files: list, folder: pathlib):
         from .abstract import abstract # prevent circular imports
         logger.debug(f"addToGallery → starting with {len(tif_files)} files")
 
@@ -98,7 +98,7 @@ class tifSequence():
             if "594" in channels:
                 cyto_paths.append(channels["594"])
             return cyto_paths
-
+        
         grouped = group_files_by_sample_and_channel(tif_files)
         logger.debug(f"addToGallery → grouped into samples: {list(grouped.keys())}")
 
@@ -115,7 +115,7 @@ class tifSequence():
                 nucleus_path,
                 cyto_paths,
                 self.gallery_frame,
-                self.gui
+                self.gui,
             )
             self.gui.getSeasoning().update_channel_menu(abs_obj.available_channels)
 

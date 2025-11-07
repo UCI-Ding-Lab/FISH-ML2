@@ -126,12 +126,13 @@ class funcButton():
         logger.debug(f"IMPORT_call → found {len(tif_files)} .tif files")
 
         try:
-            self.gui.getTifSequence().addToGallery(tif_files) # getTifSequence defined in app.py
+            self.gui.getTifSequence().addToGallery(tif_files, folder) # getTifSequence defined in app.py
         except Exception as e:
             logger.exception("IMPORT_call → addToGallery raised exception")
             self.gui.popBox("e", "Import Error", str(e))
             return
-
+        
+        SessionManager.setImportDirectory(folder)
         pool = SessionManager.getPool()
         logger.debug(f"IMPORT_call → abstract pool size after addToGallery: {len(pool)}")
         if len(pool) == 0:
