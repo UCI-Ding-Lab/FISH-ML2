@@ -68,17 +68,21 @@ class abstract():
         thumbnail_img = None
         if self.__img_np_647 is not None:
             thumbnail_img = self.__img_np_647
+            k = 13
         elif self.__img_np_488 is not None:
             thumbnail_img = self.__img_np_488
+            k = 11
         elif self.__img_np_555 is not None:
             thumbnail_img = self.__img_np_555
+            k = 10
         elif self.__img_np_594 is not None:
             thumbnail_img = self.__img_np_594
+            k = 10
         else:
             thumbnail_img = self.__img_np_nucleus
         
         # Convert image to display on tkinter thumbnail
-        self.__img_np_rgb = grayscale_to_rgb(remove_outliers(thumbnail_img, k=10.0)) if self.selected_channel == "488" else grayscale_to_rgb(thumbnail_img) # rgb is for displaying image while SAM and groundingdino accepts 2D
+        self.__img_np_rgb = grayscale_to_rgb(remove_outliers(thumbnail_img, k=k)) if k > 0 else grayscale_to_rgb(thumbnail_img) # rgb is for displaying image while SAM and groundingdino accepts 2D
         pil = Image.fromarray(self.__img_np_rgb).resize((64, 64))
         tk_img = ImageTk.PhotoImage(pil)
         self.__img_pil_thumbnail = pil # used for image processing, drawing or saving
@@ -193,7 +197,7 @@ class abstract():
             )
             stem = cyto_path.stem.lower()
             if "647" in stem:
-                img_647 = clahe(normalize_to_uint8(zprojected), clip_limit=2.0, tile_size=(8,8))
+                img_647 = clahe(normalize_to_uint8(remove_outliers(zprojected, k=20.0, use_median=False)), clip_limit=2.0, tile_size=(8,8))
             elif "488" in stem:
                 img_488 = normalize_to_uint8(remove_outliers(zprojected, k=20.0, use_median=False)) 
                 img_488 = clahe(img_488, clip_limit=4.0, tile_size=(8,8))
@@ -550,10 +554,9 @@ class abstract():
     def update_thumbnail(self):
         # Always rebuild the base thumbnail from the selected channel
         base_img = None
-        k = 0
         if self.selected_channel == "647" and self.__img_np_647 is not None:
             base_img = self.__img_np_647
-            k = 0
+            k = 10
         elif self.selected_channel == "488" and self.__img_np_488 is not None:
             base_img = self.__img_np_488
             k = 10
@@ -565,6 +568,7 @@ class abstract():
             k = 8
         else:
             base_img = self.__img_np_nucleus
+            k = 0
 
         self.__img_np_rgb = grayscale_to_rgb(remove_outliers(base_img, k=k)) if k > 0 else grayscale_to_rgb(base_img)
         self.__img_pil_thumbnail = Image.fromarray(self.__img_np_rgb).resize((64, 64))

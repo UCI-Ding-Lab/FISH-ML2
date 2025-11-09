@@ -86,8 +86,6 @@ def bbox_run_basic_watershed(
             sigma_norm = sigma_est + 3.0
             sigma_weak = sigma_est - 10.0
 
-            print("sigma_norm", sigma_norm, "sigma_weak", sigma_weak)
-
             cyt_bilat = cv2.bilateralFilter(cyt_clahe, d=9, sigmaColor=sigma_norm, sigmaSpace=15, borderType=cv2.BORDER_REFLECT_101)
             cyt_edge_preserved = cv2.edgePreservingFilter(cyt_clahe, flags=1, sigma_s=sigma_norm, sigma_r=0.4)
             cyt_bilat_edge = cv2.edgePreservingFilter(cyt_bilat, flags=1, sigma_s=sigma_weak, sigma_r=0.4)
@@ -141,7 +139,7 @@ def run_basic_watershed(
             proc = image
             rgb  = np.stack([image, image, grad], axis=-1)
 
-        else:  # chan == "488"
+        else:  # chan == "488, 594, or 555"
             sigma_est = estimate_sigma(image, channel_axis=None, average_sigmas=True)
             sigma_norm = sigma_est + 3.0
             sigma_weak = sigma_est - 10.0
