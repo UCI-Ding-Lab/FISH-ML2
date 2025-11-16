@@ -52,10 +52,16 @@ def create(name: list[str], xy: list[list[(float,float),],], masks: list[list[np
             cell_data[0, 0]["Fmean"] = np.array([0])
             
             cells[0, eachCell] = cell_data
-
+        
         tracked[0, eachImg] = np.zeros((1, 1), dtype=tracked_dtype)
-        tracked[0, eachImg][0, 0]["dirname"] = np.array(dirname, dtype="O")
         tracked[0, eachImg][0, 0]["filename"] = np.array([[name[eachImg]]], dtype="O")
         tracked[0, eachImg][0, 0]["cells"] = cells
+
+        # dirname only for the first entry
+        if eachImg == 0 and dirname:
+            tracked[0, eachImg][0, 0]["dirname"] = np.array([[dirname]], dtype="O")
+        else:
+            tracked[0, eachImg][0, 0]["dirname"] = np.array([[""]], dtype="O")
+
     
     scipy.io.savemat(saveFile, {"Tracked": tracked})
