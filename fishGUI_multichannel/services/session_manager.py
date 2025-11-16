@@ -58,14 +58,26 @@ class SessionManager:
     @classmethod
     def removeUnselected(cls):
         """
+        Removes unselected frame from pool
         Resets the thumbnail for all objects and deletes the thumbnail
         for unselected ones. Then refocuses.
         """
-        for abstract_object in cls.getPool():
-            abstract_object.thumbnail = "default"
-            if not abstract_object.selected:
-                del abstract_object.thumbnail
-        cls.sendFocused()
+        new_pool = []
+        for abstract_object in list(cls.getPool()):
+            if not isinstance(abstract_object, abstract):
+                logging.debug(f"Object {abstract_object} is not an instance of abstract. Skipping.")
+                continue
+            if abstract_object.selected:
+                abstract_object.thumbnail = "default"
+                new_pool.append(abstract_object)
+            else:
+                try:
+                    del abstract_object.thumbnail  # hides from UI
+                except Exception as e:
+                    logging.debug(f"Failed to delete thumbnail for {getattr(abstract_object,'sample_id','?')}: {e}")
+        cls.__pool = new_pool
+        cls.__buffer = None
+        cls.sendFirst()
 
     @classmethod
     def sendFirst(cls):
