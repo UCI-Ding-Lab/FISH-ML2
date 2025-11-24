@@ -3,15 +3,27 @@ import numpy as np
 import scipy.io
 
 def read(mat: dict, img_number: int, target: str, cell: int, title: str):
-    if target == "filename": return mat["Tracked"][0, img_number][target][0,0]
-    else: return mat["Tracked"][0, img_number][target][0,0][0, cell][title][0,0]
+    if target == "filename":
+        return mat["Tracked"][0, img_number]["filename"][0, 0]
+    # dirname exists only on the first entry (if written)
+    if target == "dirname":
+        first = mat["Tracked"][0, 0]
+        names = getattr(first, "dtype", None)
+        if names is not None and hasattr(names, "names") and ("dirname" in names.names):
+            return first["dirname"][0, 0]
+        return None
+    return mat["Tracked"][0, img_number][target][0, 0][0, cell][title][0, 0]
 
 def create(name: list[str], xy: list[list[(float,float),],], masks: list[list[np.ndarray,],], saveFile: pathlib.Path, dirname: str = None):
-    tracked_dtype = np.dtype([
-        ("dirname", "O"),
+    tracked_dtype_head = np.dtype([
         ("filename", "O"),
-        ("cells", "O")
+        ("cells", "O"),
+        ("dirname", "O"),
     ])
+    tracked_dtype_tail = np.dtype([
+        ("filename", "O"),
+        ("cells", "O"),
+    ])      
 
     cell_dtype = np.dtype([
         ('mask', 'O'),
@@ -52,16 +64,18 @@ def create(name: list[str], xy: list[list[(float,float),],], masks: list[list[np
             cell_data[0, 0]["Fmean"] = np.array([0])
             
             cells[0, eachCell] = cell_data
-        
-        tracked[0, eachImg] = np.zeros((1, 1), dtype=tracked_dtype)
-        tracked[0, eachImg][0, 0]["filename"] = np.array([[name[eachImg]]], dtype="O")
-        tracked[0, eachImg][0, 0]["cells"] = cells
 
         # dirname only for the first entry
-        if eachImg == 0 and dirname:
-            tracked[0, eachImg][0, 0]["dirname"] = np.array([[dirname]], dtype="O")
+        if eachImg == 0:
+            entry = np.zeros((1, 1), dtype=tracked_dtype_head)
+            entry[0, 0]["dirname"] = np.array([[dirname if dirname else ""]], dtype="O")
         else:
-            tracked[0, eachImg][0, 0]["dirname"] = np.array([[""]], dtype="O")
+            entry = np.zeros((1, 1), dtype=tracked_dtype_tail)
 
-    
+        entry[0, 0]["filename"] = np.array([[name[eachImg]]], dtype="O")
+        entry[0, 0]["cells"]    = cells
+        tracked[0, eachImg] = entry
+
+    saveFile = pathlib.Path(saveFile)
+    saveFile.parent.mkdir(parents=True, exist_ok=True)
     scipy.io.savemat(saveFile, {"Tracked": tracked})
