@@ -31,7 +31,7 @@ def clahe(img, clip_limit=4.0, tile_size=(8, 8)):
     return c.apply(img)
 
 @staticmethod
-def remove_outliers(img, k=18.0, use_median=False):
+def remove_outliers(img, k=18.0, use_median=False, verbose=False, max_clip_frac=1e-2):
     """
     Clip values that are more than k std-dev (or MAD units) above center.
     Args:
@@ -55,11 +55,34 @@ def remove_outliers(img, k=18.0, use_median=False):
         std = np.std(x)
         thresh = mean + k * std
 
-    # clip outliers
-    x_clipped = np.minimum(x, thresh)
+    # ---- Compute how many pixels would be clipped ----
+    mask = x > thresh
+    clip_frac = mask.mean()  # between 0 and 1
 
-    # normalize after clipping (to 0..1)
-    x_norm = (x_clipped - x_clipped.min()) / (x_clipped.max() - x_clipped.min() + 1e-6)
+    if verbose:
+        print(
+            f"Threshold={thresh:.3f}, "
+            f"clip_frac={clip_frac*100:.5f}% (max allowed={max_clip_frac*100:.5f}%)"
+        )
+
+    # ---- Decide whether to actually clip ----
+    if (clip_frac == 0) or (clip_frac > max_clip_frac):
+        # Either nothing to clip, or "too many" pixels above thresh
+        # -> treat as no extreme outliers and skip clipping
+        if verbose:
+            if clip_frac == 0:
+                print("No pixels above threshold — skipping outlier clipping.")
+            else:
+                print("Too many pixels above threshold — likely real signal, skipping clipping.")
+        x_clipped = x
+    else:
+        # safe to treat as extreme outliers
+        x_clipped = np.minimum(x, thresh)
+
+    # ---- Normalize after clipping (to 0..1) ----
+    x_min = x_clipped.min()
+    x_max = x_clipped.max()
+    x_norm = (x_clipped - x_min) / (x_max - x_min + 1e-6)
     return x_norm
 
 def gradient(img: np.ndarray, ksize: int = 5) -> np.ndarray:
