@@ -828,7 +828,7 @@ class abstract():
         self.__abs_path = path
         self.gui = gui
         
-        self.__img_np_gs = self.remove_outliers(np.array(Image.open(self.__abs_path)), k=18) # 2048 2048
+        self.__img_np_gs = self.to_uint16_native(np.array(Image.open(self.__abs_path))) # 2048 2048
         self.__img_np_rgb = self.grayscale_to_rgb(self.__img_np_gs)  # 2048 2048 3
         self.__img_pil_thumbnail = Image.fromarray(self.__img_np_rgb).resize((64, 64))
         self.__img_tk_thumbnail = ImageTk.PhotoImage(self.__img_pil_thumbnail)
@@ -1130,6 +1130,12 @@ class abstract():
         # normalize after clipping (to 0..1)
         x_norm = (x_clipped - x_clipped.min()) / (x_clipped.max() - x_clipped.min() + 1e-6)
         return x_norm
+    
+    @staticmethod
+    def to_uint16_native(arr):
+        if arr.dtype == '>u2' or arr.dtype.byteorder == '>':
+            return arr.astype(np.uint16)
+        return arr.astype(np.uint16, copy=False)
 
     def findBoxFromPoint(self, x: float, y: float) -> box:
         for b in self.bbox:
