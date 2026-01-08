@@ -828,8 +828,8 @@ class abstract():
         self.__abs_path = path
         self.gui = gui
         
-        self.__img_np_gs = np.array(Image.open(self.__abs_path)) # 2048 2048
-        self.__img_np_rgb = self.grayscale_to_rgb(self.__img_np_gs) # 2048 2048 3
+        self.__img_np_gs = self.remove_outliers(np.array(Image.open(self.__abs_path)), k=18) # 2048 2048
+        self.__img_np_rgb = self.grayscale_to_rgb(self.__img_np_gs)  # 2048 2048 3
         self.__img_pil_thumbnail = Image.fromarray(self.__img_np_rgb).resize((64, 64))
         self.__img_tk_thumbnail = ImageTk.PhotoImage(self.__img_pil_thumbnail)
         
@@ -1099,6 +1099,38 @@ class abstract():
         brightness_factor = 1
         return np.clip(img_rgb * brightness_factor, 0, 255).astype(np.uint8)
     
+    @staticmethod
+    def remove_outliers(img, k=18.0, use_median=False):
+        """
+        Clip values that are more than k std-dev (or MAD units) above center.
+        Args:
+            img: 16-bit numpy array
+            k: threshold (e.g. 3σ)
+            use_median: if True use median+MAD, else mean+std
+        Returns:
+            clipped float32 image in [0,1]
+        """
+
+        print("OUTLIERS REMOVING...")
+        x = img.astype(np.float32)
+
+        if use_median:
+            med = np.median(x)
+            mad = np.median(np.abs(x - med)) + 1e-6
+            sigma = 1.4826 * mad  # robust std estimate
+            thresh = med + k * sigma
+        else:
+            mean = np.mean(x)
+            std = np.std(x)
+            thresh = mean + k * std
+
+        # clip outliers
+        x_clipped = np.minimum(x, thresh)
+
+        # normalize after clipping (to 0..1)
+        x_norm = (x_clipped - x_clipped.min()) / (x_clipped.max() - x_clipped.min() + 1e-6)
+        return x_norm
+
     def findBoxFromPoint(self, x: float, y: float) -> box:
         for b in self.bbox:
             if b.contains(x, y):
