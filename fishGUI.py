@@ -1319,7 +1319,8 @@ class funcButton():
 
 class lf():
     def __init__(self, gui: FishGUI):
-        self.__a = tkinter.Frame(gui.getRoot())
+        self.__a = tkinter.Frame(gui.getRoot(), height=100)
+        self.__a.pack_propagate(False)
         self.__s = tkinter.Frame(gui.getRoot(), height=1, bd=0, relief=tkinter.SUNKEN, bg="black")
         self.__b = tkinter.Frame(gui.getRoot(), padx=5, pady=5)
         self.__c = tkinter.Frame(gui.getRoot(), padx=5, pady=5)
