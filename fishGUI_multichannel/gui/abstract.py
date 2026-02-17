@@ -41,7 +41,7 @@ class abstract():
 
         # Load images
         self.__img_np_nucleus = self._load_nucleus(nucleus_path) # TODO use .resolve() if loading session data generates an error due to path issues; .resolve() ensures absolute path
-        self.__img_np_647, self.__img_np_488,  self.__img_np_555, self.__img_np_594 = self._load_cytoplasms(cyto_paths)
+        self.__img_np_647, self.__img_np_488,  self.__img_np_555, self.__img_np_594, self.__img_np_514 = self._load_cytoplasms(cyto_paths)
 
         # Get available channels and set current channel
         self.available_channels = self._get_available_channels()
@@ -60,6 +60,8 @@ class abstract():
             self.__current_channel = self.__img_np_555
         elif self.selected_channel == "594":
             self.__current_channel = self.__img_np_594
+        elif self.selected_channel == "514":
+            self.__current_channel = self.__img_np_514
 
         # self.__img_np_cyto1 = self.__img_np_647 # TODO Are these two necessary? 
         # self.__img_np_cyto2 = self.__img_np_647
@@ -77,6 +79,9 @@ class abstract():
             k = 10
         elif self.__img_np_594 is not None:
             thumbnail_img = self.__img_np_594
+            k = 10
+        elif self.__img_np_514 is not None:
+            thumbnail_img = self.__img_np_514
             k = 10
         else:
             thumbnail_img = self.__img_np_nucleus
@@ -187,7 +192,7 @@ class abstract():
         Returns:
         - gray-scale image to ensure compatibility with groundingdino and SAM
         """
-        img_647, img_488, img_555, img_594 = None, None, None, None
+        img_647, img_488, img_555, img_594, img_514 = None, None, None, None, None
         for cyto_path in cyto_paths:
             cyto_array = tifffile.imread(cyto_path)
             zprojected = (
@@ -207,9 +212,12 @@ class abstract():
             elif "594" in stem:
                 img_594 = normalize_to_uint8(remove_outliers(zprojected, k=20.0, use_median=False)) 
                 img_594 = clahe(img_594, clip_limit=4.0, tile_size=(8,8))
+            elif "514" in stem:
+                img_514 = normalize_to_uint8(remove_outliers(zprojected, k=20.0, use_median=False)) 
+                img_514 = clahe(img_514, clip_limit=4.0, tile_size=(8,8))
             else:
                 logger.warning(f"Unrecognized cytoplasm channel in file {cyto_path.name}")
-        return img_647, img_488, img_555, img_594
+        return img_647, img_488, img_555, img_594, img_514
     
     def _get_available_channels(self) -> list[str]:
         channels = []
@@ -221,13 +229,9 @@ class abstract():
             channels.append("555")
         if self.__img_np_594 is not None:
             channels.append("594")
+        if self.__img_np_514 is not None:
+            channels.append("514")
         return channels
-    
-    # def get_cyto1(self) -> np.ndarray:
-    #     return self.__img_np_cyto1
-
-    # def get_cyto2(self) -> np.ndarray:
-    #     return self.__img_np_cyto2
 
     # --- Selection Logic --- 
     @property
@@ -251,12 +255,10 @@ class abstract():
         if not self.bbox_generated:
             print(f"Generating BBOX for sample {self.sample_id}")
             nuc_boxes = self.gui.getBackEnd().AppIntDINOwrapper(self.__img_np_nucleus)
-            # print(nuc_boxes)
             centers = [
                 ((x0 + x1) / 2, (y0 + y1) / 2)
                 for x0, y0, x1, y1 in nuc_boxes
             ]
-            # print(centers)
             self._abstract__nucleus_centers = centers
 
             # Old Method
@@ -269,6 +271,7 @@ class abstract():
                 self.__img_np_488,
                 self.__img_np_555,
                 self.__img_np_594,
+                self.__img_np_514,
                 self.gui,
                 self.selected_channel
             )
@@ -311,12 +314,13 @@ class abstract():
         """
         # --- Helper ---
         def job():
-            seg_647, seg_488, seg_555, seg_594 = run_basic_watershed(
+            seg_647, seg_488, seg_555, seg_594, seg_514 = run_basic_watershed(
                 self.__img_np_nucleus,
                 self.__img_np_647,
                 self.__img_np_488,
                 self.__img_np_555,
                 self.__img_np_594,
+                self.__img_np_514,
                 self.gui,
                 self.selected_channel
             )
@@ -324,6 +328,7 @@ class abstract():
             self.__seg_488 = seg_488
             self.__seg_555 = seg_555
             self.__seg_594 = seg_594
+            self.__seg_514 = seg_514
             # Pick the segmentation mask to use based on currently selected channel
             if self.selected_channel == "647":
                 self.__current_channel_mask = seg_647
@@ -333,6 +338,8 @@ class abstract():
                 self.__current_channel_mask = seg_555
             elif self.selected_channel == "594":
                 self.__current_channel_mask = seg_594
+            elif self.selected_channel == "514":
+                self.__current_channel_mask = seg_514
             else:
                 # Fallback: no segmentation for unknown channel
                 self.__current_channel_mask = []
@@ -481,6 +488,7 @@ class abstract():
         if ch == "488": return getattr(self, "_abstract__seg_488", [])
         if ch == "555": return getattr(self, "_abstract__seg_555", [])
         if ch == "594": return getattr(self, "_abstract__seg_594", [])
+        if ch == "514": return getattr(self, "_abstract__seg_514", [])
         return []
 
     def _set_seg_list_for_channel(self, ch: str, seg_objs: list):
@@ -492,8 +500,10 @@ class abstract():
             setattr(self, "_abstract__seg_555", seg_objs)
         elif ch == "594":
             setattr(self, "_abstract__seg_594", seg_objs)
+        elif ch == "514":
+            setattr(self, "_abstract__seg_514", seg_objs)
         else:
-            raise ValueError(f"Unsupported channel: {ch!r}. Must be one of '647', '488', '555', '594'")
+            raise ValueError(f"Unsupported channel: {ch!r}. Must be one of '647', '488', '555', '594', '514'")
 
     # --- Updating Thumbnail --- 
     @property
@@ -566,6 +576,9 @@ class abstract():
         elif self.selected_channel == "594" and self.__img_np_594 is not None:
             base_img = self.__img_np_594
             k = 8
+        elif self.selected_channel == "514" and self.__img_np_514 is not None:
+            base_img = self.__img_np_514
+            k = 3
         else:
             base_img = self.__img_np_nucleus
             k = 0
@@ -610,6 +623,8 @@ class abstract():
             base = self.__img_np_555
         elif channel == "594" and self.__img_np_594 is not None:
             base = self.__img_np_594
+        elif channel == "514" and self.__img_np_514 is not None:
+            base = self.__img_np_514
         else:
             base = self.__img_np_nucleus
         return grayscale_to_rgb(base)

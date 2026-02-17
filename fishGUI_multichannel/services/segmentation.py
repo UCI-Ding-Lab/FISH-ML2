@@ -53,6 +53,7 @@ def bbox_run_basic_watershed(
     cyto_488: np.ndarray,
     cyto_555: np.ndarray,
     cyto_594: np.ndarray,
+    cyto_514: np.ndarray,
     gui,
     selected_channel: str,
     bbox_mode = False,
@@ -71,7 +72,8 @@ def bbox_run_basic_watershed(
         "647": cyto_647,
         "488": cyto_488,
         "555": cyto_555,
-        "594": cyto_594
+        "594": cyto_594,
+        "514": cyto_514
     }
     for channel, image in channels_images.items():
         if image is None:
@@ -80,7 +82,7 @@ def bbox_run_basic_watershed(
         if channel == "647": 
             proc = image
 
-        else:  # chan == "488"
+        else:  # chan == "488, 594, 555, 514"
             cyt_clahe = image
             sigma_est = estimate_sigma(image) # Calculate sigma
             sigma_norm = sigma_est + 3.0
@@ -111,6 +113,7 @@ def run_basic_watershed(
     cyto_488: np.ndarray,
     cyto_555: np.ndarray,
     cyto_594: np.ndarray,
+    cyto_514: np.ndarray,
     gui,
     selected_channel: str
 ) -> tuple[list[segment], list[segment]]:
@@ -123,12 +126,13 @@ def run_basic_watershed(
 
     # process 647 first (cyto1), then 488 (cyto2)
     # TODO - O(n^2) -- consider improving time complexity
-    seg_647, seg_488, seg_555, seg_594 = [], [], [], []
+    seg_647, seg_488, seg_555, seg_594, seg_514 = [], [], [], [], []
     channels_images = {
         "647": cyto_647,
         "488": cyto_488,
         "555": cyto_555,
-        "594": cyto_594
+        "594": cyto_594,
+        "514": cyto_514
     }
     for channel, image in channels_images.items():
         if image is None:
@@ -139,7 +143,7 @@ def run_basic_watershed(
             proc = image
             rgb  = np.stack([image, image, grad], axis=-1)
 
-        else:  # chan == "488, 594, or 555"
+        else:  # chan == "488, 594, 555, or 514"
             sigma_est = estimate_sigma(image, channel_axis=None, average_sigmas=True)
             sigma_norm = sigma_est + 3.0
             sigma_weak = sigma_est - 10.0
@@ -180,28 +184,10 @@ def run_basic_watershed(
             seg_555 = seg_objs
         elif channel == "594":
             seg_594 = seg_objs
+        elif channel == "514":
+            seg_514 = seg_objs
     
     end = time.time()
     logger.info(f"Segmentation completed in {end - start:.2f} seconds")
         
-    return seg_647, seg_488, seg_555, seg_594
-
-
-# TODO remove if unnecessary
-# def watershed_segment(cyt_img: np.ndarray,
-#                       centers,
-#                       thresh_method: str = "otsu") -> list[np.ndarray]:
-#     thresh = filters.threshold_otsu(cyt_img) if thresh_method == "otsu" else np.percentile(cyt_img, 30)
-#     binary = cyt_img > thresh
-#     binary = morphology.remove_small_holes(binary, area_threshold=1000)
-#     binary = morphology.remove_small_objects(binary, min_size=1000)
-#     dist = ndi.distance_transform_edt(binary)
-
-#     markers = np.zeros(cyt_img.shape, dtype=np.int32)
-#     for idx, (cx, cy) in enumerate(centers, start=1):
-#         xi, yi = int(round(cx)), int(round(cy))
-#         if 0 <= yi < cyt_img.shape[0] and 0 <= xi < cyt_img.shape[1]:
-#             markers[yi, xi] = idx
-
-#     labels = segmentation.watershed(-dist, markers, mask=binary)
-#     return [postproc_mask(labels == i) for i in range(1, len(centers)+1)]
+    return seg_647, seg_488, seg_555, seg_594, seg_514
