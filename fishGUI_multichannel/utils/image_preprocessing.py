@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 from skimage import filters, morphology, segmentation
+from skimage.restoration import estimate_sigma
 
 # TODO - grayscale to rgb is good for display/inference; helper__hdr2Rgb is good for finetuning ml models - look more into it
 def grayscale_to_rgb(grayscale_img) -> np.ndarray:
@@ -99,3 +100,26 @@ def mask_to_bbox(mask):
     if len(xs) == 0 or len(ys) == 0:
         return None
     return (xs.min(), ys.min(), xs.max(), ys.max())
+
+def preprocess_cytoplasm_channels(channel_images: dict) -> dict: # TODO currently all other than 647 are applied the same processing but still used elif in case we modify it 
+    processed = {}
+    for channel, img in channel_images.items():
+        if img is None:
+            continue
+        if channel == "647":
+            img_proc = remove_outliers(img, k=20.0, use_median=False)
+            img_proc = normalize_to_uint8(img_proc)
+            img_proc = clahe(img_proc, clip_limit=2.0, tile_size=(8,8))
+        elif channel in ("488", "555", "594", "514"):
+            img_proc = remove_outliers(img, k=20.0, use_median=False)
+            img_proc = normalize_to_uint8(img_proc)
+            img_proc = clahe(img_proc, clip_limit=4.0, tile_size=(8,8))
+            sigma_est = estimate_sigma(img_proc)
+            sigma_norm = sigma_est + 3.0  # TODO check with margaret - is sigma_weak defined in notebook used somewhere?
+            img_proc = cv2.bilateralFilter(
+                img_proc, d=9, sigmaColor=sigma_norm, sigmaSpace=15, borderType=cv2.BORDER_REFLECT_101
+            )
+        else:
+            img_proc = normalize_to_uint8(img)
+        processed[channel] = img_proc
+    return processed

@@ -13,13 +13,13 @@ from ..utils.image_preprocessing import (
     grayscale_to_rgb,
     preprocess_nucleus_stack,
     preprocess_cytoplasm_stack,
+    preprocess_cytoplasm_channels,
     remove_outliers,
     clahe,
     gradient
 )
-from ..services.segmentation import run_basic_watershed, bbox_run_basic_watershed
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from ..services.segmentation import run_cellpose_sam_segmentation
+logger = logging.getLogger('fishcore')
 
 
 class abstract():
@@ -192,7 +192,7 @@ class abstract():
         Returns:
         - gray-scale image to ensure compatibility with groundingdino and SAM
         """
-        img_647, img_488, img_555, img_594, img_514 = None, None, None, None, None
+        channel_images = {}
         for cyto_path in cyto_paths:
             cyto_array = tifffile.imread(cyto_path)
             zprojected = (
@@ -202,23 +202,27 @@ class abstract():
             )
             stem = cyto_path.stem.lower()
             if "647" in stem:
-                img_647 = clahe(normalize_to_uint8(remove_outliers(zprojected, k=20.0, use_median=False)), clip_limit=2.0, tile_size=(8,8))
+                channel_images["647"] = zprojected
             elif "488" in stem:
-                img_488 = normalize_to_uint8(remove_outliers(zprojected, k=20.0, use_median=False)) 
-                img_488 = clahe(img_488, clip_limit=4.0, tile_size=(8,8))
+                channel_images["488"] = zprojected
             elif "555" in stem:
-                img_555 = normalize_to_uint8(remove_outliers(zprojected, k=20.0, use_median=False)) 
-                img_555 = clahe(img_555, clip_limit=4.0, tile_size=(8,8))
+                channel_images["555"] = zprojected
             elif "594" in stem:
-                img_594 = normalize_to_uint8(remove_outliers(zprojected, k=20.0, use_median=False)) 
-                img_594 = clahe(img_594, clip_limit=4.0, tile_size=(8,8))
+                channel_images["594"] = zprojected
             elif "514" in stem:
-                img_514 = normalize_to_uint8(remove_outliers(zprojected, k=20.0, use_median=False)) 
-                img_514 = clahe(img_514, clip_limit=4.0, tile_size=(8,8))
+                channel_images["514"] = zprojected
             else:
                 logger.warning(f"Unrecognized cytoplasm channel in file {cyto_path.name}")
-        return img_647, img_488, img_555, img_594, img_514
-    
+
+        processed = preprocess_cytoplasm_channels(channel_images, logger=logger)
+        return (
+            processed.get("647"),
+            processed.get("488"),
+            processed.get("555"),
+            processed.get("594"),
+            processed.get("514"),
+        )
+        
     def _get_available_channels(self) -> list[str]:
         channels = []
         if self.__img_np_647 is not None:
@@ -246,7 +250,7 @@ class abstract():
             self.thumbnail = "crossout"
             self.__selected = False
 
-    # --- Boundary Boxes ---
+    # --- Boundary Boxes --- # TODO remove or replace with other post processing option that can improve the cellpose-sam masks
     @property
     def bbox(self):
         """
@@ -260,27 +264,8 @@ class abstract():
                 for x0, y0, x1, y1 in nuc_boxes
             ]
             self._abstract__nucleus_centers = centers
-
-            # Old Method
-            # cyto_boxes = self.gui.getBackEnd().AppIntDINOwrapperB(self.__current_channel, centers)
-
-            # (New Method) --- Creating BBoxes ---
-            cyto_boxes = bbox_run_basic_watershed(
-                self.__img_np_nucleus,
-                self.__img_np_647,
-                self.__img_np_488,
-                self.__img_np_555,
-                self.__img_np_594,
-                self.__img_np_514,
-                self.gui,
-                self.selected_channel
-            )
-
-            boxes = []
-            for idx, cbox in enumerate(cyto_boxes):
-                center_point = centers[idx] if idx < len(centers) else None
-                boxes.append(box(cbox, self.gui, center=center_point))
-            self.__bbox = boxes
+            self.__bbox = [box(b, self.gui) for b in nuc_boxes]
+            logger.info(f"Generated bboxes : {nuc_boxes}")
             self.bbox_generated = True
 
         return self.__bbox
@@ -310,57 +295,39 @@ class abstract():
     @property
     def segment(self) -> list[segment]:
         """
-        Runs when user turns segmentation mode
+        Flow: 
+        segment_call (buttons.py) -> segment_selected (session_manager.py) -> segment_each (session_manager.py) -> segment (abstract.py) -> run_cellpose_segmentation (segmentation.py)
         """
-        # --- Helper ---
-        def job():
-            seg_647, seg_488, seg_555, seg_594, seg_514 = run_basic_watershed(
-                self.__img_np_nucleus,
-                self.__img_np_647,
-                self.__img_np_488,
-                self.__img_np_555,
-                self.__img_np_594,
-                self.__img_np_514,
-                self.gui,
-                self.selected_channel
-            )
-            self.__seg_647 = seg_647
-            self.__seg_488 = seg_488
-            self.__seg_555 = seg_555
-            self.__seg_594 = seg_594
-            self.__seg_514 = seg_514
-            # Pick the segmentation mask to use based on currently selected channel
-            if self.selected_channel == "647":
-                self.__current_channel_mask = seg_647
-            elif self.selected_channel == "488":
-                self.__current_channel_mask = seg_488
-            elif self.selected_channel == "555":
-                self.__current_channel_mask = seg_555
-            elif self.selected_channel == "594":
-                self.__current_channel_mask = seg_594
-            elif self.selected_channel == "514":
-                self.__current_channel_mask = seg_514
-            else:
-                # Fallback: no segmentation for unknown channel
-                self.__current_channel_mask = []
-            self.segment_generated = True
-            logger.info(f"Generated {len(self.__current_channel_mask)} final segments ({self.selected_channel})")
-            self.gui.getRoot().after(0, self.gui.dismissWait) # runs after the segemntation is finished. It safely closes the wait dialog
-        
-        # --- Main logic ---
         if not self.bbox_generated:
-            self.gui.popBox("w", "Bounding Boxes Not Ready",
-                            "Please generate BBOX before running segmentation.")
+            self.gui.popBox("w", "Bounding Boxes Not Ready", "Please generate BBOX before running segmentation.")
             return self.__current_channel_mask
 
-        if not self.segment_generated: # TODO - check that when applychannelmask is called, masks for selected channel is assigned to the other channel variable as well - Ensure that it does not rerun segmentation if mask is already generated to ensure efficiency
-            # self.gui.indicateWait("Segmentation")
-            self.gui.getRoot().update_idletasks()
-            t = threading.Thread(target=job, daemon=True)
-            t.start()
-            while not self.segment_generated:
-                time.sleep(0.1)
+        nucleus_img = self.__img_np_nucleus
+        cyto_channels = [
+            self.__img_np_647,
+            self.__img_np_488,
+            self.__img_np_555,
+            self.__img_np_594,
+            self.__img_np_514,
+        ]
+        seg_lists = run_cellpose_sam_segmentation(nucleus_img, cyto_channels, self.gui)
+        print(f"Segmentation returned for {self.sample_id}: {[len(l) for l in seg_lists]}", flush=True)
 
+
+        # Store results for each channel
+        for idx, ch in enumerate(["647", "488", "555", "594", "514"]):
+            self._set_seg_list_for_channel(ch, seg_lists[idx])
+
+        # Use the first available channel as the current mask
+        # TODO unnecessary?
+        for ch in ["647", "488", "555", "594", "514"]:
+            segs = self._get_seg_list_for_channel(ch)
+            if segs:
+                self.__current_channel_mask = segs
+                break
+
+        self.segment_generated = True
+        print(f"Exiting segment property for {self.sample_id}", flush=True)
         return self.__current_channel_mask
     
     # TODO check where these methods are used and why it is necessary -- update: used in tools_pannels.py, on_channel_change
