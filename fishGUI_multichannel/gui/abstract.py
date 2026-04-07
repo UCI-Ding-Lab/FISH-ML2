@@ -236,6 +236,10 @@ class abstract():
         if self.__img_np_514 is not None:
             channels.append("514")
         return channels
+<<<<<<< Updated upstream
+=======
+
+>>>>>>> Stashed changes
 
     # --- Selection Logic --- 
     @property
