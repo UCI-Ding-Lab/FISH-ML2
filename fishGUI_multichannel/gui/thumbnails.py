@@ -63,6 +63,8 @@ class tifSequence():
     def addToGallery(self, tif_files: list):
         from .abstract import abstract # prevent circular imports
         logger.debug(f"addToGallery → starting with {len(tif_files)} files")
+        documented_channels = {"647", "488", "514", "555", "594"}
+        allowed_channels = documented_channels | {"DAPI"}
 
         def parse_sampleID_and_channel(path: pathlib.Path):
             stem = path.stem
@@ -87,24 +89,34 @@ class tifSequence():
                     grouped.setdefault(sample_id, {})[channel_name] = path
             return grouped
         
-        # TODO - can be replaced by getCytoplasmPaths in abstract.py? -- no since its not instantiated yet 
         def get_cytoplasm_paths(channels: dict):
             """Return list of cytoplasm channel paths if present."""
             cyto_paths = []
-            if "647" in channels:
-                cyto_paths.append(channels["647"])
-            if "488" in channels:
-                cyto_paths.append(channels["488"])
-            if "555" in channels:
-                cyto_paths.append(channels["555"])
-            if "594" in channels:
-                cyto_paths.append(channels["594"])
-            if "514" in channels:
-                cyto_paths.append(channels["514"])
+            
+            for channel, path in channels.items():
+                if channel == "DAPI": # Only want cytoplasm paths
+                    continue
+                cyto_paths.append(path)
             return cyto_paths
         
+        # Grouped: {'0026': {'488': WindowsPath('C:/Users/msgal/Downloads/Ding_Lab/image_testing/gui_vadym_single/MAX_EXP_w488_s0026.tif')}}
+        # Grouped: {'SAMPLE_ID': {'CHANNEL': pathlib.Path}}
         grouped = group_files_by_sample_and_channel(tif_files)
+        print("Grouped:", grouped)
         logger.debug(f"addToGallery → grouped into samples: {list(grouped.keys())}")
+
+        # Warn once per import if any channels are outside the documented set.
+        undocumented_channels = sorted(
+            {channel for channels in grouped.values() for channel in channels if channel not in allowed_channels}
+        )
+        if undocumented_channels:
+            channel_text = ", ".join(undocumented_channels)
+            self.gui.popBox(
+                "w",
+                "Channel Caution",
+                f"CAUTION: The channels [{channel_text}] have not been fully documented and may not have accurate initial segmentation results."
+            )
+            logger.warning(f"addToGallery → undocumented channels detected: {channel_text}")
 
         for sample_id, channels in grouped.items():
             nucleus_path = channels.get("DAPI")
@@ -113,7 +125,8 @@ class tifSequence():
                 continue
 
             cyto_paths = get_cytoplasm_paths(channels)
-            logger.info(f"addToGallery → instantiating abstract for sample {sample_id}")
+            print("Cyto paths:", cyto_paths)
+            logger.info(f"addToGallery → instantiating abstract for sample {sample_id}") # Abstract is initiated for EACH sample_id
             abs_obj = abstract( # Abstract class is called --> where everything begins
                 sample_id,
                 nucleus_path,
