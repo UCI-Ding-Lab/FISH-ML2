@@ -67,12 +67,14 @@ class tifSequence():
         def parse_sampleID_and_channel(path: pathlib.Path):
             stem = path.stem
             sample_match = re.search(r"s(\d{1,4})", stem, re.IGNORECASE)
-            channel_match = re.search(r"w[-_]?(?:.*?)?(DAPI|488|647|555|594|514)", stem, re.IGNORECASE)
+            channel_match = re.search(r"w\d*[-_]?([A-Za-z]*?)(DAPI|\d{3})\D", stem, re.IGNORECASE)
             if not (sample_match and channel_match):
                 logger.warning(f"addToGallery → skipping {stem!r}, couldn't parse s### or w###")
+                self.gui.popBox("e", "File Path Error", f"WARNING:\nCouldn't parse file path → skipping {stem!r}, couldn't parse s### or w###")
                 return None, None
             sample_id = sample_match.group(1)
-            channel_name = channel_match.group(1).upper()
+            channel_name = channel_match.group(2).upper()
+            print("Sample_ID:", sample_id, "Channel Name", channel_name)
             return sample_id, channel_name
 
         def group_files_by_sample_and_channel(file_paths: list):
@@ -87,7 +89,7 @@ class tifSequence():
         
         # TODO - can be replaced by getCytoplasmPaths in abstract.py? -- no since its not instantiated yet 
         def get_cytoplasm_paths(channels: dict):
-            """Return list of cytoplasm channel paths (647, 488) if present."""
+            """Return list of cytoplasm channel paths if present."""
             cyto_paths = []
             if "647" in channels:
                 cyto_paths.append(channels["647"])
@@ -112,7 +114,7 @@ class tifSequence():
 
             cyto_paths = get_cytoplasm_paths(channels)
             logger.info(f"addToGallery → instantiating abstract for sample {sample_id}")
-            abs_obj = abstract(
+            abs_obj = abstract( # Abstract class is called --> where everything begins
                 sample_id,
                 nucleus_path,
                 cyto_paths,
@@ -124,7 +126,6 @@ class tifSequence():
         SessionManager.sendFirst()
         self.update_scrollregion()
     
-    # TODO - unnnecessary now?
     def _delegate_thumb_click(self, event):
         """If the Canvas eats a click, find the Label under the pointer and call its on_click."""
         w = self.base.winfo_containing(event.x_root, event.y_root)
