@@ -5,11 +5,18 @@ from ..services.apply_channel_mask import apply_channel_mask_to_frames
 from ..gui.abstract import abstract
 import os
 from concurrent.futures import ThreadPoolExecutor
+import csv
+import pathlib
+import time
+
 
 class SessionManager:
     __pool = []
     __buffer = None
     __importPath = None
+    __segmentation_timing_rows = []
+    __segmentation_timing_lock = threading.Lock()
+
 
     """
     Responsible for handling operations that affect the entire session
@@ -194,6 +201,9 @@ class SessionManager:
         """
         Runs segmentation on all frames that the user has marked as "selected for segmentation"
         """
+        with cls.__segmentation_timing_lock:
+            cls.__segmentation_timing_rows = []
+
         selected_frames = cls._get_selected_frames()
         ready, not_ready = cls._split_by_bbox_generated(selected_frames)
         if not_ready:
@@ -203,21 +213,8 @@ class SessionManager:
         if not ready:
             return
 
-        # max_workers = min(5, os.cpu_count() or 1)  # Limit to 5 or number of CPUs
-        # with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        #     futures = [executor.submit(cls._segment_each, abs_obj, gui) for abs_obj in ready]
-            
-        # gui.popBox("i", "Segmentation", f"Started segmentation for {len(selected_frames)} images.")
-
-        # # --- Monitor threads and turn off segmentation selection when done ---
-        # def monitor_threads():
-        #     for f in futures:
-        #         f.result()  
-        #     # Turn off the segmentation selection button in the GUI
-        #     gui.getFuncButton().toggle["SEGMENTATION_SELECTION"].set(0)
-
         threads = []
-        for abs_obj in selected_frames:
+        for abs_obj in ready:
             t = threading.Thread(target=cls._segment_each, args=(abs_obj,gui), daemon=True)
             t.start()
             threads.append(t)
@@ -227,6 +224,7 @@ class SessionManager:
         def monitor_threads():
             for t in threads:
                 t.join()
+            cls._export_segmentation_timing_csv()
             gui.getFuncButton().toggle["SEGMENTATION_SELECTION"].set(0)
 
         threading.Thread(target=monitor_threads, daemon=True).start()
@@ -269,29 +267,67 @@ class SessionManager:
         if a is cls.getBuffer() and gui.getFuncButton().segButtonPressed():
             a.drawSegmentation = True
 
-    @classmethod # TODO - Chceck this method again after abstract.py
+    @classmethod
     def _segment_each(cls, abs_obj: abstract, gui):
-        """
-        Runs segmentation for each channel in the frame
-        """
         thread_name = threading.current_thread().name
         print(f"[DEBUG] Thread {thread_name} STARTED for sample {abs_obj.sample_id}")
-        import time
-        start = time.time()
-        
-        for channel in abs_obj.available_channels:
+
+        start = time.perf_counter()
+
+        _ = abs_obj.segment
+        channel = abs_obj.selected_channel or (
+            abs_obj.available_channels[0] if abs_obj.available_channels else None
+        )
+
+        if channel is not None:
             seg_list = abs_obj._get_seg_list_for_channel(channel)
-            if seg_list:
-                abs_obj.seg = seg_list 
-                abs_obj.segment_generated = True
-            else:
-                _ = abs_obj.segment # If segmentation masks isn't present yet, run segmentation for the channel
-                abs_obj._set_seg_list_for_channel(channel, abs_obj.seg)
-            gui.getRoot().after(0, lambda a=abs_obj: cls._ui_show_segmented(a, gui)) # ensure threading safety and responsiveness
-        end = time.time()
-        print(f"[DEBUG] Thread {thread_name} FINISHED for sample {abs_obj.sample_id} in {end-start:.2f}s")
-    
+        else:
+            seg_list = abs_obj.segment
+
+        abs_obj.seg = seg_list
+        abs_obj.segment_generated = True
+
+        elapsed = time.perf_counter() - start
+        num_masks = len(seg_list) if seg_list is not None else 0
+        frame_number = f"s{str(abs_obj.sample_id).zfill(3)}"
+
+        with cls.__segmentation_timing_lock:
+            cls.__segmentation_timing_rows.append({
+                "frame_number": frame_number,
+                "segmentation_seconds": round(elapsed, 3),
+                "num_masks_predicted": num_masks,
+            })
+
+        gui.getRoot().after(0, lambda a=abs_obj: cls._ui_show_segmented(a, gui))
+        print(f"[DEBUG] Thread {thread_name} FINISHED for sample {abs_obj.sample_id} in {elapsed:.2f}s")
+
+
+    @classmethod
+    def _export_segmentation_timing_csv(cls):
+        import_dir = cls.getImportDirectory()
+        if import_dir is None:
+            logging.warning("No import directory set; skipping segmentation timing export.")
+            return
+
+        if not cls.__segmentation_timing_rows:
+            logging.warning("No segmentation timing rows to export.")
+            return
+
+        import_dir = pathlib.Path(import_dir)
+        out_path = import_dir / f"{import_dir.name}_segmentation_timing.csv"
+
+        rows = sorted(cls.__segmentation_timing_rows, key=lambda r: r["frame_number"])
+
+        with open(out_path, "w", newline="") as f:
+            writer = csv.DictWriter(
+                f,
+                fieldnames=["frame_number", "segmentation_seconds", "num_masks_predicted"],
+            )
+            writer.writeheader()
+            writer.writerows(rows)
+
+        logging.info("Saved segmentation timing table to %s", out_path)
 
 
 
-    
+        
