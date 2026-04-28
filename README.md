@@ -96,14 +96,14 @@ Once downloaded, ensure that they are placed in the following structure within y
 
 ---
 
-## 🚀 Running FishUI
+## 🚀 Running FishMultichannelUI
 After successfully setting up the environment and installing all required dependencies, you can launch **FishUI** using the following steps:
 ```bash
 # Activate the environment
 conda activate fish
 
 # Run FishUI
-/Users/anaconda3/envs/FISH/bin/python ./fishGUI.py   
+python -m fishGUI_multichannel.app   
 ```
 
 Once the script executes, a UI window will appear, allowing you to begin segmenting your images effortlessly. Currently, **fish_v3.50.pth** is used as the SAM model, while **Grounding DINO checkpoints** are still under training.
