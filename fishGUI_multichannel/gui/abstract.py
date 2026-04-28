@@ -31,18 +31,22 @@ class abstract():
         sample_id, 
         nucleus_path: pathlib.Path,
         cyto_paths: list[pathlib.Path],
+        cyto_channels: list[str],
+        channels: dict[str, pathlib.Path],
         gallery_frame,
         gui
     ):
         self.sample_id = sample_id 
         self.__nucleus_path = nucleus_path
         self.__cyto_paths = cyto_paths
+        self.__cyto_channels = cyto_channels
+        self.__channels = channels
         self.gui = gui
 
         # Load images
         self.__img_np_nucleus = self._load_nucleus(nucleus_path) # TODO use .resolve() if loading session data generates an error due to path issues; .resolve() ensures absolute path
-        self.__img_np_647, self.__img_np_488,  self.__img_np_555, self.__img_np_594, self.__img_np_514 = self._load_cytoplasms(cyto_paths)
-
+        # self.__img_np_647, self.__img_np_488,  self.__img_np_555, self.__img_np_594, self.__img_np_514 = self._load_cytoplasms(cyto_paths)
+        self.__img_np_cyto = self._load_cytoplasms(channels)
         # Get available channels and set current channel
         self.available_channels = self._get_available_channels()
         if self.available_channels:
@@ -52,36 +56,35 @@ class abstract():
             logger.warning(f"No available cytoplasm channels for sample {self.sample_id} at {nucleus_path}")
         
         # Set __current_channel with appropriate image array
-        if self.selected_channel == "647":
-            self.__current_channel = self.__img_np_647
-        elif self.selected_channel == "488":
-            self.__current_channel = self.__img_np_488
-        elif self.selected_channel == "555":
-            self.__current_channel = self.__img_np_555
-        elif self.selected_channel == "594":
-            self.__current_channel = self.__img_np_594
-        elif self.selected_channel == "514":
-            self.__current_channel = self.__img_np_514
-
-        # self.__img_np_cyto1 = self.__img_np_647 # TODO Are these two necessary? 
-        # self.__img_np_cyto2 = self.__img_np_647
+        self.__current_channel = self.__img_np_cyto[self.selected_channel]
+        print("SELF.SELECTED_CHANNEL", self.selected_channel)
+        # if self.selected_channel == "647":
+        #     self.__current_channel = self.__img_np_cyto["647"]
+        # elif self.selected_channel == "488":
+        #     self.__current_channel = self.__img_np_488
+        # elif self.selected_channel == "555":
+        #     self.__current_channel = self.__img_np_555
+        # elif self.selected_channel == "594":
+        #     self.__current_channel = self.__img_np_594
+        # elif self.selected_channel == "514":
+        #     self.__current_channel = self.__img_np_514
 
         # Build thumbnail (647 if exists, else 488. If no channels exists then nucleus)
         thumbnail_img = None
-        if self.__img_np_647 is not None:
-            thumbnail_img = self.__img_np_647
+        if "647" in self.__img_np_cyto:
+            thumbnail_img = self.__img_np_cyto["647"]
             k = 13
-        elif self.__img_np_488 is not None:
-            thumbnail_img = self.__img_np_488
+        elif "488" in self.__img_np_cyto:
+            thumbnail_img = self.__img_np_cyto["488"]
             k = 11
-        elif self.__img_np_555 is not None:
-            thumbnail_img = self.__img_np_555
+        elif "555" in self.__img_np_cyto:
+            thumbnail_img = self.__img_np_cyto["555"]
             k = 10
-        elif self.__img_np_594 is not None:
-            thumbnail_img = self.__img_np_594
+        elif "594" in self.__img_np_cyto:
+            thumbnail_img = self.__img_np_cyto["594"]
             k = 10
-        elif self.__img_np_514 is not None:
-            thumbnail_img = self.__img_np_514
+        elif "514" in self.__img_np_cyto:
+            thumbnail_img = self.__img_np_cyto["514"]
             k = 10
         else:
             thumbnail_img = self.__img_np_nucleus
@@ -184,7 +187,7 @@ class abstract():
         return normalize_to_uint8(np.squeeze(nucleus_array)) # already z-projected
     
     # TODO -  consider separating methods to two : loading and image preprocesing
-    def _load_cytoplasms(self, cyto_paths: list[pathlib.Path]) -> tuple[np.ndarray, np.ndarray]:
+    def _load_cytoplasms(self, cyto_channels: list[pathlib.Path]) -> dict[str, str]:
         """
         Returns the preprocessed image (normalized grayscale) for both 647 and 488
         If either channel does not exist, it returns None
@@ -192,46 +195,42 @@ class abstract():
         Returns:
         - gray-scale image to ensure compatibility with groundingdino and SAM
         """
-        img_647, img_488, img_555, img_594, img_514 = None, None, None, None, None
-        for cyto_path in cyto_paths:
-            cyto_array = tifffile.imread(cyto_path)
+        cyto_images = {} # {channel: image}
+        for channel, path in cyto_channels.items():
+            # Z-Project (if needed)
+            cyto_array = tifffile.imread(path)
             zprojected = (
                 preprocess_cytoplasm_stack(cyto_array, top_n=8)
                 if cyto_array.ndim == 3 and cyto_array.shape[0] > 1
                 else np.squeeze(cyto_array)
             )
-            stem = cyto_path.stem.lower()
-            if "647" in stem:
+
+            if "647" in channel:
                 img_647 = clahe(normalize_to_uint8(remove_outliers(zprojected, k=20.0, use_median=False)), clip_limit=2.0, tile_size=(8,8))
-            elif "488" in stem:
+                cyto_images[channel] = img_647
+            elif "488" in channel:
                 img_488 = normalize_to_uint8(remove_outliers(zprojected, k=20.0, use_median=False)) 
                 img_488 = clahe(img_488, clip_limit=4.0, tile_size=(8,8))
-            elif "555" in stem:
+                cyto_images[channel] = img_488
+            elif "555" in channel:
                 img_555 = normalize_to_uint8(remove_outliers(zprojected, k=20.0, use_median=False)) 
                 img_555 = clahe(img_555, clip_limit=4.0, tile_size=(8,8))
-            elif "594" in stem:
+                cyto_images[channel] = img_555
+            elif "594" in channel:
                 img_594 = normalize_to_uint8(remove_outliers(zprojected, k=20.0, use_median=False)) 
-                img_594 = clahe(img_594, clip_limit=4.0, tile_size=(8,8))
-            elif "514" in stem:
+                img_594 = clahe(img_594, clip_limit=4.0, tile_size=(8,8))   
+                cyto_images[channel] = img_594
+            elif "514" in channel:
                 img_514 = normalize_to_uint8(remove_outliers(zprojected, k=20.0, use_median=False)) 
                 img_514 = clahe(img_514, clip_limit=4.0, tile_size=(8,8))
+                cyto_images[channel] = img_514
             else:
-                logger.warning(f"Unrecognized cytoplasm channel in file {cyto_path.name}")
-        return img_647, img_488, img_555, img_594, img_514
+                img_undocumented = normalize_to_uint8(remove_outliers(zprojected, k=20.0, use_median=False))
+                cyto_images[channel] = img_undocumented
+        return cyto_images
     
     def _get_available_channels(self) -> list[str]:
-        channels = []
-        if self.__img_np_647 is not None:
-            channels.append("647")
-        if self.__img_np_488 is not None:
-            channels.append("488")
-        if self.__img_np_555 is not None:
-            channels.append("555")
-        if self.__img_np_594 is not None:
-            channels.append("594")
-        if self.__img_np_514 is not None:
-            channels.append("514")
-        return channels
+        return self.__cyto_channels
 
     # --- Selection Logic --- 
     @property
@@ -564,21 +563,24 @@ class abstract():
     def update_thumbnail(self):
         # Always rebuild the base thumbnail from the selected channel
         base_img = None
-        if self.selected_channel == "647" and self.__img_np_647 is not None:
-            base_img = self.__img_np_647
+        if self.selected_channel == "647" and self.__img_np_cyto["647"] is not None:
+            base_img = self.__img_np_cyto["647"]
             k = 10
-        elif self.selected_channel == "488" and self.__img_np_488 is not None:
-            base_img = self.__img_np_488
+        elif self.selected_channel == "488" and self.__img_np_cyto["488"] is not None:
+            base_img = self.__img_np_cyto["488"]
             k = 10
-        elif self.selected_channel == "555" and self.__img_np_555 is not None:
-            base_img = self.__img_np_555
+        elif self.selected_channel == "555" and self.__img_np_cyto["555"] is not None:
+            base_img = self.__img_np_cyto["555"]
             k = 10
-        elif self.selected_channel == "594" and self.__img_np_594 is not None:
-            base_img = self.__img_np_594
+        elif self.selected_channel == "594" and self.__img_np_cyto["594"] is not None:
+            base_img = self.__img_np_cyto["594"]
             k = 8
-        elif self.selected_channel == "514" and self.__img_np_514 is not None:
-            base_img = self.__img_np_514
+        elif self.selected_channel == "514" and self.__img_np_cytp["514"] is not None:
+            base_img = self.__img_np_cyto["514"]
             k = 3
+        elif self.selected_channel in self.__img_np_cyto:
+            base_img = self.__img_np_cyto[self.selected_channel]
+            k = 5
         else:
             base_img = self.__img_np_nucleus
             k = 0
@@ -615,15 +617,15 @@ class abstract():
         """
         Returns the RGB numpy array for the currently selected channel
         """
-        if channel == "647" and self.__img_np_647 is not None:
+        if channel == "647" and self.__img_np_cyto["647"] is not None:
             base = self.__img_np_647
-        elif channel == "488" and self.__img_np_488 is not None:
+        elif channel == "488" and self.__img_np_cyto["488"] is not None:
             base = self.__img_np_488
-        elif channel == "555" and self.__img_np_555 is not None:
+        elif channel == "555" and self.__img_np_cyto["555"] is not None:
             base = self.__img_np_555
-        elif channel == "594" and self.__img_np_594 is not None:
+        elif channel == "594" and self.__img_np_cyto["594"] is not None:
             base = self.__img_np_594
-        elif channel == "514" and self.__img_np_514 is not None:
+        elif channel == "514" and self.__img_np_cyto["514"] is not None:
             base = self.__img_np_514
         else:
             base = self.__img_np_nucleus

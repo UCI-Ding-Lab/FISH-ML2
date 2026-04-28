@@ -64,10 +64,16 @@ class Progress:
             return nucleus_path, cytoplasm_paths
             
         def create_abstract_object(sample_id, nucleus_path, cyto_paths, bbox_list, seg_dict, gui):
+            cyto_channels = []
+            for p in cyto_paths:
+                m = re.search(r"(DAPI|\d{3})", p.stem, re.IGNORECASE)
+                if m and m.group(1).upper() != "DAPI":
+                    cyto_channels.append(m.group(1).upper())
             abstract_object = abstract(
                 sample_id, 
                 nucleus_path=nucleus_path,
                 cyto_paths=cyto_paths,
+                cyto_channels=cyto_channels,
                 gallery_frame=gui.getTifSequence().gallery_frame,
                 gui=gui
             )

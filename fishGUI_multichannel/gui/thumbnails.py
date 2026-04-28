@@ -89,15 +89,17 @@ class tifSequence():
                     grouped.setdefault(sample_id, {})[channel_name] = path
             return grouped
         
-        def get_cytoplasm_paths(channels: dict):
+        def get_cytoplasm_paths_and_names(channels: dict):
             """Return list of cytoplasm channel paths if present."""
             cyto_paths = []
+            cyto_channels = []
             
             for channel, path in channels.items():
                 if channel == "DAPI": # Only want cytoplasm paths
                     continue
                 cyto_paths.append(path)
-            return cyto_paths
+                cyto_channels.append(channel)
+            return cyto_paths, cyto_channels
         
         # Grouped: {'0026': {'488': WindowsPath('C:/Users/msgal/Downloads/Ding_Lab/image_testing/gui_vadym_single/MAX_EXP_w488_s0026.tif')}}
         # Grouped: {'SAMPLE_ID': {'CHANNEL': pathlib.Path}}
@@ -124,13 +126,16 @@ class tifSequence():
                 logger.warning(f"addToGallery → sample {sample_id} has no DAPI, skipping")
                 continue
 
-            cyto_paths = get_cytoplasm_paths(channels)
+            cyto_paths, cyto_channels = get_cytoplasm_paths_and_names(channels)
             print("Cyto paths:", cyto_paths)
+            print("Cyto_channels for Sample", cyto_channels)
             logger.info(f"addToGallery → instantiating abstract for sample {sample_id}") # Abstract is initiated for EACH sample_id
             abs_obj = abstract( # Abstract class is called --> where everything begins
                 sample_id,
                 nucleus_path,
                 cyto_paths,
+                cyto_channels,
+                channels,
                 self.gallery_frame,
                 self.gui
             )
