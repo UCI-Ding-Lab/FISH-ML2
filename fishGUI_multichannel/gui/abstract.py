@@ -189,7 +189,9 @@ class abstract():
     # TODO -  consider separating methods to two : loading and image preprocesing
     def _load_cytoplasms(self, cyto_channels: list[pathlib.Path]) -> dict[str, str]:
         """
-        Returns the preprocessed image (normalized grayscale) for both 647 and 488
+        cyto_channels list[str] is used to create a list[image_arrays] for self.__img_np_cyto
+        
+        Returns the preprocessed image (normalized grayscale) for all channels
         If either channel does not exist, it returns None
 
         Returns:
@@ -227,6 +229,7 @@ class abstract():
             else:
                 img_undocumented = normalize_to_uint8(remove_outliers(zprojected, k=20.0, use_median=False))
                 cyto_images[channel] = img_undocumented
+
         return cyto_images
     
     def _get_available_channels(self) -> list[str]:
@@ -265,12 +268,8 @@ class abstract():
 
             # (New Method) --- Creating BBoxes ---
             cyto_boxes = bbox_run_basic_watershed(
-                self.__img_np_nucleus,
-                self.__img_np_647,
-                self.__img_np_488,
-                self.__img_np_555,
-                self.__img_np_594,
-                self.__img_np_514,
+                self.__img_np_nucleus, # Nucleus channel
+                self.__img_np_cyto, # dict[channel, image_array]
                 self.gui,
                 self.selected_channel
             )

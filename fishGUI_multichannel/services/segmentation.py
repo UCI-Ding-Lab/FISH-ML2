@@ -49,37 +49,38 @@ def watershed_segment_with_centers(cyt_img: np.ndarray,
 
 def bbox_run_basic_watershed(
     nucleus_img: np.ndarray,
-    cyto_647: np.ndarray,
-    cyto_488: np.ndarray,
-    cyto_555: np.ndarray,
-    cyto_594: np.ndarray,
-    cyto_514: np.ndarray,
+    cyto_imgs: dict[str, np.ndarray],
     gui,
     selected_channel: str,
     bbox_mode = False,
     seg_mode = False
 ) -> tuple[list[segment], list[segment]]:
     """
-    Perform segmentation for both channels and return (seg_647, seg_488)
+    Build one bbox set for the frame using a single cytoplasm channel.
+
+    Channel selection priority:
+    1) selected_channel (if available)
+    2) fallback order: 647, 488, 555, 594, 514, undocumented channel
     """
 
     boxes = gui.getBackEnd().AppIntDINOwrapper(nucleus_img)
     centers = [((x0 + x1) / 2, (y0 + y1) / 2) for x0, y0, x1, y1 in boxes]
 
-    # process 647 first (cyto1), then 488 (cyto2)
-    # TODO - O(n^2) -- consider improving time complexity
-    channels_images = {
-        "647": cyto_647,
-        "488": cyto_488,
-        "555": cyto_555,
-        "594": cyto_594,
-        "514": cyto_514
-    }
-    for channel, image in channels_images.items():
-        if image is None:
+    proc = None
+    channel_priority = [selected_channel, "647", "488", "555", "594", "514"]
+    for channel in channel_priority:
+        if not channel:
             continue
 
-        if channel == "647": 
+        image = cyto_imgs.get(channel)
+
+        if image is None:
+            continue
+        if proc is not None:
+            # Found a valid channel to use for bbox generation
+            break
+
+        if channel == "647" or channel not in {"488", "594", "555", "514"}: # chan == 647 or undocumented channel
             proc = image
 
         else:  # chan == "488, 594, 555, 514"
@@ -96,6 +97,7 @@ def bbox_run_basic_watershed(
             laplacian = cv2.convertScaleAbs(laplacian)
 
             proc = cyt_bilat_edge
+
 
     ws_masks = watershed_segment_with_centers(proc, centers) 
     bboxes = [mask_to_bbox(m) for m in ws_masks]
