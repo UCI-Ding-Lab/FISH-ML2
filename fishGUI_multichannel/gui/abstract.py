@@ -57,7 +57,8 @@ class abstract():
         
         # Set __current_channel with appropriate image array
         self.__current_channel = self.__img_np_cyto[self.selected_channel]
-        print("SELF.SELECTED_CHANNEL", self.selected_channel)
+
+        # TODO: Delete all these if statements during merging
         # if self.selected_channel == "647":
         #     self.__current_channel = self.__img_np_cyto["647"]
         # elif self.selected_channel == "488":
@@ -155,9 +156,8 @@ class abstract():
         self.__drawBbox: bool = False
         
         # --- Channel-specific segmentation ---
+        self.__channel_segs: dict[str, list] = {}
         self.__current_channel_mask = [] # list of segmentation masks - TODO check if segmentation masks for each channels are stored appropriately -- remove if unneessary
-        self.__seg_647 = []
-        self.__seg_488 = []
         self.__segment_generated: bool = False
         self.__drawSeg: bool = False
 
@@ -312,35 +312,30 @@ class abstract():
         """
         # --- Helper ---
         def job():
-            seg_647, seg_488, seg_555, seg_594, seg_514 = run_basic_watershed(
+            self.__channel_segs = run_basic_watershed(
                 self.__img_np_nucleus,
-                self.__img_np_647,
-                self.__img_np_488,
-                self.__img_np_555,
-                self.__img_np_594,
-                self.__img_np_514,
+                self.__img_np_cyto,
                 self.gui,
                 self.selected_channel
             )
-            self.__seg_647 = seg_647
-            self.__seg_488 = seg_488
-            self.__seg_555 = seg_555
-            self.__seg_594 = seg_594
-            self.__seg_514 = seg_514
+
             # Pick the segmentation mask to use based on currently selected channel
-            if self.selected_channel == "647":
-                self.__current_channel_mask = seg_647
-            elif self.selected_channel == "488":
-                self.__current_channel_mask = seg_488
-            elif self.selected_channel == "555":
-                self.__current_channel_mask = seg_555
-            elif self.selected_channel == "594":
-                self.__current_channel_mask = seg_594
-            elif self.selected_channel == "514":
-                self.__current_channel_mask = seg_514
-            else:
-                # Fallback: no segmentation for unknown channel
-                self.__current_channel_mask = []
+            self.__current_channel_mask = self.__channel_segs[self.selected_channel]
+
+            # if self.selected_channel == "647":
+            #     self.__current_channel_mask = seg_647
+            # elif self.selected_channel == "488":
+            #     self.__current_channel_mask = seg_488
+            # elif self.selected_channel == "555":
+            #     self.__current_channel_mask = seg_555
+            # elif self.selected_channel == "594":
+            #     self.__current_channel_mask = seg_594
+            # elif self.selected_channel == "514":
+            #     self.__current_channel_mask = seg_514
+            # else:
+            #     # Fallback: no segmentation for unknown channel
+            #     self.__current_channel_mask = []
+            
             self.segment_generated = True
             logger.info(f"Generated {len(self.__current_channel_mask)} final segments ({self.selected_channel})")
             self.gui.getRoot().after(0, self.gui.dismissWait) # runs after the segemntation is finished. It safely closes the wait dialog
@@ -481,27 +476,11 @@ class abstract():
                 self.__selected_for_segmentation = not self.__selected_for_segmentation
                 self.update_thumbnail()
 
-    def _get_seg_list_for_channel(self, ch: str):
-        if ch == "647": return getattr(self, "_abstract__seg_647", [])
-        if ch == "488": return getattr(self, "_abstract__seg_488", [])
-        if ch == "555": return getattr(self, "_abstract__seg_555", [])
-        if ch == "594": return getattr(self, "_abstract__seg_594", [])
-        if ch == "514": return getattr(self, "_abstract__seg_514", [])
-        return []
+    def _get_seg_obj_for_channel(self, ch: str):
+        return self.__channel_segs.get(ch, [])
 
-    def _set_seg_list_for_channel(self, ch: str, seg_objs: list):
-        if ch == "647":
-            setattr(self, "_abstract__seg_647", seg_objs) # TODO - maybe just simply assigns
-        elif ch == "488":
-            setattr(self, "_abstract__seg_488", seg_objs)
-        elif ch == "555":
-            setattr(self, "_abstract__seg_555", seg_objs)
-        elif ch == "594":
-            setattr(self, "_abstract__seg_594", seg_objs)
-        elif ch == "514":
-            setattr(self, "_abstract__seg_514", seg_objs)
-        else:
-            raise ValueError(f"Unsupported channel: {ch!r}. Must be one of '647', '488', '555', '594', '514'")
+    def _set_seg_obj_for_channel(self, ch: str, seg_objs: list):
+        self.__channel_segs[ch] = seg_objs # Assign segmentation masks to specific channel
 
     # --- Updating Thumbnail --- 
     @property
@@ -616,19 +595,11 @@ class abstract():
         """
         Returns the RGB numpy array for the currently selected channel
         """
-        if channel == "647" and self.__img_np_cyto["647"] is not None:
-            base = self.__img_np_647
-        elif channel == "488" and self.__img_np_cyto["488"] is not None:
-            base = self.__img_np_488
-        elif channel == "555" and self.__img_np_cyto["555"] is not None:
-            base = self.__img_np_555
-        elif channel == "594" and self.__img_np_cyto["594"] is not None:
-            base = self.__img_np_594
-        elif channel == "514" and self.__img_np_cyto["514"] is not None:
-            base = self.__img_np_514
+
+        if channel in self.__img_np_cyto:
+            return grayscale_to_rgb(self.__img_np_cyto[channel])
         else:
-            base = self.__img_np_nucleus
-        return grayscale_to_rgb(base)
+            return grayscale_to_rgb(self.__img_np_nucleus)
 
     def getLabel(self) -> tkinter.Label:
         return self.__label
@@ -702,6 +673,8 @@ class abstract():
         return self.__label
     def getNucleusPath(self) -> pathlib.Path:
         return self.__nucleus_path
+    def getImgNumpyCyto(self) -> dict[str, np.ndarray]:
+        return dict(self.__img_np_cyto)
     def getCytoplasmPaths(self) -> tuple[pathlib.Path, ...]:
         return tuple(self.__cyto_paths)
     def noBbox(self) -> bool:

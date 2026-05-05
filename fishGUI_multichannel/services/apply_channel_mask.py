@@ -67,7 +67,7 @@ def _apply_masks_on_main(frame, target_channels, finalized_mask_list):
         dprint(f"[DEBUG] apply_finalized_mask_to_target_channels (main): frame={getattr(frame,'sample_id','?')}, targets={target_channels}")
         for target_channel in target_channels:
             dprint(f"[DEBUG]   applying mask to channel {target_channel}")
-            frame._set_seg_list_for_channel(
+            frame._set_seg_obj_for_channel(
                 target_channel,
                 [segment(frame.gui, mask) for mask in finalized_mask_list] if finalized_mask_list else []
             )

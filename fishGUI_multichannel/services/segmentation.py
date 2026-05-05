@@ -111,41 +111,32 @@ def bbox_run_basic_watershed(
         
 def run_basic_watershed(
     nucleus_img: np.ndarray,
-    cyto_647: np.ndarray,
-    cyto_488: np.ndarray,
-    cyto_555: np.ndarray,
-    cyto_594: np.ndarray,
-    cyto_514: np.ndarray,
+    cyto_imgs: dict[str, np.ndarray],
     gui,
     selected_channel: str
 ) -> tuple[list[segment], list[segment]]:
     """
-    Perform segmentation for both channels and return (seg_647, seg_488)
+    Perform segmentation for all channels
+
+    Process 647 first (cyto1), then 488 (cyto2)
     """
     start = time.time()
     boxes = gui.getBackEnd().AppIntDINOwrapper(nucleus_img)
     centers = [((x0 + x1) / 2, (y0 + y1) / 2) for x0, y0, x1, y1 in boxes]
 
-    # process 647 first (cyto1), then 488 (cyto2)
     # TODO - O(n^2) -- consider improving time complexity
-    seg_647, seg_488, seg_555, seg_594, seg_514 = [], [], [], [], []
-    channels_images = {
-        "647": cyto_647,
-        "488": cyto_488,
-        "555": cyto_555,
-        "594": cyto_594,
-        "514": cyto_514
-    }
-    for channel, image in channels_images.items():
+    channel_segs: dict[str, list] = {}
+
+    for channel, image in cyto_imgs.items():
         if image is None:
             continue
 
-        if channel == "647": 
-            grad  = gradient(image, ksize=5)
+        if channel == "647" or channel not in {"488", "594", "555", "514"}: # chan == 647 or undocumented channel
+            grad = gradient(image, ksize=5)
             proc = image
-            rgb  = np.stack([image, image, grad], axis=-1)
+            rgb = np.stack([image, image, grad], axis=-1)
 
-        else:  # chan == "488, 594, 555, or 514"
+        else:  # chan == "488, 594, 555, or 514" 
             sigma_est = estimate_sigma(image, channel_axis=None, average_sigmas=True)
             sigma_norm = sigma_est + 3.0
             sigma_weak = sigma_est - 10.0
@@ -178,18 +169,9 @@ def run_basic_watershed(
 
         seg_objs = [segment(gui, m) for m in channel_masks]
         
-        if channel == "647":
-            seg_647 = seg_objs
-        elif channel == "488":
-            seg_488 = seg_objs
-        elif channel == "555":
-            seg_555 = seg_objs
-        elif channel == "594":
-            seg_594 = seg_objs
-        elif channel == "514":
-            seg_514 = seg_objs
+        channel_segs[channel] = seg_objs # Assign segmentation masks to specific channel
     
     end = time.time()
     logger.info(f"Segmentation completed in {end - start:.2f} seconds")
         
-    return seg_647, seg_488, seg_555, seg_594, seg_514
+    return channel_segs

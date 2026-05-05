@@ -172,9 +172,11 @@ class SessionManager:
                 logging.debug(f"Object {abstract_object} is not an instance of abstract. Skipping.")
                 continue 
             if abstract_object.selected:
-                seg_647 = [s._segment__data.T for s in abstract_object._get_seg_list_for_channel("647")]
-                seg_488 = [s._segment__data.T for s in abstract_object._get_seg_list_for_channel("488")]
-                seg_dict = {"647": seg_647, "488": seg_488}
+                cyto_channels = list(abstract_object.getImgNumpyCyto().keys())
+                seg_dict = {
+                    ch: [s._segment__data.T for s in abstract_object._get_seg_obj_for_channel(ch)]
+                    for ch in cyto_channels
+                }
                 bundled_info_for_save = bundle(
                     abstract_object.sample_id,
                     nucleus_path=abstract_object.getNucleusPath(),
@@ -280,13 +282,13 @@ class SessionManager:
         start = time.time()
         
         for channel in abs_obj.available_channels:
-            seg_list = abs_obj._get_seg_list_for_channel(channel)
-            if seg_list:
-                abs_obj.seg = seg_list 
+            seg_obj = abs_obj._get_seg_obj_for_channel(channel)
+            if seg_obj:
+                abs_obj.seg = seg_obj 
                 abs_obj.segment_generated = True
             else:
                 _ = abs_obj.segment # If segmentation masks isn't present yet, run segmentation for the channel
-                abs_obj._set_seg_list_for_channel(channel, abs_obj.seg)
+                abs_obj._set_seg_obj_for_channel(channel, abs_obj.seg)
             gui.getRoot().after(0, lambda a=abs_obj: cls._ui_show_segmented(a, gui)) # ensure threading safety and responsiveness
         end = time.time()
         print(f"[DEBUG] Thread {thread_name} FINISHED for sample {abs_obj.sample_id} in {end-start:.2f}s")
