@@ -90,7 +90,7 @@ class tifSequence():
             return grouped
         
         def get_cytoplasm_paths_and_names(channels: dict):
-            """Return list of cytoplasm channel paths if present."""
+            """Return list of cytoplasm channel paths and channel names if present."""
             cyto_paths = []
             cyto_channels = []
             
@@ -104,7 +104,6 @@ class tifSequence():
         # Grouped: {'0026': {'488': WindowsPath('C:/Users/msgal/Downloads/Ding_Lab/image_testing/gui_vadym_single/MAX_EXP_w488_s0026.tif')}}
         # Grouped: {'SAMPLE_ID': {'CHANNEL': pathlib.Path}}
         grouped = group_files_by_sample_and_channel(tif_files)
-        print("Grouped:", grouped)
         logger.debug(f"addToGallery → grouped into samples: {list(grouped.keys())}")
 
         # Warn once per import if any channels are outside the documented set.
@@ -127,8 +126,6 @@ class tifSequence():
                 continue
 
             cyto_paths, cyto_channels = get_cytoplasm_paths_and_names(channels)
-            print("Cyto paths:", cyto_paths)
-            print("Cyto_channels for Sample", cyto_channels)
             logger.info(f"addToGallery → instantiating abstract for sample {sample_id}") # Abstract is initiated for EACH sample_id
             abs_obj = abstract( # Abstract class is called --> where everything begins
                 sample_id,

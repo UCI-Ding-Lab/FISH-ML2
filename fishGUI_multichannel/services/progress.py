@@ -63,6 +63,7 @@ class Progress:
             
             return nucleus_path, cytoplasm_paths
             
+        # TODO: Incorporate dynamic channel handling in 'Load Progress'
         def create_abstract_object(sample_id, nucleus_path, cyto_paths, bbox_list, seg_dict, gui):
             cyto_channels = []
             for p in cyto_paths:
@@ -134,10 +135,8 @@ class Progress:
 
         # TODO - O(n^2) -  think of ways to improve effiiency
         for abs in toSave:
-            cyto_paths = abs.getCytoplasmPaths()
-            for path in cyto_paths:
-                stem = path.stem.lower()
-                channel = re.search(r"(647|488|555|594)", stem)
+            cyto_chnls_and_paths = abs.getCytoplasmChannelsAndPaths()
+            for channel, path in cyto_chnls_and_paths.items():
             
                 if not abs.selected or len(abs.segmentExplicit) <= 0:
                     img = None

@@ -39,7 +39,7 @@ def _get_gui_root(abstract_cls, frame_pool):
 # --------- COMPUTE-ONLY helpers (safe off-main-thread) ----------
 def ensure_source_channel_segmented(frame, source_channel):
     dprint(f"[DEBUG] ensure_source_channel_segmented: frame={getattr(frame, 'sample_id', '?')}, source_channel={source_channel}")
-    if not frame._get_seg_list_for_channel(source_channel):
+    if not frame._get_seg_obj_for_channel(source_channel):
         current_focused_channel = getattr(frame, "selected_channel", None)
         # Pure data attribute; OK in worker thread:
         frame.selected_channel = source_channel
@@ -50,7 +50,7 @@ def ensure_source_channel_segmented(frame, source_channel):
 
 def build_finalized_mask_from_source_channel(frame, source_channel):
     dprint(f"[DEBUG] build_finalized_mask_from_source_channel: frame={getattr(frame, 'sample_id', '?')}, source_channel={source_channel}")
-    segmentation_objects = frame._get_seg_list_for_channel(source_channel)
+    segmentation_objects = frame._get_seg_obj_for_channel(source_channel)
     finalized_mask_list = [
         segmentation_object._segment__data.T
         for segmentation_object in (segmentation_objects or [])
@@ -71,7 +71,7 @@ def _apply_masks_on_main(frame, target_channels, finalized_mask_list):
                 target_channel,
                 [segment(frame.gui, mask) for mask in finalized_mask_list] if finalized_mask_list else []
             )
-        frame.seg = frame._get_seg_list_for_channel(frame.selected_channel)
+        frame.seg = frame._get_seg_obj_for_channel(frame.selected_channel)
         frame.segment_generated = True
     except Exception as e:
         dprint(f"[ERROR] _apply_masks_on_main failed for {getattr(frame,'sample_id','?')}: {e}\n{traceback.format_exc()}")

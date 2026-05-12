@@ -40,13 +40,12 @@ class abstract():
         self.__nucleus_path = nucleus_path
         self.__cyto_paths = cyto_paths
         self.__cyto_channels = cyto_channels
-        self.__channels = channels
+        self.__channels_and_paths = channels
         self.gui = gui
 
         # Load images
         self.__img_np_nucleus = self._load_nucleus(nucleus_path) # TODO use .resolve() if loading session data generates an error due to path issues; .resolve() ensures absolute path
-        # self.__img_np_647, self.__img_np_488,  self.__img_np_555, self.__img_np_594, self.__img_np_514 = self._load_cytoplasms(cyto_paths)
-        self.__img_np_cyto = self._load_cytoplasms(channels)
+        self.__img_np_cyto: dict[str, str] = self._load_cytoplasms(channels)
         # Get available channels and set current channel
         self.available_channels = self._get_available_channels()
         if self.available_channels:
@@ -56,42 +55,16 @@ class abstract():
             logger.warning(f"No available cytoplasm channels for sample {self.sample_id} at {nucleus_path}")
         
         # Set __current_channel with appropriate image array
-        self.__current_channel = self.__img_np_cyto[self.selected_channel]
-
-        # TODO: Delete all these if statements during merging
-        # if self.selected_channel == "647":
-        #     self.__current_channel = self.__img_np_cyto["647"]
-        # elif self.selected_channel == "488":
-        #     self.__current_channel = self.__img_np_488
-        # elif self.selected_channel == "555":
-        #     self.__current_channel = self.__img_np_555
-        # elif self.selected_channel == "594":
-        #     self.__current_channel = self.__img_np_594
-        # elif self.selected_channel == "514":
-        #     self.__current_channel = self.__img_np_514
+        self.__current_channel = self.__img_np_cyto[self.selected_channel] # Why is self.__current_channel needed?
 
         # Build thumbnail (647 if exists, else 488. If no channels exists then nucleus)
-        thumbnail_img = None
-        if "647" in self.__img_np_cyto:
-            thumbnail_img = self.__img_np_cyto["647"]
-            k = 13
-        elif "488" in self.__img_np_cyto:
-            thumbnail_img = self.__img_np_cyto["488"]
-            k = 11
-        elif "555" in self.__img_np_cyto:
-            thumbnail_img = self.__img_np_cyto["555"]
-            k = 10
-        elif "594" in self.__img_np_cyto:
-            thumbnail_img = self.__img_np_cyto["594"]
-            k = 10
-        elif "514" in self.__img_np_cyto:
-            thumbnail_img = self.__img_np_cyto["514"]
-            k = 10
+        if self.selected_channel in self.__cyto_channels:
+            thumbnail_img = self.__img_np_cyto[self.selected_channel]
         else:
             thumbnail_img = self.__img_np_nucleus
         
         # Convert image to display on tkinter thumbnail
-        self.__img_np_rgb = grayscale_to_rgb(remove_outliers(thumbnail_img, k=k)) if k > 0 else grayscale_to_rgb(thumbnail_img) # rgb is for displaying image while SAM and groundingdino accepts 2D
+        self.__img_np_rgb = grayscale_to_rgb(thumbnail_img) # rgb is for displaying image while SAM and groundingdino accepts 2D
         pil = Image.fromarray(self.__img_np_rgb).resize((64, 64))
         tk_img = ImageTk.PhotoImage(pil)
         self.__img_pil_thumbnail = pil # used for image processing, drawing or saving
@@ -207,6 +180,7 @@ class abstract():
                 else np.squeeze(cyto_array)
             )
 
+            # Documented channels are in separate 'if' statements in case they need specific preprocessing
             if "647" in channel:
                 img_647 = clahe(normalize_to_uint8(remove_outliers(zprojected, k=20.0, use_median=False)), clip_limit=2.0, tile_size=(8,8))
                 cyto_images[channel] = img_647
@@ -489,7 +463,7 @@ class abstract():
     @thumbnail.setter
     def thumbnail(self, value: str): 
         """
-        Whenever self.thumbnail_state is assigned a value, this method is called to 
+        Whenever self.thumbnail is assigned a value, this method is called to 
         update the image overlawy
         """
         self.__thumbnail_state = value
@@ -677,6 +651,8 @@ class abstract():
         return dict(self.__img_np_cyto)
     def getCytoplasmPaths(self) -> tuple[pathlib.Path, ...]:
         return tuple(self.__cyto_paths)
+    def getCytoplasmChannelsAndPaths(self) -> dict[str, str]:
+        return self.__channels_and_paths
     def noBbox(self) -> bool:
         return not len(self.__bbox)
     def noSegment(self) -> bool:

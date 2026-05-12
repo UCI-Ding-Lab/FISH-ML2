@@ -149,7 +149,8 @@ class funcButton():
             SessionManager.removeUnselected()
             self.gui.getTifSequence().resetPosition()
             for abs in SessionManager.getPool():
-                abs.thumbnail = "bbox" if abs.bbox_generated else "default"
+                # Restore thumbnail badges from true frame state
+                abs.update_thumbnail()
             SessionManager.sendFirst()
 
     def BBOX_call(self):
@@ -232,6 +233,7 @@ class funcButton():
         def job():
             Progress.export(self.gui)
             self.gui.getRoot().after(0, self.gui.dismissWait)
+            tkinter.messagebox.showinfo("Export Confirmation", f"Export Finished.")
         threading.Thread(target=job, daemon=True).start()
         
     
@@ -241,7 +243,13 @@ class funcButton():
         self.toggle["SEGMENTATION_SELECTION"].set(0)
         self.toggle["SEGMENT"].set(0)
 
-        available_channels = ["488", "647", "555", "594"]
+        pool = SessionManager.getPool()
+        all_available_channels = set()
+
+        # Retrieves all the channels that exist through ALL abstract objects (doesn't require a channel to be in EVERY abstract object)
+        for abs in pool:
+            abs_chnls = abs.available_channels
+            all_available_channels.update(set(abs_chnls))
 
         def channel_callback(selected_channel: str):
             # Quick sanity check: current buffer has this channel?
@@ -254,9 +262,9 @@ class funcButton():
                 return
 
             frame_names = [getattr(a, "sample_id", "?") for a in SessionManager.getPool()]
+            print("Frame Names", frame_names) # Ensure that it only shows the frames that are present (excluded those deleted)
 
             def frame_callback(selection: str):
-                pool = SessionManager.getPool()
 
                 # Resolve which indices to act on
                 if selection == "all":
@@ -293,18 +301,20 @@ class funcButton():
                 def on_done():
                     """Called on the MAIN thread by the service when all frames finish."""
                     print(f"[UI] ApplyChannelMask: DONE channel={selected_channel}")
+
                     try:
                         buf2 = SessionManager.getBuffer()
                         # Turn Segment ON only if current buffer has bbox + masks
                         if (buf2 and getattr(buf2, "bbox_generated", False) and
                             (getattr(buf2, "segment_generated", False) or
-                            bool(buf2._get_seg_list_for_channel(getattr(buf2, "selected_channel", None))))):
+                            bool(buf2._get_seg_obj_for_channel(getattr(buf2, "selected_channel", None))))):
                             self.toggle["SEGMENT"].set(1)
                             buf2.drawSegmentation = True
                         else:
                             self.toggle["SEGMENT"].set(0)
                     finally:
                         self.gui.dismissWait()
+                        tkinter.messagebox.showinfo("Apply Channel Mask Confirmation", f"Applied Channel Mask to {selection} Frames! Continue to Export.")
                         # Release the Apply button
                         self.toggle["APPLY_CHANNEL_MASK"].set(0)
                         self.APPLY_CHANNEL_MASK.config(state="normal", relief=tk.RAISED, text="Apply Channel Mask")
@@ -317,9 +327,10 @@ class funcButton():
                     on_done=on_done
                 )
 
-            FrameSelectPopup(self.gui.getRoot(), frame_names, frame_callback)
+            frame_popup = FrameSelectPopup(self.gui.getRoot(), frame_names, frame_callback)
+            frame_popup.focus_force() # Make sure it is visible on top of GUI
 
-        ChannelSelectPopup(self.gui.getRoot(), available_channels, channel_callback)
+        ChannelSelectPopup(self.gui.getRoot(), all_available_channels, channel_callback)
 
 
 class ChannelSelectPopup(tk.Toplevel):
@@ -327,7 +338,7 @@ class ChannelSelectPopup(tk.Toplevel):
         super().__init__(parent)
         self.title("Select Channel Mask")
         self.callback = callback
-        self.selected_channel = tk.StringVar(value=available_channels[0])
+        self.selected_channel = tk.StringVar(value=list(available_channels)[0])
 
         tk.Label(self, text="Which channel mask do you want to apply for current frame?\n(Chosen channel mask will apply to all channels)").pack(pady=10)
 
