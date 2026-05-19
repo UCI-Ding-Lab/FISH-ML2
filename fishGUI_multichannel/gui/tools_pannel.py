@@ -169,6 +169,7 @@ class seasoning():
                 self.gui.popBox("e", "Load Error", str(e))
             finally:
                 self.gui.getRoot().after(0, self.gui.dismissWait)
+                self.gui.popBox("i", "Loading Completed", "All frames have finished loading.")
         threading.Thread(target=job, daemon=True).start()
 
     def on_channel_change(self, new_chan: str):
