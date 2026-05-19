@@ -6,7 +6,10 @@ from ..gui.canvas.segment import segment
 from .bundle_data import bundle
 from .matPacker import create
 from .session_manager import SessionManager
-import re
+from ..utils.sample_channels import (
+    channels_from_paths,
+    get_cytoplasm_paths_and_names,
+)
 import pathlib
 
 class Progress:
@@ -53,7 +56,7 @@ class Progress:
             
         def return_valid_paths(nucleus_path, cytoplasm_paths):
             if not nucleus_path.exists():
-                messagebox.showwarning("Missing file", "Nucleus image not found:\n{nucleus_path}")
+                messagebox.showwarning("Missing file", f"Nucleus image not found:\n{nucleus_path}")
                 return None
         
             missing_cytoplasm_file = [str(path) for path in cytoplasm_paths if not path.exists()]
@@ -63,33 +66,34 @@ class Progress:
             
             return nucleus_path, cytoplasm_paths
             
-        # TODO: Incorporate dynamic channel handling in 'Load Progress'
         def create_abstract_object(sample_id, nucleus_path, cyto_paths, bbox_list, seg_dict, gui):
-            cyto_channels = []
-            for p in cyto_paths:
-                m = re.search(r"(DAPI|\d{3})", p.stem, re.IGNORECASE)
-                if m and m.group(1).upper() != "DAPI":
-                    cyto_channels.append(m.group(1).upper())
+            channels = channels_from_paths(nucleus_path, cyto_paths)
+            if "DAPI" not in channels:
+                messagebox.showwarning(
+                    "Missing DAPI",
+                    f"Could not resolve a DAPI path for sample {sample_id}; skipping.",
+                )
+                return None
+
+            cyto_paths, cyto_channels = get_cytoplasm_paths_and_names(channels)
             abstract_object = abstract(
                 sample_id, 
                 nucleus_path=nucleus_path,
                 cyto_paths=cyto_paths,
                 cyto_channels=cyto_channels,
+                channels=channels,
                 gallery_frame=gui.getTifSequence().gallery_frame,
                 gui=gui
             )
             abstract_object.bbox = [box(b, gui) for b in bbox_list]
-            seg_647 = [segment(gui, m) for m in seg_dict.get("647", [])]
-            seg_488 = [segment(gui, m) for m in seg_dict.get("488", [])]
-            abstract_object._abstract__seg_647 = seg_647
-            abstract_object._abstract__seg_488 = seg_488
-            # Set current channel mask to the selected channel TODO - clean with abstractpy
-            if getattr(abstract_object, "selected_channel", "647") == "647":
-                abstract_object.seg = seg_647 
-            else:
-                abstract_object.seg = seg_488
-            if seg_647 or seg_488:
-                abstract_object.segment_generated = True
+            for ch, mask_list in seg_dict.items():
+                seg_objs = [segment(gui, m) for m in mask_list]
+                abstract_object._set_seg_obj_for_channel(ch, seg_objs)
+            abstract_object.segment_generated = any(seg_dict.values())
+            if abstract_object.selected_channel:
+                abstract_object.seg = abstract_object._get_seg_obj_for_channel(
+                    abstract_object.selected_channel
+                )
             return abstract_object
 
         # --- Main Logic ---
@@ -105,7 +109,9 @@ class Progress:
                 valid_paths = return_valid_paths(nucleus_path, cytoplasm_paths) 
                 if valid_paths is None: # prevent loading frames and its data with at least one invalid path
                     continue
-                abs_obj =create_abstract_object(sample_id, nucleus_path, cytoplasm_paths, bbox_list, seg_dict, gui)
+                abs_obj = create_abstract_object(sample_id, nucleus_path, cytoplasm_paths, bbox_list, seg_dict, gui)
+                if abs_obj is None:
+                    continue
                 gui.getSeasoning().update_channel_menu(abs_obj.available_channels)     
                 gui.getSeasoning().update_channel_selector_for_image(abs_obj)
             except Exception as error:

@@ -1,10 +1,14 @@
 import tkinter
 import pathlib
-import re
 import logging
 from ..services.session_manager import SessionManager
+from ..utils.sample_channels import (
+    group_files_by_sample_and_channel,
+    get_cytoplasm_paths_and_names,
+    undocumented_channels_in_grouped,
+)
 
-logger = logging.getLogger(__name__) 
+logger = logging.getLogger(__name__)
 
 """
 Manages the gallery of TIFF image sequences for the GUI.
@@ -59,59 +63,27 @@ class tifSequence():
         self.base.xview_moveto(0)
         self.base.yview_moveto(0)
 
-    # Called in buttons.py, IMPORT_call method    
+    # Called in buttons.py, IMPORT_call method
     def addToGallery(self, tif_files: list):
         from .abstract import abstract # prevent circular imports
         logger.debug(f"addToGallery → starting with {len(tif_files)} files")
-        documented_channels = {"647", "488", "514", "555", "594"}
-        allowed_channels = documented_channels | {"DAPI"}
 
-        def parse_sampleID_and_channel(path: pathlib.Path):
+        def on_parse_error(path: pathlib.Path):
             stem = path.stem
-            sample_match = re.search(r"s(\d{1,4})", stem, re.IGNORECASE)
-            channel_match = re.search(r"w\d*[-_]?([A-Za-z]*?)(DAPI|\d{3})\D", stem, re.IGNORECASE)
-            if not (sample_match and channel_match):
-                logger.warning(f"addToGallery → skipping {stem!r}, couldn't parse s### or w###")
-                self.gui.popBox("e", "File Path Error", f"WARNING:\nCouldn't parse file path → skipping {stem!r}, couldn't parse s### or w###")
-                return None, None
-            sample_id = sample_match.group(1)
-            channel_name = channel_match.group(2).upper()
-            print("Sample_ID:", sample_id, "Channel Name", channel_name)
-            return sample_id, channel_name
-
-        def group_files_by_sample_and_channel(file_paths: list):
-            """Group files into a dict[sample_id][channel_name] = path."""
-            grouped = {}
-            for file_path in file_paths:
-                path = pathlib.Path(file_path)
-                sample_id, channel_name = parse_sampleID_and_channel(path)
-                if sample_id and channel_name:
-                    grouped.setdefault(sample_id, {})[channel_name] = path
-            return grouped
-        
-        def get_cytoplasm_paths_and_names(channels: dict):
-            """Return list of cytoplasm channel paths and channel names if present."""
-            cyto_paths = []
-            cyto_channels = []
-            
-            for channel, path in channels.items():
-                if channel == "DAPI": # Only want cytoplasm paths
-                    continue
-                cyto_paths.append(path)
-                cyto_channels.append(channel)
-            return cyto_paths, cyto_channels
-        
+            logger.warning(f"addToGallery → skipping {stem!r}, couldn't parse s### or w###")
+            self.gui.popBox(
+                "e",
+                "File Path Error",
+                f"WARNING:\nCouldn't parse file path → skipping {stem!r}, couldn't parse s### or w###",
+            )
         # Grouped: {'0026': {'488': WindowsPath('C:/Users/msgal/Downloads/Ding_Lab/image_testing/gui_vadym_single/MAX_EXP_w488_s0026.tif')}}
         # Grouped: {'SAMPLE_ID': {'CHANNEL': pathlib.Path}}
-        grouped = group_files_by_sample_and_channel(tif_files)
+        grouped = group_files_by_sample_and_channel(tif_files, on_parse_error=on_parse_error)
         logger.debug(f"addToGallery → grouped into samples: {list(grouped.keys())}")
 
-        # Warn once per import if any channels are outside the documented set.
-        undocumented_channels = sorted(
-            {channel for channels in grouped.values() for channel in channels if channel not in allowed_channels}
-        )
-        if undocumented_channels:
-            channel_text = ", ".join(undocumented_channels)
+        undocumented = undocumented_channels_in_grouped(grouped)
+        if undocumented:
+            channel_text = ", ".join(undocumented)
             self.gui.popBox(
                 "w",
                 "Channel Caution",

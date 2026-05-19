@@ -32,7 +32,7 @@ class abstract():
         nucleus_path: pathlib.Path,
         cyto_paths: list[pathlib.Path],
         cyto_channels: list[str],
-        channels: dict[str, pathlib.Path],
+        channels: dict[str, pathlib.Path], # {channel: path}, includes DAPI
         gallery_frame,
         gui
     ):
@@ -295,20 +295,6 @@ class abstract():
 
             # Pick the segmentation mask to use based on currently selected channel
             self.__current_channel_mask = self.__channel_segs[self.selected_channel]
-
-            # if self.selected_channel == "647":
-            #     self.__current_channel_mask = seg_647
-            # elif self.selected_channel == "488":
-            #     self.__current_channel_mask = seg_488
-            # elif self.selected_channel == "555":
-            #     self.__current_channel_mask = seg_555
-            # elif self.selected_channel == "594":
-            #     self.__current_channel_mask = seg_594
-            # elif self.selected_channel == "514":
-            #     self.__current_channel_mask = seg_514
-            # else:
-            #     # Fallback: no segmentation for unknown channel
-            #     self.__current_channel_mask = []
             
             self.segment_generated = True
             logger.info(f"Generated {len(self.__current_channel_mask)} final segments ({self.selected_channel})")
