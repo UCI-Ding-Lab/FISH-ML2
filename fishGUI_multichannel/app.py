@@ -19,38 +19,56 @@ class FishGUI(object):
         self.__root: tk.Tk = root
         self.__root.title("FISH UI Prototype")
         self.__root.geometry("870x1000")
-        
+
         self.__be: fishCore.Fish = fishCore.Fish(pathlib.Path("./config.ini"))
-        self.__be.set_model_version("3.50")
-        
+
         self.__lf = lf(self)
         self.__tifSequence = tifSequence(self)
         self.__funcButton = funcButton(self)
         self.__seasoning = seasoning(self)
         self.__stove = stove(self)
-        
+
         self.__lf.pack()
         self.__stove.pack()
         self.__tifSequence.pack()
         self.__funcButton.pack()
         self.__seasoning.pack()
-        
+
         self.__waitWindow = None
 
-        self.__root.bind('<BackSpace>', self.onDelete)
+        self._bind_shortcuts()
         self.__root.focus_set()
-    
-    @staticmethod    
-    def popBox(type: str, title: str, message: str):
-        if type == "e":
-            messagebox.showerror(title, message)
-        elif type == "w":
-            messagebox.showwarning(title, message)
-        elif type == "i":
-            messagebox.showinfo(title, message)
+
+    def _bind_shortcuts(self):
+        self.__root.bind_all("<Control-z>", self._onUndoShortcut, add="+")
+        self.__root.bind_all("<Control-y>", self._onRedoShortcut, add="+")
+        self.__root.bind_all("<Control-r>", self._onResetShortcut, add="+")
+        self.__root.bind_all("<BackSpace>", self.onDelete, add="+")
+        self.__root.bind_all("<Delete>", self.onDelete, add="+")
+
+    def _onUndoShortcut(self, event=None):
+        self.getStove().onUndo(event)
+        return "break"
+
+    def _onRedoShortcut(self, event=None):
+        self.getStove().onRedo(event)
+        return "break"
+
+    def _onResetShortcut(self, event=None):
+        self.getStove().onReset(event)
+        return "break"
+
+    def onDelete(self, event=None):
+        selected_box = box.getBuffer()
+        selected_seg = segment.getBuffer()
+        if selected_box:
+            selected_box.delete()
+        elif selected_seg:
+            selected_seg.delete()
         else:
-            raise AttributeError("Invalid type")
-    
+            self.popBox('w', 'No Selection', 'No bounding box or segmentation mask is selected.')
+        return "break"
+
     def indicateWait(self, content: str):
         self.__waitWindow = tk.Toplevel(self.__root)
         self.__waitWindow.title("FISH-ML")
@@ -86,17 +104,6 @@ class FishGUI(object):
             messagebox.showwarning(title, msg, parent=self.__root)
         else:
             messagebox.showerror(title, msg, parent=self.__root)
-
-    def onDelete(self, event):
-        selected_box = box.getBuffer()
-        selected_seg = segment.getBuffer()
-
-        if selected_box:
-            selected_box.delete()
-        elif selected_seg:
-            selected_seg.delete()
-        else:
-            self.popBox('w', 'No Selection', 'No bounding box or segmentation mask is selected.')
 
 def main():
     root = tk.Tk()

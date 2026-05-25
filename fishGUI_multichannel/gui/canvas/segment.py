@@ -5,6 +5,9 @@ from skimage import measure
 
 class segment():
     __buffer: 'segment' = None
+    __deleted_stack = []
+    __action_history = []
+    __redo_actions = []
 
     def __init__(self, gui, data: np.ndarray):
         self.__data: np.ndarray = data.T
@@ -62,15 +65,24 @@ class segment():
         if self.__selected == value:
             return
         self.__selected = value
-        self.draw = False
         self.patch.set_edgecolor('cyan' if value else 'orange')
-        canvas = self.gui.getStove().canvas
-        subplot = self.gui.getStove().subplot
-        background = canvas.copy_from_bbox(subplot.bbox)
-        canvas.restore_region(background)
-        subplot.draw_artist(self.patch)
-        canvas.blit(subplot.bbox)
-        self.draw = True
+
+        stove = self.gui.getStove()
+        loaded = stove.getLoaded()
+        if loaded is None:
+            return
+
+        # Only redraw immediately if this segment belongs to the frame/channel
+        # currently shown on screen. Otherwise, just keep the color state updated
+        # and let the normal frame/channel redraw path render it later.
+        if self not in loaded.current_channel_mask:
+            return
+
+        try:
+            if self.patch.axes is stove.subplot:
+                stove.canvas.draw_idle()
+        except Exception:
+            pass
 
     @property
     def draw(self) -> bool:
@@ -94,14 +106,15 @@ class segment():
             print(f"Error in segment draw setter: {e}")
         
         self.__draw = value
-        self.gui.getStove().canvas.draw()
+        stove = self.gui.getStove()
+        if not getattr(stove, "_batch_segment_draw", False):
+            stove.canvas.draw()
 
     def contains(self, x: float, y: float) -> bool:
         p = self.gui.getStove().subplot.transData.transform((x, y))
         return self.patch.contains_point(p)
 
     def update_mask(self, x, y, radius, erase=False):
-        print(f"[DEBUG] update_mask called at ({x}, {y}) with radius {radius}, erase={erase}")
         x_int, y_int = int(x), int(y)
         for i in range(x_int - radius, x_int + radius + 1):
             for j in range(y_int - radius, y_int + radius + 1):
@@ -113,7 +126,6 @@ class segment():
                             self.__data[i, j] = 1
 
     def recal_patch(self):
-        print("[DEBUG] recal_patch called")
         try:
             c = measure.find_contours(self.__data, level=0.5)[0]
             vertices = np.array(c)
@@ -127,8 +139,12 @@ class segment():
 
     def delete(self):
         abs = self.gui.getStove().getLoaded()
-        if abs and self in abs.segment:
-            abs.segment.remove(self)
+        if abs and self in abs.current_channel_mask:
+            entry = (abs, abs.current_channel_mask, self, abs.current_channel_mask.index(self))
+            segment.__redo_actions.clear()
+            segment.__deleted_stack.append(entry)
+            segment.__action_history.append(("delete", entry))
+            abs.current_channel_mask.remove(self)
             self.draw = False
             segment.clearBuffer()
             self.gui.getStove().canvas.flush_events()
@@ -159,8 +175,10 @@ class segment():
         cur = self._get_mask()
         if cur is None:
             return
+        segment.__redo_actions.clear()
         self._undo_stack.append(cur.copy())
         self._redo_stack.clear()
+        segment.__action_history.append(("edit", self))
 
     def undo(self) -> bool:
         self._ensure_history()
@@ -187,17 +205,6 @@ class segment():
         except Exception: pass
         return True
 
-    def reset(self) -> bool:
-        self._ensure_history()
-        if self._original_mask is None:
-            return False
-        self._undo_stack.append(self._get_mask().copy())
-        self._set_mask(self._original_mask.copy())
-        self._redo_stack.clear()
-        try: self.recal_patch()
-        except Exception: pass
-        return True
-    
     # -- End of helper for undo, redo and reset --
     @classmethod
     def setBuffer(cls, segment: 'segment'):
@@ -213,3 +220,180 @@ class segment():
         current = cls.getBuffer()
         if current: current.selected = False
         cls.__buffer = None
+
+    @classmethod
+    def _restore_deleted_entry(cls, entry) -> bool:
+        if entry not in cls.__deleted_stack:
+            return False
+
+        abs_obj, seg_list, seg_obj, index = entry
+        cls.__deleted_stack.remove(entry)
+        if seg_obj in seg_list:
+            return False
+
+        insert_at = max(0, min(index, len(seg_list)))
+        seg_list.insert(insert_at, seg_obj)
+
+        try:
+            loaded = seg_obj.gui.getStove().getLoaded()
+            if loaded is abs_obj and abs_obj.current_channel_mask is seg_list:
+                seg_obj.draw = True
+                seg_obj.selected = False
+        except Exception:
+            pass
+
+        return True
+
+    @classmethod
+    def _redelete_entry(cls, entry) -> bool:
+        abs_obj, seg_list, seg_obj, index = entry
+        if seg_obj not in seg_list:
+            return False
+
+        seg_list.remove(seg_obj)
+        cls.__deleted_stack.append(entry)
+
+        try:
+            loaded = seg_obj.gui.getStove().getLoaded()
+            if loaded is abs_obj and abs_obj.current_channel_mask is seg_list:
+                seg_obj.selected = False
+                seg_obj.draw = False
+                if cls.getBuffer() is seg_obj:
+                    cls.clearBuffer()
+        except Exception:
+            pass
+
+        return True
+
+    @classmethod
+    def undo_latest_action(cls, abs_obj) -> bool:
+        if not abs_obj:
+            return False
+
+        seg_list = abs_obj.current_channel_mask
+        for idx in range(len(cls.__action_history) - 1, -1, -1):
+            kind, payload = cls.__action_history[idx]
+
+            if kind == "edit":
+                seg_obj = payload
+                if seg_obj not in seg_list:
+                    continue
+                if not seg_obj._undo_stack:
+                    del cls.__action_history[idx]
+                    continue
+                if seg_obj.undo():
+                    cls.__redo_actions.append(cls.__action_history.pop(idx))
+                    return True
+
+            elif kind == "delete":
+                abs_entry, seg_entry, seg_obj, _ = payload
+                if abs_entry is not abs_obj or seg_entry is not seg_list:
+                    continue
+                if cls._restore_deleted_entry(payload):
+                    cls.__redo_actions.append(cls.__action_history.pop(idx))
+                    return True
+                del cls.__action_history[idx]
+
+        return False
+
+    @classmethod
+    def redo_latest_action(cls, abs_obj) -> bool:
+        if not abs_obj:
+            return False
+
+        seg_list = abs_obj.current_channel_mask
+        for idx in range(len(cls.__redo_actions) - 1, -1, -1):
+            kind, payload = cls.__redo_actions[idx]
+
+            if kind == "edit":
+                seg_obj = payload
+                if seg_obj not in seg_list:
+                    continue
+                if not seg_obj._redo_stack:
+                    del cls.__redo_actions[idx]
+                    continue
+                if seg_obj.redo():
+                    cls.__action_history.append(cls.__redo_actions.pop(idx))
+                    return True
+
+            elif kind == "delete":
+                abs_entry, seg_entry, _, _ = payload
+                if abs_entry is not abs_obj or seg_entry is not seg_list:
+                    continue
+                if cls._redelete_entry(payload):
+                    cls.__action_history.append(cls.__redo_actions.pop(idx))
+                    return True
+                del cls.__redo_actions[idx]
+
+        return False
+
+    @classmethod
+    def reset_loaded(cls, abs_obj) -> bool:
+        if not abs_obj:
+            return False
+
+        seg_list = abs_obj.current_channel_mask
+        changed = False
+
+        remaining_deleted = []
+        to_restore = []
+        for entry in cls.__deleted_stack:
+            if entry[0] is abs_obj and entry[1] is seg_list:
+                to_restore.append(entry)
+            else:
+                remaining_deleted.append(entry)
+        cls.__deleted_stack = remaining_deleted
+
+        while to_restore:
+            _, _, seg_obj, index = to_restore.pop()
+            if seg_obj in seg_list:
+                continue
+            insert_at = max(0, min(index, len(seg_list)))
+            seg_list.insert(insert_at, seg_obj)
+            try:
+                seg_obj.draw = True
+                seg_obj.selected = False
+            except Exception:
+                pass
+            changed = True
+
+        for seg_obj in list(seg_list):
+            seg_obj._ensure_history()
+            current = seg_obj._get_mask()
+            original = seg_obj._original_mask
+            is_changed = (
+                current is not None and original is not None and
+                not np.array_equal(current, original)
+            )
+            had_history = bool(seg_obj._undo_stack or seg_obj._redo_stack)
+
+            if is_changed:
+                seg_obj._set_mask(original.copy())
+                try:
+                    seg_obj.recal_patch()
+                except Exception:
+                    pass
+                changed = True
+
+            if had_history:
+                changed = True
+
+            seg_obj._undo_stack.clear()
+            seg_obj._redo_stack.clear()
+
+        cls.__action_history = [
+            action for action in cls.__action_history
+            if not (
+                (action[0] == "edit" and action[1] in seg_list) or
+                (action[0] == "delete" and action[1][0] is abs_obj and action[1][1] is seg_list)
+            )
+        ]
+        cls.__redo_actions = [
+            action for action in cls.__redo_actions
+            if not (
+                (action[0] == "edit" and action[1] in seg_list) or
+                (action[0] == "delete" and action[1][0] is abs_obj and action[1][1] is seg_list)
+            )
+        ]
+
+        return changed

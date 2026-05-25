@@ -62,7 +62,6 @@ class tifSequence():
     # Called in buttons.py, IMPORT_call method    
     def addToGallery(self, tif_files: list):
         from .abstract import abstract # prevent circular imports
-        logger.debug(f"addToGallery → starting with {len(tif_files)} files")
 
         def parse_sampleID_and_channel(path: pathlib.Path):
             stem = path.stem
@@ -102,7 +101,6 @@ class tifSequence():
             return cyto_paths
         
         grouped = group_files_by_sample_and_channel(tif_files)
-        logger.debug(f"addToGallery → grouped into samples: {list(grouped.keys())}")
 
         for sample_id, channels in grouped.items():
             nucleus_path = channels.get("DAPI")

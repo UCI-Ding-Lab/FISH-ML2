@@ -1,4 +1,5 @@
 # Standard Library Imports
+import os
 import pathlib
 import logging
 import configparser
@@ -7,6 +8,7 @@ from typing import Tuple
 # Third-Party Imports
 import numpy as np
 import torch
+import certifi
 from PIL import Image
 import cv2
 from cellpose import models
@@ -42,8 +44,9 @@ class Fish():
         self.setup__ai()
     
     def setup__config(self, config):
+        self.config_path = pathlib.Path(config).resolve()
         self.config = configparser.ConfigParser()
-        self.config.read(config)
+        self.config.read(self.config_path)
     def setup__logger(self):
         self.logger = logging.getLogger('fishcore')
         self.logger.setLevel(logging.INFO)
@@ -57,22 +60,60 @@ class Fish():
             if "transformers" in logger.name.lower():
                 logger.setLevel(logging.ERROR)
     def setup__asset(self): # TODO update this : SAM -> Cellpose-SAM after testing similar to table in readme is completed
-        self.asset_folder_path = pathlib.Path(self.config["general"]["asset_folder_path"])
+        asset_folder_path = pathlib.Path(self.config["general"]["asset_folder_path"])
+        if not asset_folder_path.is_absolute():
+            asset_folder_path = (self.config_path.parent / asset_folder_path).resolve()
+        self.asset_folder_path = asset_folder_path
         self.supported_version = self.config["general"]["supported_version"].split(",")
         self.model_version = None
         self.model_path = None
     def setup__ai(self):
+        self._configure_ssl_certs()
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.logger.info(
+            "PyTorch backend: torch=%s cuda_available=%s cuda_version=%s selected_device=%s",
+            torch.__version__,
+            torch.cuda.is_available(),
+            torch.version.cuda,
+            self.device,
+        )
+        if self.device == "cuda":
+            self.logger.info("CUDA device: %s", torch.cuda.get_device_name(0))
+        else:
+            self.logger.warning(
+                "Running on CPU. Install a CUDA-enabled PyTorch build in this environment to use the GPU."
+            )
         self.model = models.CellposeModel(gpu=(self.device == "cuda"))
-        checkpoint_path = pathlib.Path("cellpose-SAM/weights/fish_cellpose_v1.pt") 
+        checkpoint_path = self.config_path.parent / "cellpose-SAM" / "weights" / "fish_cellpose_v1.pt"
         checkpoint = torch.load(checkpoint_path, map_location=self.device)
         self.model.net.load_state_dict(checkpoint["state_dict"]) # load weights
         self.model.net.eval() # Ensure inference is deterministic and consistent : dropout is turned off & BatchNorm uses average during training 
         self.eval_diam = checkpoint["eval_diam"] # set eval_diam (hyperparameter) to the average mask diameter of GT labels in training set
+        self.model_version = "cellpose-sam"
+        self.model_path = checkpoint_path
         self.logger.info(f"Loaded cellpose-sam model. eval_diam={self.eval_diam}")
         self.gdino_config = pathlib.Path(groundingdino.__path__[0]) / self.config["dino"]["config"]
-        self.gdino_weights = pathlib.Path(groundingdino.__path__[0]) / self.config["dino"]["weights"]
-        self.gdino_model = dino.load_model(self.gdino_config, self.gdino_weights)
+        repo_gdino_weights = self.config_path.parent / "GroundingDINO" / self.config["dino"]["weights"]
+        package_gdino_weights = pathlib.Path(groundingdino.__path__[0]) / self.config["dino"]["weights"]
+        self.gdino_weights = repo_gdino_weights if repo_gdino_weights.exists() else package_gdino_weights
+        self.gdino_model = dino.load_model(self.gdino_config, self.gdino_weights, device=self.device)
+
+    @staticmethod
+    def _configure_ssl_certs():
+        cert_path = certifi.where()
+        for env_name in ("SSL_CERT_FILE", "REQUESTS_CA_BUNDLE"):
+            current_value = os.environ.get(env_name)
+            if not current_value or not pathlib.Path(current_value).exists():
+                os.environ[env_name] = cert_path
+
+    def set_model_version(self, v: str):
+        # Legacy compatibility shim: Fish now always uses Cellpose-SAM.
+        self.logger.warning(
+            "Ignoring legacy set_model_version(%s); Fish already loaded Cellpose-SAM from %s",
+            v,
+            self.model_path,
+        )
+        return self
 
     def predict(self, img: np.ndarray, diameter=None, flow_threshold=0.4, cellprob_threshold=0.0): # TODO currently flowthreshod and cellprob_threshold are hardcoded -- perhaps allow users to adjust it in the gui
         if img.dtype != np.float32: # expected input image format is float32
@@ -172,8 +213,7 @@ class Fish():
         image_transformed, _ = transform(image_source, None)
         return image, image_transformed
     
-    @staticmethod
-    def dino_bbox(gdino_model, img: np.ndarray) -> dict:
+    def dino_bbox(self, img: np.ndarray) -> dict:
         image_source, image = Fish.helper__imageTransform4Dino(img)
 
         TEXT_PROMPT = "white flower"
@@ -181,15 +221,15 @@ class Fish():
         TEXT_TRESHOLD = 0.05
 
         boxes, logits, phrases = dino.predict(
-            model=gdino_model, 
+            model=self.gdino_model,
             image=image, 
             caption=TEXT_PROMPT, 
             box_threshold=BOX_TRESHOLD, 
             text_threshold=TEXT_TRESHOLD,
-            device="cpu"
+            device=self.device,
         )
         finalized_bboxes = Fish.helper__filterAlgorithm(image_source, boxes)
         return finalized_bboxes
     
     def AppIntDINOwrapper(self, img: np.ndarray) -> list[list]:
-        return Fish.dino_bbox(self.gdino_model, img)
+        return self.dino_bbox(img)

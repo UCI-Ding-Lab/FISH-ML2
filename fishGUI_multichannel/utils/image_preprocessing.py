@@ -20,8 +20,8 @@ def preprocess_nucleus_stack(stack: np.ndarray) -> np.ndarray:
 
 def preprocess_cytoplasm_stack(stack: np.ndarray, top_n: int = 8) -> np.ndarray:
     stack = stack[np.any(stack > 0, axis=(1, 2))]
-    scores = [cv2.Laplacian(s, cv2.CV_64F).var() for s in stack]
-    best_z = np.argsort(scores)[-top_n:]
+    scores = [cv2.Laplacian(s, cv2.CV_64F).var() for s in stack] # Compute focus scores
+    best_z = np.argsort(scores)[-top_n:] # select best focused slices
     best_z.sort()
     zprojected = np.max(stack[best_z], axis=0)
     zprojected_normalized = normalize_to_uint8(zprojected)
@@ -31,7 +31,6 @@ def clahe(img, clip_limit=4.0, tile_size=(8, 8)):
     c = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_size)
     return c.apply(img)
 
-@staticmethod
 def remove_outliers(img, k=18.0, use_median=False, verbose=False, max_clip_frac=1e-2):
     """
     Clip values that are more than k std-dev (or MAD units) above center.
@@ -123,3 +122,13 @@ def preprocess_cytoplasm_channels(channel_images: dict) -> dict: # TODO currentl
             img_proc = normalize_to_uint8(img)
         processed[channel] = img_proc
     return processed
+
+def compute_contrast(img: np.ndarray) -> float:
+    """
+    Compute a robust contrast metric: 99th - 50th percentile of the image.
+    Returns -1 if img is None.
+    """
+    if img is None:
+        return -1.0
+    img = np.asarray(img)
+    return float(np.percentile(img, 99) - np.percentile(img, 50))

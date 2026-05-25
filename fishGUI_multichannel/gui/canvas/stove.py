@@ -32,11 +32,6 @@ class stove():
         # ensure canvas gets focus on click so keyboard shortcuts work
         tk_widget = self.canvas.get_tk_widget()
         tk_widget.bind("<Button-1>", lambda e: e.widget.focus_set(), add='+')
-        # bind edit shortcuts 
-        tk_widget.bind("<Control-z>", lambda e: self.onUndo(e))
-        tk_widget.bind("<Control-y>", lambda e: self.onRedo(e))
-        tk_widget.bind("<Control-r>", lambda e: self.onReset(e))
-
         self.canvas.mpl_connect("button_press_event", self.onCanvasClick)
         self.canvas.mpl_connect("button_release_event", self.onCanvasRelease)
         self.canvas.mpl_connect("motion_notify_event", self.onCanvasDrag)
@@ -68,12 +63,15 @@ class stove():
         self.sep.pack(side=tkinter.LEFT, fill=tkinter.Y)
         self.canvas.get_tk_widget().pack(side=tkinter.TOP, fill=tkinter.BOTH, expand=True)
         self.toolbar.pack(side=tkinter.BOTTOM, fill=tkinter.BOTH)
-        
-    def cook(self, abs):
-        self.setLoaded(abs)
-        self.ax_img = self.subplot.imshow(self.getLoaded().getImgNumpyRGB())
-        self.subplot.set_axis_off()
-        # Draw segmentation masks for the current channel - abs.seg is the getter for the private variable current_channel_mask 
+
+    def _refresh_nucleus_centers(self, abs):
+        old_patches = getattr(abs, "_nuc_center_patches", []) or []
+        for patch in list(old_patches):
+            try:
+                patch.remove()
+            except Exception:
+                pass
+
         centers = abs.getNucleusCenters() or []
         patches = []
         for cx, cy in centers:
@@ -84,6 +82,19 @@ class stove():
             except Exception:
                 continue
         abs._nuc_center_patches = patches
+        
+    def cook(self, abs):
+        if self.getLoaded() is abs and self.ax_img is not None:
+            self.ax_img.set_data(abs.getImgNumpyRGB())
+            self._refresh_nucleus_centers(abs)
+            self.subplot.set_axis_off()
+            self.canvas.draw_idle()
+            return
+
+        self.setLoaded(abs)
+        self.ax_img = self.subplot.imshow(self.getLoaded().getImgNumpyRGB())
+        self.subplot.set_axis_off()
+        self._refresh_nucleus_centers(abs)
         self.canvas.draw()
 
     def dump(self):
@@ -136,14 +147,10 @@ class stove():
         self.press = True
         if stove.isLeftClick(event):
             if event.inaxes != self.subplot:
-                print("[DEBUG] Click not in subplot axes")
                 return
                 
             # Handle BBOX mode interactions
             if self.gui.getFuncButton().bboxButtonPressed():
-                print("[DEBUG] Segmentation mode is ON")
-                print(f"[DEBUG] Brush: {self.gui.getSeasoning().brushButtonPressed()}, Eraser: {self.gui.getSeasoning().eraserButtonPressed()}")
-                print(f"[DEBUG] segment.getBuffer(): {segment.getBuffer()}, selected: {getattr(segment.getBuffer(), 'selected', None)}")
                 if box.getBuffer() and box.getBuffer().selected:
                     anchorName = box.getBuffer().anchorContains(event.xdata, event.ydata) # Anchor stores bboxes, uses x and y finds the specific box
 
@@ -178,7 +185,6 @@ class stove():
                 # switching to overlapping segments while editing.
                 if brush_active or eraser_active:
                     if buf and buf.selected and buf.contains(event.xdata, event.ydata):
-                        print("[DEBUG] Brush/Eraser tool active, editing selected mask")
                         try:
                             buf.push_undo() # record undo snapshot at the start of the stroke if available
                         except Exception:
@@ -199,6 +205,7 @@ class stove():
                     else:
                         # ignore click when brush/eraser active but no valid selected buffer
                         print("[DEBUG] Brush/Eraser active but click is outside selected mask -> ignoring")
+                        self.press = False
                         return
                 else:
                     # Normal selection behavior (only when NOT in brush/eraser mode)
@@ -240,10 +247,7 @@ class stove():
     def onCanvasDrag(self, event: MouseEvent):
         if not self.press: 
             return
-        print("[DEBUG] onCanvasDrag called")
         if self.gui.getFuncButton().bboxButtonPressed():
-            print(f"[DEBUG] Drag at ({event.xdata}, {event.ydata})")
-            print(f"[DEBUG] Brush: {self.gui.getSeasoning().brushButtonPressed()}, Eraser: {self.gui.getSeasoning().eraserButtonPressed()}")
             a = anchor.getBuffer()
             b = box.getBuffer()
             if not (a and a.selected and b and b.selected): 
@@ -285,11 +289,12 @@ class stove():
 
         elif self.gui.getFuncButton().segButtonPressed() and segment.getBuffer() and segment.getBuffer().selected:
             current_x, current_y = event.xdata, event.ydata
-            print("Curr_X, Curr_Y", current_x, current_y)
             if current_x is None or current_y is None: 
                 return
 
             if self.gui.getSeasoning().brushButtonPressed() or self.gui.getSeasoning().eraserButtonPressed():
+                x_vals = [current_x]
+                y_vals = [current_y]
                 if self.xs and self.ys:
                     lx, ly = self.xs[-1], self.ys[-1]
                     distance = np.hypot(current_x - lx, current_y - ly)
@@ -297,13 +302,14 @@ class stove():
                         n = int(distance // 1)
                         x_vals = np.linspace(lx, current_x, n + 1)
                         y_vals = np.linspace(ly, current_y, n + 1)
-                        for x, y in zip(x_vals, y_vals):
-                            self.xs.append(x)
-                            self.ys.append(y)
-                            self.bufferSetCurrent(1)
-                            self.canvas.restore_region(self.BILT_BUFFER1)
-                            self.marker_draw(x, y)
-                            self.canvas.blit(self.subplot.bbox)
+                for i, (x, y) in enumerate(zip(x_vals, y_vals)):
+                    self.xs.append(x)
+                    self.ys.append(y)
+                    self.bufferSetCurrent(1)
+                    if i % 3 == 0:
+                        self.canvas.restore_region(self.BILT_BUFFER1)
+                        self.marker_draw(x, y)
+                        self.canvas.blit(self.subplot.bbox)
                 else:
                     self.xs.append(current_x)
                     self.ys.append(current_y)
@@ -311,11 +317,6 @@ class stove():
                     self.canvas.restore_region(self.BILT_BUFFER1)
                     self.marker_draw(current_x, current_y)
                     self.canvas.blit(self.subplot.bbox)
-
-                segment.getBuffer().update_mask(
-                    current_x, current_y, self.gui.getSeasoning().get_marker_size(),
-                    erase=self.gui.getSeasoning().eraserButtonPressed()
-                )
 
     def marker_draw(self, x, y):
         circle = Circle((x, y), self.gui.getSeasoning().get_marker_size(), color='red', alpha=0.01)
@@ -332,82 +333,74 @@ class stove():
     def clearLoaded(self):
         self.__onLoad = None
 
-    # ---  Control + Z, Control + Y, Control + R ---
-    def onUndo(self, event=None): 
+    def onUndo(self, event=None):
         if not self.gui.getFuncButton().segButtonPressed():
             return
-        buf = segment.getBuffer()
-        if buf and getattr(buf, "selected", False):
+        loaded = self.getLoaded()
+
+        ok = False
+        try:
+            ok = segment.undo_latest_action(loaded)
+        except Exception:
             ok = False
+
+        if ok:
             try:
-                ok = buf.undo()
+                self.canvas.draw_idle()
             except Exception:
-                ok = False
-            if ok:
-                try:
-                    buf.recal_patch()
-                except Exception:
-                    pass
-                try:
-                    self.canvas.draw_idle()
-                except Exception:
-                    pass
-            else:
-                try:
-                    self.gui.popBox('i', 'Undo', 'Nothing to undo')
-                except Exception:
-                    pass
+                pass
+        else:
+            try:
+                self.gui.popBox("i", "Undo", "Nothing to undo")
+            except Exception:
+                pass
+
 
     def onRedo(self, event=None):
         if not self.gui.getFuncButton().segButtonPressed():
             return
-        buf = segment.getBuffer()
-        if buf and getattr(buf, "selected", False):
+        loaded = self.getLoaded()
+
+        ok = False
+        try:
+            ok = segment.redo_latest_action(loaded)
+        except Exception:
             ok = False
+
+        if ok:
             try:
-                ok = buf.redo()
+                self.canvas.draw_idle()
             except Exception:
-                ok = False
-            if ok:
-                try:
-                    buf.recal_patch()
-                except Exception:
-                    pass
-                try:
-                    self.canvas.draw_idle()
-                except Exception:
-                    pass
-            else:
-                try:
-                    self.gui.popBox('i', 'Redo', 'Nothing to redo')
-                except Exception:
-                    pass
+                pass
+        else:
+            try:
+                self.gui.popBox("i", "Redo", "Nothing to redo")
+            except Exception:
+                pass
+
 
     def onReset(self, event=None):
         if not self.gui.getFuncButton().segButtonPressed():
             return
-        buf = segment.getBuffer()
-        if buf and getattr(buf, "selected", False):
+        loaded = self.getLoaded()
+
+        ok = False
+        try:
+            ok = segment.reset_loaded(loaded)
+        except Exception:
             ok = False
+
+        if ok:
             try:
-                ok = buf.reset()
+                self.canvas.draw_idle()
             except Exception:
-                ok = False
-            if ok:
-                try:
-                    buf.recal_patch()
-                except Exception:
-                    pass
-                try:
-                    self.canvas.draw_idle()
-                except Exception:
-                    pass
-            else:
-                try:
-                    self.gui.popBox('i', 'Reset', 'Nothing to reset')
-                except Exception:
-                    pass
-     # ---  End of Control + Z, Control + Y, Control + R
+                pass
+        else:
+            try:
+                self.gui.popBox("i", "Reset", "Nothing to reset")
+            except Exception:
+                pass
+
      
     @staticmethod
     def isLeftClick(event: MouseEvent) -> bool:

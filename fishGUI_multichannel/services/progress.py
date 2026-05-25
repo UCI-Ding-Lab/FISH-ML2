@@ -147,27 +147,3 @@ class Progress:
                 d["xy"].append(xy)
                 d["masks"].append(masks) 
         create(d["name"], d["xy"], d["masks"], f, dirname=str(directory_name))
-
-
-    @staticmethod
-    def generateBbox(gui, list_of_abstract_objects: list[abstract]):
-        """
-        Generates bounding boxes using multithreading
-        Called in gui/buttons.py, IMPORT_call method
-        This ensures that boundary boxes are generate once images are imported
-        """
-        # --- Helper functions ---
-        def generate_bbox_for_object(single_abstract_object: abstract):
-            _ = single_abstract_object.bbox
-
-        def generate_bboxes():
-            max_workers = min(3, len(list_of_abstract_objects))
-            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-                executor.map(generate_bbox_for_object, list_of_abstract_objects)
-        if list_of_abstract_objects:
-            first_abs = list_of_abstract_objects[0]
-            gui.getRoot().after(0, lambda: gui.getStove().cook(first_abs))
-            
-                
-        # --- Main Logic ---
-        threading.Thread(target=generate_bboxes, daemon=True).start() # Start the thread of generating bboxes

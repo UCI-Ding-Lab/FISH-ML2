@@ -3,6 +3,7 @@ import numpy as np
 import logging
 import time
 from ..gui.canvas.segment import segment
+from ..utils.image_preprocessing import compute_contrast
 
 logger = logging.getLogger('fishcore')
 
@@ -20,35 +21,62 @@ def _masks_to_segments(masks: np.ndarray, gui) -> list[segment]:
     return seg_objs
 
 
-def run_cellpose_sam_segmentation(
-    nucleus_img: np.ndarray,
-    cyto_channels: list[np.ndarray],  # pass a list of image arrays, e.g. [cyto_647, cyto_488, ...]
-    gui
-):
-    """
-    Segments using nucleus + up to 2 cytoplasm channels
-    Returns the same mask list for all cytoplasm channels
-    """
-    logger.info("Starting segmentation (Fish.predict) ...")
+def _select_best_cyto2(main_channel: str, cyto_channels: dict) -> np.ndarray:
+    candidates = [(k, v) for k, v in cyto_channels.items() if k != main_channel and v is not None]
+    if not candidates:
+        return None
+    best = max(candidates, key=lambda kv: compute_contrast(kv[1]))
+    return best[1]
 
-    # Pick first and second available cytoplasm channels -- TODO think of a more robust way to choose cytoplasm channel that works best for cellpose-sam
-    cyto_imgs = [c for c in cyto_channels if c is not None]
-    if not cyto_imgs or nucleus_img is None:
-        logger.warning("Segmentation aborted: missing nucleus or cytoplasm channel")
-        return [[] for _ in cyto_channels]
-    cyto1 = cyto_imgs[0]
-    cyto2 = cyto_imgs[1] if len(cyto_imgs) > 1 else np.zeros_like(cyto1)
-    img = np.stack([nucleus_img, cyto1, cyto2], axis=-1).astype(np.float32, copy=False) # Stack as (H, W, 3): nucleus, cyto1, cyto2
-    logger.debug(f"Fish.predict input shape={img.shape} dtype={img.dtype}")
 
-    # Predict the masks using cellpose-sam 
+def _prepare_segmentation_input(nucleus_img, cyto1, cyto2):
+    """
+    Stack nucleus, cyto1, cyto2 into a 3-channel float32 image for model input.
+    """
+    return np.stack([nucleus_img, cyto1, cyto2], axis=-1).astype(np.float32, copy=False)
+
+
+def _segment_channel(fish_model, img, gui):
+    """
+    Run the model and convert masks to segment objects.
+    """
     try:
-        fish_model = gui.getBackEnd()
         masks, flows = fish_model.predict(img)  # defined in fishCore.py
+        return _masks_to_segments(masks, gui)   # convert each mask numpy array to segment object (defined in gui/canvas/segment.py)
     except Exception as e:
         logger.exception(f"Predict failed: {e}")
-        return [[] for _ in cyto_channels]
-    
-    seg_objs = _masks_to_segments(masks, gui)   # convert each mask numpy array to segment object (defined in gui/canvas/segment.py)
+        return []
 
-    return [seg_objs for _ in cyto_channels]    # Return the same masks for all cytoplasm channels
+
+def run_cellpose_sam_segmentation(
+    nucleus_img: np.ndarray,
+    cyto_channels: dict,
+    gui,
+    selected_channel: str,
+):
+    """
+    Segment only the selected channel.
+    Return a dict with all channels present, but only the selected one populated.
+    """
+    logger.info(f"Starting segmentation (Cellpose-SAM predict) for channel {selected_channel} ...")
+
+    fish_model = gui.getBackEnd()
+    results = {k: [] for k in cyto_channels}
+    if not cyto_channels or nucleus_img is None:
+        logger.warning("Segmentation aborted: missing nucleus or cytoplasm channel")
+        return results
+
+    cyto1 = cyto_channels.get(selected_channel)
+    if cyto1 is None:
+        logger.warning(f"Segmentation aborted: missing selected channel {selected_channel}")
+        return results
+    cyto2 = _select_best_cyto2(selected_channel, cyto_channels)
+    if cyto2 is None:
+        cyto2 = np.zeros_like(cyto1)
+
+    img = _prepare_segmentation_input(nucleus_img, cyto1, cyto2)
+    seg_objs = _segment_channel(fish_model, img, gui)
+    results[selected_channel] = seg_objs
+
+    return results
+
