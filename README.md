@@ -24,8 +24,6 @@ conda create -n fish python=3.11.7
 conda activate fish
 pip install -r requirements.txt
 ```
-On a CUDA-capable Windows machine, `requirements.txt` now pulls the CUDA 12.1 PyTorch wheels so the app can use the GPU in `fish_try`-style environments.
-If all of these doesn't work, manually install all packages in `requirements.txt`.
 
 ### 🔽 Downloading Required Assets
 The required assets can be downloaded from the following link:
