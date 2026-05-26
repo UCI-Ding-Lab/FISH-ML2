@@ -1,13 +1,18 @@
 import threading
 import logging
-from ..services.bundle_data import bundle
-from ..services.apply_channel_mask import apply_channel_mask_to_frames
-from ..gui.abstract import abstract
 import os
-from concurrent.futures import ThreadPoolExecutor
 import csv
 import pathlib
 import time
+from concurrent.futures import ThreadPoolExecutor
+import pickle, threading, concurrent.futures, time
+
+from ..services.bundle_data import bundle
+from ..services.apply_channel_mask import apply_channel_mask_to_frames
+from ..gui.abstract import abstract
+
+
+logger = logging.getLogger('fishcore')
 
 
 class SessionManager:
@@ -134,6 +139,43 @@ class SessionManager:
         return cls.__importPath
 
     @classmethod
+    def _get_inference_worker_limit(cls, gui, total_jobs: int) -> int:
+        backend = gui.getBackEnd()
+        if getattr(backend, "device", "cpu") == "cuda":
+            logger.info("GPU detected; limiting inference concurrency to 1 worker.")
+            return 1
+        return max(1, min(os.cpu_count() or 1, total_jobs))
+
+    @classmethod
+    def generate_bboxes(cls, gui):
+        abstracts = cls.getPool()
+        if not abstracts:
+            return
+
+        def job():
+            max_workers = cls._get_inference_worker_limit(gui, len(abstracts))
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                for abs_obj in abstracts:
+                    executor.submit(cls._generate_one_bbox, gui, abs_obj)
+
+        threading.Thread(target=job, daemon=True).start()
+
+    @classmethod
+    def _generate_one_bbox(cls, gui, abs_obj):
+        start_time = time.time()
+        _ = abs_obj.bbox
+        cls._refresh_if_loaded(gui, abs_obj)
+        elapsed = time.time() - start_time
+        print(f"Generated bbox for sample {abs_obj.sample_id} in {elapsed:.4f} seconds")
+
+    @classmethod
+    def _refresh_if_loaded(cls, gui, abs_obj):
+        loaded = gui.getStove().getLoaded()
+        if loaded is not abs_obj:
+            return
+        gui.getRoot().after(0, lambda a=abs_obj: gui.getStove().cook(a))
+
+    @classmethod
     def saveBboxChanges(cls):
         """
         Ensures GUI is now in a view-only mode. 
@@ -191,10 +233,22 @@ class SessionManager:
                 )
                 result.append(bundled_info_for_save)
         return result
+
+    @classmethod
+    def get_all_available_channels(cls):
+        """
+        Returns a sorted list of all unique channels present in the current pool.
+        """
+        channels = set()
+        for abs_obj in cls.getPool():
+            # No hasattr needed, all abstract objects have available_channels
+            channels.update(abs_obj.available_channels)
+        return sorted(channels)
     
     @classmethod
     def apply_channel_mask_to_frames(cls, source_channel, selected_frames, target_channels, on_done=None):
         apply_channel_mask_to_frames(cls, source_channel, selected_frames, target_channels, on_done=on_done)
+
 
     @classmethod
     def segment_selected(cls, gui):
@@ -207,30 +261,27 @@ class SessionManager:
         selected_frames = cls._get_selected_frames()
         ready, not_ready = cls._split_by_bbox_generated(selected_frames)
         if not_ready:
-            names = ", ".join(getattr(obj, "sample_id", "?") for obj in not_ready)
-            gui.popBox("w", "BBOX Not Ready",
-                    f"Skipping segmentation for: {names} (BBOX still not ready).")
+            cls._show_bbox_not_ready_popup(gui, not_ready)
         if not ready:
             return
-
-        threads = []
-        for abs_obj in ready:
-            t = threading.Thread(target=cls._segment_each, args=(abs_obj,gui), daemon=True)
-            t.start()
-            threads.append(t)
 
         gui.popBox("i", "Segmentation", f"Started segmentation for {len(selected_frames)} images.")
 
         def monitor_threads():
-            for t in threads:
-                t.join()
+            max_workers = cls._get_inference_worker_limit(gui, len(selected_frames))
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = [
+                    executor.submit(cls._segment_each, abs_obj, gui)
+                    for abs_obj in selected_frames
+                ]
+                for future in futures:
+                    future.result()
             cls._export_segmentation_timing_csv()
             gui.getFuncButton().toggle["SEGMENTATION_SELECTION"].set(0)
 
         threading.Thread(target=monitor_threads, daemon=True).start()
-    
 
-    # --- Helper function for segment_selected method ---
+
     @classmethod
     def _get_selected_frames(cls):
         """
@@ -259,38 +310,30 @@ class SessionManager:
     
     @classmethod
     def _ui_show_segmented(cls, a, gui):
-        if a.selected_for_segmentation: 
-            a.thumbnail = "segmentation_selected_and_segmented" # orange, blue and green dots
-        else:
-            a.thumbnail = "segmented" # 
+        a.thumbnail = "segmented" # blue and orange
         a.selected_for_segmentation = False
         if a is cls.getBuffer() and gui.getFuncButton().segButtonPressed():
             a.drawSegmentation = True
 
+
     @classmethod
     def _segment_each(cls, abs_obj: abstract, gui):
         thread_name = threading.current_thread().name
-        print(f"[DEBUG] Thread {thread_name} STARTED for sample {abs_obj.sample_id}")
-
+        logger.debug(f"Thread {thread_name} STARTED for sample {abs_obj.sample_id}")
         start = time.perf_counter()
 
-        _ = abs_obj.segment
-        channel = abs_obj.selected_channel or (
-            abs_obj.available_channels[0] if abs_obj.available_channels else None
-        )
-
-        if channel is not None:
-            seg_list = abs_obj._get_seg_list_for_channel(channel)
-        else:
-            seg_list = abs_obj.segment
-
-        abs_obj.seg = seg_list
-        abs_obj.segment_generated = True
+        original_channel = abs_obj.selected_channel
+        channels_to_segment = [ch for ch in abs_obj.available_channels if ch in abs_obj.SEGMENT_CHANNELS]
+        for ch in channels_to_segment:
+            abs_obj.selected_channel = ch
+            _ = abs_obj.segment
+        abs_obj.selected_channel = original_channel
+        abs_obj.seg = abs_obj._get_seg_list_for_channel(abs_obj.selected_channel)
+        abs_obj.segment_generated = any(abs_obj._get_seg_list_for_channel(ch) for ch in abs_obj.SEGMENT_CHANNELS)
 
         elapsed = time.perf_counter() - start
-        num_masks = len(seg_list) if seg_list is not None else 0
+        num_masks = len(abs_obj.seg) if abs_obj.seg is not None else 0
         frame_number = f"s{str(abs_obj.sample_id).zfill(3)}"
-
         with cls.__segmentation_timing_lock:
             cls.__segmentation_timing_rows.append({
                 "frame_number": frame_number,
@@ -299,7 +342,8 @@ class SessionManager:
             })
 
         gui.getRoot().after(0, lambda a=abs_obj: cls._ui_show_segmented(a, gui))
-        print(f"[DEBUG] Thread {thread_name} FINISHED for sample {abs_obj.sample_id} in {elapsed:.2f}s")
+        logger.debug(f"Thread {thread_name} FINISHED for sample {abs_obj.sample_id} in {elapsed:.2f}s")
+
 
 
     @classmethod
@@ -327,7 +371,3 @@ class SessionManager:
             writer.writerows(rows)
 
         logging.info("Saved segmentation timing table to %s", out_path)
-
-
-
-        

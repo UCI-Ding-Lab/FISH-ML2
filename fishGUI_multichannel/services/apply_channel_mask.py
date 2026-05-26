@@ -81,6 +81,20 @@ def apply_channel_mask_to_frames(
         seg_mode_on = False
     root = _get_gui_root(abstract_cls, frame_pool)
 
+    def _get_inference_worker_limit(total_jobs):
+        try:
+            backend = None
+            if focused_frame is not None and focused_frame.gui is not None:
+                backend = focused_frame.gui.getBackEnd()
+            elif frame_pool and frame_pool[0].gui is not None:
+                backend = frame_pool[0].gui.getBackEnd()
+            if getattr(backend, "device", "cpu") == "cuda":
+                logger.info("GPU detected; limiting apply-channel concurrency to 1 worker.")
+                return 1
+        except Exception:
+            pass
+        return max(1, min(5, os.cpu_count() or 1, total_jobs))
+
     def compute_worker(i):
         frame = frame_pool[i]
         sid = frame.sample_id
@@ -120,7 +134,7 @@ def apply_channel_mask_to_frames(
     def coordinator():
         start = time.perf_counter()
         results = []
-        max_workers = min(5, os.cpu_count() or 1)
+        max_workers = _get_inference_worker_limit(len(frame_indices))
         with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="ApplyMask") as ex:
             futures = {ex.submit(compute_worker, i): i for i in frame_indices}
             for fut in as_completed(futures):
