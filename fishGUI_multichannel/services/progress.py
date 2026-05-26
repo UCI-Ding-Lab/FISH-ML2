@@ -66,7 +66,15 @@ class Progress:
             
             return nucleus_path, cytoplasm_paths
             
-        def create_abstract_object(sample_id, nucleus_path, cyto_paths, bbox_list, seg_dict, gui):
+        def create_abstract_object(
+            sample_id,
+            nucleus_path,
+            cyto_paths,
+            bbox_list,
+            seg_dict,
+            nucleus_centers,
+            gui,
+        ):
             channels = channels_from_paths(nucleus_path, cyto_paths)
             if "DAPI" not in channels:
                 messagebox.showwarning(
@@ -77,15 +85,23 @@ class Progress:
 
             cyto_paths, cyto_channels = get_cytoplasm_paths_and_names(channels)
             abstract_object = abstract(
-                sample_id, 
+                sample_id,
                 nucleus_path=nucleus_path,
                 cyto_paths=cyto_paths,
                 cyto_channels=cyto_channels,
                 channels=channels,
                 gallery_frame=gui.getTifSequence().gallery_frame,
-                gui=gui
+                gui=gui,
             )
+            if nucleus_centers:
+                abstract_object._abstract__nucleus_centers = [
+                    (float(x), float(y)) for x, y in nucleus_centers
+                ]
             abstract_object.bbox = [box(b, gui) for b in bbox_list]
+            if abstract_object.getNucleusCenters() or bbox_list:
+                abstract_object.bbox_generated = True
+            elif not abstract_object.bbox_generated:
+                _ = abstract_object.bbox
             for ch, mask_list in seg_dict.items():
                 seg_objs = [segment(gui, m) for m in mask_list]
                 abstract_object._set_seg_obj_for_channel(ch, seg_objs)
@@ -105,11 +121,26 @@ class Progress:
         for item in session_data:
             try:
                 single_bundle : bundle = item
-                sample_id, nucleus_path, cytoplasm_paths, bbox_list, seg_dict = single_bundle.extract_data_from_bundles() 
-                valid_paths = return_valid_paths(nucleus_path, cytoplasm_paths) 
+                (
+                    sample_id,
+                    nucleus_path,
+                    cytoplasm_paths,
+                    bbox_list,
+                    seg_dict,
+                    nucleus_centers,
+                ) = single_bundle.extract_data_from_bundles()
+                valid_paths = return_valid_paths(nucleus_path, cytoplasm_paths)
                 if valid_paths is None: # prevent loading frames and its data with at least one invalid path
                     continue
-                abs_obj = create_abstract_object(sample_id, nucleus_path, cytoplasm_paths, bbox_list, seg_dict, gui)
+                abs_obj = create_abstract_object(
+                    sample_id,
+                    nucleus_path,
+                    cytoplasm_paths,
+                    bbox_list,
+                    seg_dict,
+                    nucleus_centers,
+                    gui,
+                )
                 if abs_obj is None:
                     continue
                 gui.getSeasoning().update_channel_menu(abs_obj.available_channels)     
