@@ -88,7 +88,7 @@ class abstract():
         
         # Segmentation masks
         self.__current_channel_mask = [] 
-        self.__channel_segments = {}
+        self.__channel_segments = {ch: [] for ch in self.SEGMENT_CHANNELS}
         self.__segment_generated: bool = False
         self.__drawSeg: bool = False
         self.__channel_rgb_cache = {}
@@ -277,7 +277,7 @@ class abstract():
         if new_channel == self.__current_channel:
             return
         self.__current_channel = new_channel
-        self.__current_channel_mask = self.current_channel_mask
+        self.__current_channel_mask = self.get_segments(new_channel)
         self.__img_np_rgb = self._get_rgb_for_channel(new_channel)
         self.update_thumbnail() # TODO should thumbnail be updated in thumbnaisl.py? 
 
@@ -312,13 +312,39 @@ class abstract():
         -> segment_each (session_manager.py) -> segment (abstract.py) 
         -> run_cellpose_segmentation (segmentation.py)
         """
+        return self.segment_channel(self.selected_channel)
+
+
+    def get_segments(self, channel=None) -> list[segment]:
+        target_channel = self.__current_channel if channel is None else channel
+        if target_channel is None:
+            return []
+        return self._get_seg_list_for_channel(target_channel)
+
+    def set_segments(self, channel, seg_objs) -> None:
+        target_channel = self.__current_channel if channel is None else channel
+        if target_channel is None:
+            return
+        self._set_seg_list_for_channel(target_channel, seg_objs)
+        self.segment_generated = self.has_any_segments()
+
+    def has_segments(self, channel=None) -> bool:
+        return bool(self.get_segments(channel))
+
+    def has_any_segments(self) -> bool:
+        return any(self._get_seg_list_for_channel(ch) for ch in self.SEGMENT_CHANNELS)
+
+    def segment_channel(self, channel=None) -> list[segment]:
+        target_channel = self.__current_channel if channel is None else channel
+        if target_channel is None:
+            return []
         if not self.bbox_generated:
             self.gui.popBox(
                 "w",
                 "Bounding Boxes Not Ready",
                 "Please generate BBOX before running segmentation.",
             )
-            return self.current_channel_mask
+            return self.get_segments(target_channel)
         
         nucleus_img = self.__img_np_nucleus
         cyto_channels = {
@@ -328,19 +354,22 @@ class abstract():
             "594": self.__img_np_594,
             "514": self.__img_np_514,
         }
-        seg_dict = run_cellpose_sam_segmentation(nucleus_img, cyto_channels, self.gui, self.selected_channel)
-        seg_list = seg_dict.get(self.selected_channel, [])
-        self._set_seg_list_for_channel(self.selected_channel, seg_list)
-        self.seg = seg_list
-        self.segment_generated = any(self._get_seg_list_for_channel(ch) for ch in self.SEGMENT_CHANNELS)
-        return self.seg
-
-        return self.current_channel_mask
+        seg_dict = run_cellpose_sam_segmentation(nucleus_img, cyto_channels, self.gui, target_channel)
+        seg_list = seg_dict.get(target_channel, [])
+        self.set_segments(target_channel, seg_list)
+        return self.get_segments(target_channel)
 
 
     def _set_seg_list_for_channel(self, ch, seg_objs):
-        self.__channel_segments[ch] = seg_objs if seg_objs is not None else []
+        if ch is None:
+            return
+        seg_list = seg_objs if seg_objs is not None else []
+        self.__channel_segments[ch] = seg_list
+        if ch == self.__current_channel:
+            self.__current_channel_mask = seg_list
     def _get_seg_list_for_channel(self, ch):
+        if ch is None:
+            return []
         return self.__channel_segments.get(ch, [])
 
     def _get_rgb_for_channel(self, ch):
@@ -364,11 +393,10 @@ class abstract():
 
     @property
     def current_channel_mask(self):
-        return self._get_seg_list_for_channel(self.__current_channel)
+        return self.get_segments(self.__current_channel)
     @current_channel_mask.setter
     def current_channel_mask(self, value):
-        self._set_seg_list_for_channel(self.__current_channel, value)
-        self.segment_generated = bool(self.current_channel_mask)
+        self.set_segments(self.__current_channel, value)
 
 
     def set_mask_for_all_channels(self, mask_list):
@@ -377,7 +405,7 @@ class abstract():
         Used by Apply Channel Mask.
         """
         for ch in self.available_channels:
-            self._set_seg_list_for_channel(ch, mask_list)
+            self.set_segments(ch, mask_list)
 
 # TODO clean code below:
 
@@ -404,16 +432,15 @@ class abstract():
     # TODO check where these methods are used and why it is necessary -- update: used in tools_pannels.py, on_channel_change
     @segment.setter
     def segment(self, value):
-        self.__current_channel_mask = value
-        self.segment_generated = True if value else False
+        self.set_segments(self.__current_channel, value)
 
     @segment.deleter
     def segment(self):
-        self.__current_channel_mask = []
+        self.set_segments(self.__current_channel, [])
 
     @property # TODO remove if unnecssary, check export in progress.py
     def segmentExplicit(self):
-        return self.__current_channel_mask
+        return self.current_channel_mask
     
     @property
     def segment_generated(self) -> bool:
@@ -434,11 +461,11 @@ class abstract():
 
     @property
     def seg(self):
-        return self.__current_channel_mask
+        return self.current_channel_mask
 
     @seg.setter
     def seg(self, value):
-        self.__current_channel_mask = value
+        self.current_channel_mask = value
 
     def on_click(self, event):
         """

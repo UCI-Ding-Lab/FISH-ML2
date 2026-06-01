@@ -110,9 +110,25 @@ class segment():
         if not getattr(stove, "_batch_segment_draw", False):
             stove.canvas.draw()
 
-    def contains(self, x: float, y: float) -> bool:
-        p = self.gui.getStove().subplot.transData.transform((x, y))
-        return self.patch.contains_point(p)
+    def contains(self, x: float, y: float, margin: int = 0) -> bool:
+        if x is None or y is None:
+            return False
+
+        if margin <= 0:
+            p = self.gui.getStove().subplot.transData.transform((x, y))
+            return self.patch.contains_point(p)
+
+        x0 = max(0, int(np.floor(x - margin)))
+        x1 = min(self.__data.shape[0], int(np.ceil(x + margin)) + 1)
+        y0 = max(0, int(np.floor(y - margin)))
+        y1 = min(self.__data.shape[1], int(np.ceil(y + margin)) + 1)
+
+        if x0 >= x1 or y0 >= y1:
+            return False
+
+        xs, ys = np.ogrid[x0:x1, y0:y1]
+        within_margin = (xs - x) ** 2 + (ys - y) ** 2 <= margin ** 2
+        return bool(np.any(self.__data[x0:x1, y0:y1][within_margin] > 0))
 
     def update_mask(self, x, y, radius, erase=False):
         x_int, y_int = int(x), int(y)

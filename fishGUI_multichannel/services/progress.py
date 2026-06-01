@@ -1,5 +1,6 @@
 import pickle, threading, concurrent.futures, time
 from tkinter import filedialog, messagebox
+import logging
 from ..gui.abstract import abstract
 from ..gui.canvas.box import box
 from ..gui.canvas.segment import segment
@@ -8,6 +9,8 @@ from .matPacker import create
 from .session_manager import SessionManager
 import re
 import pathlib
+
+logger = logging.getLogger('fishcore')
 
 class Progress:
     @staticmethod
@@ -53,7 +56,7 @@ class Progress:
             
         def return_valid_paths(nucleus_path, cytoplasm_paths):
             if not nucleus_path.exists():
-                messagebox.showwarning("Missing file", "Nucleus image not found:\n{nucleus_path}")
+                messagebox.showwarning("Missing file", f"Nucleus image not found:\n{nucleus_path}")
                 return None
         
             missing_cytoplasm_file = [str(path) for path in cytoplasm_paths if not path.exists()]
@@ -72,17 +75,9 @@ class Progress:
                 gui=gui
             )
             abstract_object.bbox = [box(b, gui) for b in bbox_list]
-            seg_647 = [segment(gui, m) for m in seg_dict.get("647", [])]
-            seg_488 = [segment(gui, m) for m in seg_dict.get("488", [])]
-            abstract_object._abstract__seg_647 = seg_647
-            abstract_object._abstract__seg_488 = seg_488
-            # Set current channel mask to the selected channel TODO - clean with abstractpy
-            if getattr(abstract_object, "selected_channel", "647") == "647":
-                abstract_object.seg = seg_647 
-            else:
-                abstract_object.seg = seg_488
-            if seg_647 or seg_488:
-                abstract_object.segment_generated = True
+            for channel, mask_list in seg_dict.items():
+                segs = [segment(gui, m) for m in mask_list]
+                abstract_object.set_segments(channel, segs)
             return abstract_object
 
         # --- Main Logic ---
@@ -107,6 +102,7 @@ class Progress:
 
     @staticmethod
     def export(gui):
+        total_start = time.perf_counter()
         f = filedialog.asksaveasfilename(defaultextension=".mat", 
                                          filetypes=[("Matlab files", "*.mat")],
                                          title="Export Results As")
@@ -120,6 +116,7 @@ class Progress:
             return
         
         d = {"name":[],"image":[],"xy":[],"masks":[]}
+        prep_start = time.perf_counter()
         
         # get directory path
         directory_name = SessionManager.getImportDirectory()
@@ -131,19 +128,50 @@ class Progress:
             cyto_paths = abs.getCytoplasmPaths()
             for path in cyto_paths:
                 stem = path.stem.lower()
-                channel = re.search(r"(647|488|555|594)", stem)
+                match = re.search(r"(647|488|555|594|514)", stem)
+                channel = match.group(1) if match else None
             
-                if not abs.selected or len(abs.segmentExplicit) <= 0:
+                if not abs.selected or channel is None or not abs.has_segments(channel):
                     img = None
                     xy = []
                     masks = []
                 else:
-                    img = abs.getImgNumpyRGBCyto(channel) if channel else None
-                    xy = [mask.xy for mask in abs.segment]
-                    masks = [mask.box for mask in abs.segment]
+                    segs = abs.get_segments(channel)
+                    img = abs.getImgNumpyRGBCyto(channel)
+                    xy = [mask.xy for mask in segs]
+                    masks = [mask.box for mask in segs]
 
                 d["name"].append(path.name)
                 d["image"].append(img)
                 d["xy"].append(xy)
                 d["masks"].append(masks) 
+        prep_seconds = time.perf_counter() - prep_start
+
+        write_start = time.perf_counter()
         create(d["name"], d["xy"], d["masks"], f, dirname=str(directory_name))
+        write_seconds = time.perf_counter() - write_start
+        total_seconds = time.perf_counter() - total_start
+
+        logger.info(
+            "Export timing for %s: prepared %d entries in %.2fs, wrote MAT in %.2fs, total %.2fs",
+            pathlib.Path(f).name,
+            len(d["name"]),
+            prep_seconds,
+            write_seconds,
+            total_seconds,
+        )
+
+        try:
+            gui.getRoot().after(
+                0,
+                lambda: messagebox.showinfo(
+                    "Export Complete",
+                    (
+                        f"Prepared {len(d['name'])} entries in {prep_seconds:.2f}s\n"
+                        f"Wrote MAT in {write_seconds:.2f}s\n"
+                        f"Total {total_seconds:.2f}s"
+                    ),
+                ),
+            )
+        except Exception:
+            pass

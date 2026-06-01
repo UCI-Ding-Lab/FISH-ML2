@@ -221,9 +221,9 @@ class SessionManager:
                 logging.debug(f"Object {abstract_object} is not an instance of abstract. Skipping.")
                 continue 
             if abstract_object.selected:
-                seg_647 = [s._segment__data.T for s in abstract_object._get_seg_list_for_channel("647")]
-                seg_488 = [s._segment__data.T for s in abstract_object._get_seg_list_for_channel("488")]
-                seg_dict = {"647": seg_647, "488": seg_488}
+                seg_dict = {}
+                for ch in abstract_object.SEGMENT_CHANNELS:
+                    seg_dict[ch] = [s._segment__data.T for s in abstract_object.get_segments(ch)]
                 bundled_info_for_save = bundle(
                     abstract_object.sample_id,
                     nucleus_path=abstract_object.getNucleusPath(),
@@ -325,14 +325,12 @@ class SessionManager:
         original_channel = abs_obj.selected_channel
         channels_to_segment = [ch for ch in abs_obj.available_channels if ch in abs_obj.SEGMENT_CHANNELS]
         for ch in channels_to_segment:
-            abs_obj.selected_channel = ch
-            _ = abs_obj.segment
+            abs_obj.segment_channel(ch)
         abs_obj.selected_channel = original_channel
-        abs_obj.seg = abs_obj._get_seg_list_for_channel(abs_obj.selected_channel)
-        abs_obj.segment_generated = any(abs_obj._get_seg_list_for_channel(ch) for ch in abs_obj.SEGMENT_CHANNELS)
+        abs_obj.segment_generated = abs_obj.has_any_segments()
 
         elapsed = time.perf_counter() - start
-        num_masks = len(abs_obj.seg) if abs_obj.seg is not None else 0
+        num_masks = len(abs_obj.get_segments(abs_obj.selected_channel))
         frame_number = f"s{str(abs_obj.sample_id).zfill(3)}"
         with cls.__segmentation_timing_lock:
             cls.__segmentation_timing_rows.append({
