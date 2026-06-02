@@ -1,5 +1,8 @@
+import logging
 from matplotlib.patches import Rectangle, Circle
 from .anchor import anchor
+
+logger = logging.getLogger('fishcore')
 
 class box():
     __buffer: 'box' = None
@@ -94,17 +97,15 @@ class box():
                     except (NotImplementedError, ValueError):
                         patches = self.gui.getStove().subplot.patches
                         if self.rect in patches:
-                            # print(self.rect, type(self.rect))
-                            # print(self.center)
                             patches.remove(self.rect)
-        except Exception as e:
-            print(f"Error in box draw setter: {e}")
+        except Exception:
+            logger.warning("Error in box draw setter", exc_info=True)
         
         self.__draw = value
         try:
             self.gui.getStove().canvas.draw()
-        except Exception as e:
-            print(f"Error drawing canvas: {e}")
+        except Exception:
+            logger.warning("Error drawing box canvas", exc_info=True)
 
     def contains(self, x: float, y: float) -> bool:
         p = self.gui.getStove().subplot.transData.transform((x, y))
@@ -123,18 +124,6 @@ class box():
         self.anchors["top-right"].patch.set_center((self.rect.get_x() + self.rect.get_width(), self.rect.get_y() + self.rect.get_height()))
         self.anchors["pos-anchor"].patch.set_center((self.rect.get_x() + self.rect.get_width() / 2, self.rect.get_y() + self.rect.get_height()))
 
-    # @classmethod
-    # def removeCenter(cls, gui, center: Circle):
-    #     patches = list(gui.getStove().subplot.patches)
-    #     if center in patches:
-    #         patches.remove(center)
-
-    #     try:
-    #         center.remove()
-    #         print("Previous nucleus center is removed")
-    #     except NotImplementedError as e:
-    #         print("Previous circle has already been removed", e)
-   
     @classmethod
     def setBuffer(cls, box: 'box'):
         cls.__buffer = box

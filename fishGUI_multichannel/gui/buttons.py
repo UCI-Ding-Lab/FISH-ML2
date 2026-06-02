@@ -352,8 +352,6 @@ class FrameSelectPopup(tk.Toplevel):
     def on_apply(self):
         try:
             self.callback(self.selection.get())
-        except Exception as e:
-            import traceback
-            print("Exception in FrameSelectPopup callback:", e)
-            traceback.print_exc()
+        except Exception:
+            logger.exception("Exception in FrameSelectPopup callback")
         self.destroy()

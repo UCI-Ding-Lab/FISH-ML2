@@ -205,7 +205,6 @@ class stove():
                             pass
                     else:
                         # ignore click when brush/eraser active but no valid selected buffer
-                        print("[DEBUG] Brush/Eraser active but click is outside selected mask -> ignoring")
                         self.press = False
                         return
                 else:

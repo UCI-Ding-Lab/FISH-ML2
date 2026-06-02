@@ -77,7 +77,7 @@ class SessionManager:
         new_pool = []
         for abstract_object in list(cls.getPool()):
             if not isinstance(abstract_object, abstract):
-                logging.debug(f"Object {abstract_object} is not an instance of abstract. Skipping.")
+                logger.debug(f"Object {abstract_object} is not an instance of abstract. Skipping.")
                 continue
             if abstract_object.selected:
                 abstract_object.thumbnail = "default"
@@ -86,7 +86,7 @@ class SessionManager:
                 try:
                     del abstract_object.thumbnail  # hides from UI
                 except Exception as e:
-                    logging.debug(f"Failed to delete thumbnail for {getattr(abstract_object,'sample_id','?')}: {e}")
+                    logger.debug(f"Failed to delete thumbnail for {getattr(abstract_object,'sample_id','?')}: {e}")
         cls.__pool = new_pool
         cls.__buffer = None
         cls.sendFirst()
@@ -98,7 +98,7 @@ class SessionManager:
         """
         for abstract_object in cls.getPool():
             if not isinstance(abstract_object, abstract):
-                logging.debug(f"Object {abstract_object} is not an instance of abstract. Skipping.")
+                logger.debug(f"Object {abstract_object} is not an instance of abstract. Skipping.")
                 return
             if abstract_object.selected:
                 abstract_object.on_click(None)
@@ -112,7 +112,7 @@ class SessionManager:
         """
         current = cls.getBuffer()
         if not isinstance(current, abstract):
-            logging.debug(f"Object {current} is not an instance of abstract. Skipping.")
+            logger.debug(f"Object {current} is not an instance of abstract. Skipping.")
             return
         if current: current.on_click(None)
         else: cls.sendFirst()
@@ -125,7 +125,7 @@ class SessionManager:
         """
         for abstract_object in cls.getPool():
             if not isinstance(abstract_object, abstract):
-                logging.debug(f"Object {abstract_object} is not an instance of abstract. Skipping.")
+                logger.debug(f"Object {abstract_object} is not an instance of abstract. Skipping.")
                 continue 
             abstract_object.selected_for_segmentation = False  
 
@@ -166,7 +166,7 @@ class SessionManager:
         _ = abs_obj.bbox
         cls._refresh_if_loaded(gui, abs_obj)
         elapsed = time.time() - start_time
-        print(f"Generated bbox for sample {abs_obj.sample_id} in {elapsed:.4f} seconds")
+        logger.info("Computed nucleus centers for sample %s in %.4f seconds", abs_obj.sample_id, elapsed,)
 
     @classmethod
     def _refresh_if_loaded(cls, gui, abs_obj):
@@ -218,7 +218,7 @@ class SessionManager:
         result = []
         for abstract_object in cls.getPool():
             if not isinstance(abstract_object, abstract):
-                logging.debug(f"Object {abstract_object} is not an instance of abstract. Skipping.")
+                logger.debug(f"Object {abstract_object} is not an instance of abstract. Skipping.")
                 continue 
             if abstract_object.selected:
                 seg_dict = {}
@@ -291,7 +291,7 @@ class SessionManager:
             abstract_object for abstract_object in cls.getPool()
             if isinstance(abstract_object, abstract) and abstract_object.selected_for_segmentation
         ]
-        logging.debug(
+        logger.debug(
             f"Segmenting {len(selected_frames)} images: "
             f"{[str(abstract_object.getNucleusPath().name) for abstract_object in selected_frames]}"
         )
@@ -348,11 +348,11 @@ class SessionManager:
     def _export_segmentation_timing_csv(cls):
         import_dir = cls.getImportDirectory()
         if import_dir is None:
-            logging.warning("No import directory set; skipping segmentation timing export.")
+            logger.warning("No import directory set; skipping segmentation timing export.")
             return
 
         if not cls.__segmentation_timing_rows:
-            logging.warning("No segmentation timing rows to export.")
+            logger.warning("No segmentation timing rows to export.")
             return
 
         import_dir = pathlib.Path(import_dir)
@@ -368,4 +368,4 @@ class SessionManager:
             writer.writeheader()
             writer.writerows(rows)
 
-        logging.info("Saved segmentation timing table to %s", out_path)
+        logger.info("Saved segmentation timing table to %s", out_path)

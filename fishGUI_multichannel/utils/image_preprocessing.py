@@ -1,7 +1,10 @@
+import logging
 import cv2
 import numpy as np
 from skimage import filters, morphology, segmentation
 from skimage.restoration import estimate_sigma
+
+logger = logging.getLogger('fishcore')
 
 # TODO - grayscale to rgb is good for display/inference; helper__hdr2Rgb is good for finetuning ml models - look more into it
 def grayscale_to_rgb(grayscale_img) -> np.ndarray:
@@ -42,7 +45,6 @@ def remove_outliers(img, k=18.0, use_median=False, verbose=False, max_clip_frac=
         clipped float32 image in [0,1]
     """
 
-    print("OUTLIERS REMOVING...")
     x = img.astype(np.float32)
 
     if use_median:
@@ -60,7 +62,7 @@ def remove_outliers(img, k=18.0, use_median=False, verbose=False, max_clip_frac=
     clip_frac = mask.mean()  # between 0 and 1
 
     if verbose:
-        print(
+        logger.debug(
             f"Threshold={thresh:.3f}, "
             f"clip_frac={clip_frac*100:.5f}% (max allowed={max_clip_frac*100:.5f}%)"
         )
@@ -71,9 +73,9 @@ def remove_outliers(img, k=18.0, use_median=False, verbose=False, max_clip_frac=
         # -> treat as no extreme outliers and skip clipping
         if verbose:
             if clip_frac == 0:
-                print("No pixels above threshold — skipping outlier clipping.")
+                logger.debug("No pixels above threshold — skipping outlier clipping.")
             else:
-                print("Too many pixels above threshold — likely real signal, skipping clipping.")
+                logger.debug("Too many pixels above threshold — likely real signal, skipping clipping.")
         x_clipped = x
     else:
         # safe to treat as extreme outliers

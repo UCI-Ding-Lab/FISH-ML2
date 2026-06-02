@@ -109,7 +109,7 @@ class abstract():
         self.__img_np_rgb = grayscale_to_rgb(thumbnail_img) # NOTE Many display libraries, including Tkinter, PIL, and matplotlib, expect images to be in RGB format
         self.__img_pil_thumbnail, self.__img_tk_thumbnail = self._create_pil_and_tkinter_thumbnail(self.__img_np_rgb) # Convert image to display on tkinter thumbnail & main canvas
         self.__label = self._create_gallery_thumbnail(gallery_frame, self.__img_tk_thumbnail)
-        self._setup_gallery_thumbnail_label_bindings_and_debug(self.__label) # TODO remove this method if possible
+        self._setup_gallery_thumbnail_label_bindings(self.__label)
 
         from ..services.session_manager import SessionManager
         SessionManager.addToPool(self)
@@ -295,7 +295,7 @@ class abstract():
                 for x0, y0, x1, y1 in nuc_boxes
             ]
             self.nucleus_centers = centers
-            logger.info(f"Computed nucleus centers : {nuc_boxes}")
+            # logger.info(f"Computed nucleus centers : {nuc_boxes}")
             self.bbox_generated = True # TODO change to nucleus_center_computed if bbox is unnecessary
         return self.__bbox
         
@@ -473,8 +473,6 @@ class abstract():
         they are in when the user clicks on the thumbnail and sets
         it to focus
         """
-        if event:
-            print("clicked", event.num, event.state)
         self.gui.getSeasoning().update_channel_selector_for_image(self)
         self.gui.getStove().bufferSetCurrent(3)
         self.gui.getStove().dump()
@@ -482,11 +480,6 @@ class abstract():
         prev_thumbnail = SessionManager.getBuffer()
         if prev_thumbnail: del prev_thumbnail.highlighted
         self.highlighted = "red"
-
-        print(f"select={self.gui.getFuncButton().selectButtonPressed()}, "
-        f"frameSeg={self.gui.getFuncButton().frameSegButtonPressed()}, "
-        f"bbox={self.gui.getFuncButton().bboxButtonPressed()}, "
-        f"seg={self.gui.getFuncButton().segButtonPressed()}, ")
 
         func_btn = self.gui.getFuncButton()
         bbox_on = func_btn.bboxButtonPressed()
@@ -624,8 +617,7 @@ class abstract():
             self.thumbnail = "default"  # no dot
 
 
-    # TODO remove this method if possible
-    def _setup_gallery_thumbnail_label_bindings_and_debug(self, label):
+    def _setup_gallery_thumbnail_label_bindings(self, label):
         # Back reference and bring to front
         label._abs = self
         label.lift()
@@ -635,7 +627,6 @@ class abstract():
         tags = [t for t in label.bindtags() if t != wname]
         tags.insert(0, wname)
         label.bindtags(tuple(tags))
-        print("[thumb] bindtags:", label.bindtags())
 
         # Main bindings, add="+" so we don’t overwrite each other
         label.bind("<Button-1>", self.on_click, add="+")
@@ -643,16 +634,6 @@ class abstract():
         label.bind("<Button-3>", self.on_click, add="+")
         label.bind("<Control-Button-1>", self.on_multi_toggle, add="+")
         label.bind("<Control-Button-3>", self.on_multi_toggle, add="+")
-
-        # Debug taps so you can see raw delivery
-        def _dbg(seq):
-            return lambda e: print(f"[thumb] HIT {seq} num={getattr(e,'num',None)} state={getattr(e,'state',None)}")
-
-        label.bind("<Button-1>", _dbg("<Button-1>"), add="+")
-        label.bind("<Button-3>", _dbg("<Button-3>"), add="+")
-        label.bind("<Control-Button-1>", _dbg("<Control-Button-1>"), add="+")
-        label.bind("<Control-Button-3>", _dbg("<Control-Button-3>"), add="+")
-        label.bind("<Enter>", _dbg("<Enter>"), add="+")
 
     # --- Helper functions ---
     @property
@@ -684,15 +665,15 @@ class abstract():
                         if not value:
                             box.clearBufferAndDeselect()
                     except Exception as e:
-                        print(f"Error setting drawBbox: {e}")
+                        logger.warning("Error setting drawBbox for sample %s", self.sample_id, exc_info=True)
                         continue
             except Exception as e:
-                print(f"Error in drawBbox setter: {e}")
+                logger.warning("Error in drawBbox setter for sample %s", self.sample_id, exc_info=True)
         
         try:
             self.gui.getStove().canvas.draw()
         except Exception as e:
-            print(f"Error drawing canvas in drawBbox: {e}")
+            logger.warning("Error drawing canvas in drawBbox for sample %s", self.sample_id, exc_info=True)
         
         self.__drawBbox = value
 

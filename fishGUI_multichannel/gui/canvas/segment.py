@@ -1,7 +1,10 @@
+import logging
 import numpy as np
 from matplotlib.patches import PathPatch
 from matplotlib.path import Path
 from skimage import measure
+
+logger = logging.getLogger('fishcore')
 
 class segment():
     __buffer: 'segment' = None
@@ -102,8 +105,8 @@ class segment():
                     patches = self.gui.getStove().subplot.patches
                     if self.__patch and self.__patch in patches:
                         patches.remove(self.__patch)
-        except Exception as e:
-            print(f"Error in segment draw setter: {e}")
+        except Exception:
+            logger.warning("Error in segment draw setter", exc_info=True)
         
         self.__draw = value
         stove = self.gui.getStove()
