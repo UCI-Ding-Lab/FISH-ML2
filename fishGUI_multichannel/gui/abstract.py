@@ -322,17 +322,38 @@ class abstract():
         return self._get_seg_list_for_channel(target_channel)
 
     def set_segments(self, channel, seg_objs) -> None:
+        """Store segment objects for one channel and refresh completion state."""
         target_channel = self.__current_channel if channel is None else channel
         if target_channel is None:
             return
         self._set_seg_list_for_channel(target_channel, seg_objs)
-        self.segment_generated = self.has_any_segments()
+        self.segment_generated = self.has_all_channel_segments()
 
     def has_segments(self, channel=None) -> bool:
+        """Return True when the chosen channel already has segmentation masks."""
         return bool(self.get_segments(channel))
 
-    def has_any_segments(self) -> bool:
-        return any(self._get_seg_list_for_channel(ch) for ch in self.SEGMENT_CHANNELS)
+    def _get_channels_requiring_segments(self) -> list[str]:
+        """Return the channels that must be segmented before the frame is complete."""
+        try:
+            channels = list(self.available_channels)
+        except AttributeError:
+            channels = []
+        if channels:
+            return channels
+        if self.__current_channel is None:
+            return []
+        return [self.__current_channel]
+
+    def has_all_channel_segments(self) -> bool:
+        """Return True only when every available channel has segmentation masks."""
+        channels = self._get_channels_requiring_segments()
+        if not channels:
+            return False
+        for channel in channels:
+            if not self.get_segments(channel):
+                return False
+        return True
 
     def segment_channel(self, channel=None) -> list[segment]:
         target_channel = self.__current_channel if channel is None else channel

@@ -318,6 +318,7 @@ class SessionManager:
 
     @classmethod
     def _segment_each(cls, abs_obj: abstract, gui):
+        """Run segmentation for every available channel in one frame."""
         thread_name = threading.current_thread().name
         logger.debug(f"Thread {thread_name} STARTED for sample {abs_obj.sample_id}")
         start = time.perf_counter()
@@ -327,7 +328,7 @@ class SessionManager:
         for ch in channels_to_segment:
             abs_obj.segment_channel(ch)
         abs_obj.selected_channel = original_channel
-        abs_obj.segment_generated = abs_obj.has_any_segments()
+        abs_obj.segment_generated = abs_obj.has_all_channel_segments()
 
         elapsed = time.perf_counter() - start
         num_masks = len(abs_obj.get_segments(abs_obj.selected_channel))
