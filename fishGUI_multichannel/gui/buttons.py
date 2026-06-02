@@ -7,11 +7,7 @@ import logging
 from ..services.session_manager import SessionManager
 from ..services.progress import Progress
 
-logging.basicConfig(
-    level=logging.DEBUG,            
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-)
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('fishcore')
 
 class funcButton():
     def __init__(self, gui):

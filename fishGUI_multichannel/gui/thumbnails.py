@@ -4,7 +4,7 @@ import re
 import logging
 from ..services.session_manager import SessionManager
 
-logger = logging.getLogger(__name__) 
+logger = logging.getLogger('fishcore')
 
 """
 Manages the gallery of TIFF image sequences for the GUI.
