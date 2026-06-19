@@ -12,13 +12,40 @@ def test_segment_channel_stores_results_only_for_the_requested_channel(bare_abst
     abs_obj._abstract__img_np_594 = None
     abs_obj._abstract__img_np_514 = None
 
-    with patch("fishGUI_multichannel.gui.abstract.run_cellpose_sam_segmentation", return_value={"488": [99]}) as mock_segment:
+    with patch("fishGUI_multichannel.gui.abstract.run_cytoplasm_segmentation", return_value={"488": [99]}) as mock_segment:
         result = abs_obj.segment_channel("488")
 
     assert result == [99]
     assert abs_obj.get_segments("488") == [99]
     assert abs_obj.get_segments("647") == []
     mock_segment.assert_called_once()
+
+
+def test_segment_nucleus_stores_dapi_masks_separately(bare_abstract_factory):
+    abs_obj = bare_abstract_factory()
+    abs_obj._abstract__img_np_nucleus = np.zeros((10, 10))
+
+    with patch("fishGUI_multichannel.gui.abstract.run_nucleus_segmentation", return_value=[11, 12]) as mock_segment:
+        result = abs_obj.segment_nucleus()
+
+    assert result == [11, 12]
+    assert abs_obj.get_nucleus_segments() == [11, 12]
+    assert abs_obj.get_segments("647") == []
+    mock_segment.assert_called_once_with(abs_obj._abstract__img_np_nucleus, abs_obj.gui)
+
+
+def test_bbox_computes_nucleus_centers_and_runs_nucleus_segmentation_once(bare_abstract_factory):
+    abs_obj = bare_abstract_factory()
+    abs_obj._abstract__img_np_nucleus = np.zeros((10, 10))
+    abs_obj.gui.getBackEnd.return_value.AppIntDINOwrapper.return_value = [(0, 0, 4, 6)]
+
+    with patch.object(abs_obj, "segment_nucleus", return_value=[21]) as mock_segment_nucleus:
+        result = abs_obj.bbox
+
+    assert result == []
+    assert abs_obj.nucleus_centers == [(2.0, 3.0)]
+    assert abs_obj.bbox_generated is True
+    mock_segment_nucleus.assert_called_once_with()
 
 
 def test_find_methods_return_the_matching_box_and_segment_or_none(bare_abstract_factory):

@@ -9,6 +9,20 @@ import time
 logger = logging.getLogger("fishcore")
 
 # --- Helper Functions --- 
+def is_cytoplasm_channel(channel):
+    """
+    Return True when a channel should participate in apply-channel mode.
+    """
+    return channel != "DAPI"
+
+
+def filter_cytoplasm_channels(channels):
+    """
+    Return only the channels that are valid cytoplasm targets.
+    """
+    return [channel for channel in channels if is_cytoplasm_channel(channel)]
+
+
 def ensure_channel_segmented(frame, channel):
     """
     Ensures the segmentation for the given channel is computed for this frame.
@@ -34,11 +48,12 @@ def extract_finalized_masks(frame, source_channel):
     return mask_list
 
 
-def apply_masks_on_main(frame, target_channels, mask_list):
+def apply_masks_on_main(frame, source_channel, target_channels, mask_list):
     """
     On main thread: applies mask list to all target channels and updates state.
     """
     try:
+        target_channels = filter_cytoplasm_channels(target_channels)
         shared_segs = [segment(frame.gui, m) for m in mask_list] if mask_list else []
         for ch in target_channels:
             logger.debug(f"Applying mask to channel {ch} for frame {frame.sample_id}")
@@ -48,6 +63,7 @@ def apply_masks_on_main(frame, target_channels, mask_list):
                 except Exception:
                     pass
             frame._set_seg_list_for_channel(ch, shared_segs)
+        frame.copy_pairings(source_channel, target_channels)
         frame.seg = frame._get_seg_list_for_channel(frame.selected_channel)
         frame.segment_generated = bool(frame.has_all_channel_segments())
     except Exception as e:
@@ -72,6 +88,11 @@ def apply_channel_mask_to_frames(
     Applies the mask from source_channel to all target_channels for selected frames.
     Runs compute in background threads, UI updates on main thread.
     """
+    if not is_cytoplasm_channel(source_channel):
+        logger.info(f"Skipping apply-channel for source {source_channel}")
+        if on_done:
+            on_done()
+        return
     frame_pool = abstract_cls.getPool()
     frame_indices = [i for i, f in enumerate(frame_pool) if f in selected_frames]
     focused_frame = abstract_cls.getBuffer()
@@ -104,7 +125,8 @@ def apply_channel_mask_to_frames(
         try:
             ensure_channel_segmented(frame, source_channel)
             masks = extract_finalized_masks(frame, source_channel)
-            return ("ok", sid, frame, masks, frame.available_channels)
+            targets = filter_cytoplasm_channels(frame.available_channels)
+            return ("ok", sid, frame, masks, targets)
         except Exception as e:
             logger.error(f"Compute failed for {sid}: {e}", exc_info=True)
             return ("error", sid, frame, None, None)
@@ -117,7 +139,7 @@ def apply_channel_mask_to_frames(
                 continue
             if status == "error":
                 continue
-            apply_masks_on_main(frame, targets, masks)
+            apply_masks_on_main(frame, source_channel, targets, masks)
             update_ui_for_focused_frame(frame, focused_frame, seg_mode_on)
             logger.debug(f"Applied mask to frame {sid}")
         if skipped:

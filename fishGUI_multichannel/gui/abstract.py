@@ -8,7 +8,8 @@ from PIL import Image, ImageTk, ImageDraw
 import logging
 from .canvas.box import box
 from .canvas.segment import segment
-from ..services.segmentation import run_cellpose_sam_segmentation
+from ..services.segmentation import run_cytoplasm_segmentation, run_nucleus_segmentation
+from ..services.pairing import build_pairing_result, clone_pairing_result, make_empty_pairing_result
 from ..utils.image_preprocessing import (
     normalize_to_uint8,
     grayscale_to_rgb,
@@ -87,8 +88,10 @@ class abstract():
         self.__drawBbox: bool = False
         
         # Segmentation masks
+        self.__nucleus_segments = []
         self.__current_channel_mask = [] 
         self.__channel_segments = {ch: [] for ch in self.SEGMENT_CHANNELS}
+        self.__channel_pairings = {ch: make_empty_pairing_result() for ch in self.SEGMENT_CHANNELS}
         self.__segment_generated: bool = False
         self.__drawSeg: bool = False
         self.__channel_rgb_cache = {}
@@ -277,8 +280,8 @@ class abstract():
         if new_channel == self.__current_channel:
             return
         self.__current_channel = new_channel
-        self.__current_channel_mask = self.get_segments(new_channel)
-        self.__img_np_rgb = self._get_rgb_for_channel(new_channel)
+        self.__current_channel_mask = self._get_mask_list_for_display_channel(new_channel)
+        self.__img_np_rgb = self._get_rgb_for_display_channel(new_channel)
         self.update_thumbnail() # TODO should thumbnail be updated in thumbnaisl.py? 
 
 
@@ -295,6 +298,8 @@ class abstract():
                 for x0, y0, x1, y1 in nuc_boxes
             ]
             self.nucleus_centers = centers
+            if not self.has_nucleus_segments():
+                self.segment_nucleus()
             # logger.info(f"Computed nucleus centers : {nuc_boxes}")
             self.bbox_generated = True # TODO change to nucleus_center_computed if bbox is unnecessary
         return self.__bbox
@@ -314,6 +319,33 @@ class abstract():
         """
         return self.segment_channel(self.selected_channel)
 
+    def get_nucleus_segments(self) -> list[segment]:
+        """
+        Return the stored DAPI nucleus masks for this frame.
+        """
+        return self.__nucleus_segments
+
+    def set_nucleus_segments(self, seg_objs) -> None:
+        """
+        Store DAPI nucleus masks for this frame.
+        """
+        self.__nucleus_segments = seg_objs if seg_objs is not None else []
+        self.refresh_all_pairings()
+
+    def has_nucleus_segments(self) -> bool:
+        """
+        Return True when this frame already has DAPI nucleus masks.
+        """
+        return bool(self.__nucleus_segments)
+
+    def segment_nucleus(self) -> list[segment]:
+        """
+        Run DAPI nucleus segmentation once and store the resulting masks.
+        """
+        nucleus_segments = run_nucleus_segmentation(self.__img_np_nucleus, self.gui)
+        self.set_nucleus_segments(nucleus_segments)
+        return self.get_nucleus_segments()
+
 
     def get_segments(self, channel=None) -> list[segment]:
         target_channel = self.__current_channel if channel is None else channel
@@ -327,6 +359,7 @@ class abstract():
         if target_channel is None:
             return
         self._set_seg_list_for_channel(target_channel, seg_objs)
+        self.update_pairings_for_channel(target_channel)
         self.segment_generated = self.has_all_channel_segments()
 
     def has_segments(self, channel=None) -> bool:
@@ -375,7 +408,7 @@ class abstract():
             "594": self.__img_np_594,
             "514": self.__img_np_514,
         }
-        seg_dict = run_cellpose_sam_segmentation(nucleus_img, cyto_channels, self.gui, target_channel)
+        seg_dict = run_cytoplasm_segmentation(nucleus_img, cyto_channels, self.gui, target_channel)
         seg_list = seg_dict.get(target_channel, [])
         self.set_segments(target_channel, seg_list)
         return self.get_segments(target_channel)
@@ -393,6 +426,14 @@ class abstract():
             return []
         return self.__channel_segments.get(ch, [])
 
+    def _get_mask_list_for_display_channel(self, channel) -> list[segment]:
+        """
+        Return the visible mask list for the requested display channel.
+        """
+        if channel == "DAPI":
+            return self.get_nucleus_segments()
+        return self._get_seg_list_for_channel(channel)
+
     def _get_rgb_for_channel(self, ch):
         if ch not in self.__channel_rgb_cache:
             if ch == "647" and self.__img_np_647 is not None:
@@ -409,12 +450,21 @@ class abstract():
                 base_img = self.__img_np_nucleus
             self.__channel_rgb_cache[ch] = grayscale_to_rgb(base_img)
         return self.__channel_rgb_cache[ch]
-    def getImgNumpyRGBCyto(self, channel):
+
+    def _get_rgb_for_display_channel(self, channel):
+        """
+        Return the RGB image used when the requested display channel is active.
+        """
+        if channel == "DAPI":
+            return grayscale_to_rgb(self.__img_np_nucleus)
         return self._get_rgb_for_channel(channel)
+
+    def getImgNumpyRGBForChannel(self, channel):
+        return self._get_rgb_for_display_channel(channel)
 
     @property
     def current_channel_mask(self):
-        return self.get_segments(self.__current_channel)
+        return self._get_mask_list_for_display_channel(self.__current_channel)
     @current_channel_mask.setter
     def current_channel_mask(self, value):
         self.set_segments(self.__current_channel, value)
@@ -427,6 +477,47 @@ class abstract():
         """
         for ch in self.available_channels:
             self.set_segments(ch, mask_list)
+
+    def get_pairings(self, channel) -> dict:
+        """
+        Return the stored nucleus-to-cytoplasm pairing for one channel.
+        """
+        if channel is None:
+            return make_empty_pairing_result()
+        return self.__channel_pairings.get(channel, make_empty_pairing_result())
+
+    def set_pairings(self, channel, pairing_result: dict) -> None:
+        """
+        Store the nucleus-to-cytoplasm pairing result for one channel.
+        """
+        if channel is None:
+            return
+        self.__channel_pairings[channel] = pairing_result if pairing_result is not None else make_empty_pairing_result()
+
+    def copy_pairings(self, source_channel, target_channels: list[str]) -> None:
+        """
+        Copy one channel's pairing result to other cytoplasm channels.
+        """
+        source_pairing = self.get_pairings(source_channel)
+        for channel in target_channels:
+            self.set_pairings(channel, clone_pairing_result(source_pairing))
+
+    def update_pairings_for_channel(self, channel) -> dict:
+        """
+        Rebuild the pairing result for one cytoplasm channel.
+        """
+        segs = self.get_segments(channel)
+        pairing_result = build_pairing_result(self.get_nucleus_segments(), segs)
+        self.set_pairings(channel, pairing_result)
+        return pairing_result
+
+    def refresh_all_pairings(self) -> None:
+        """
+        Rebuild pairings for every available cytoplasm channel in this frame.
+        """
+        for channel in self.available_channels:
+            if self.get_segments(channel):
+                self.update_pairings_for_channel(channel)
 
 # TODO clean code below:
 

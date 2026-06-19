@@ -16,16 +16,13 @@ def _make_bare_tool_panel():
 def test_on_channel_change_updates_loaded_image_channel_and_recooks_the_stove():
     panel = _make_bare_tool_panel()
     abs_obj = MagicMock()
-    abs_obj._get_seg_list_for_channel.return_value = ["mask-488"]
     panel.gui.getStove.return_value.getLoaded.return_value = abs_obj
 
     panel.on_channel_change("488")
 
     panel.channel_var.set.assert_called_once_with("488")
-    abs_obj._get_seg_list_for_channel.assert_called_once_with("488")
     assert abs_obj.drawSegmentation is True
     assert abs_obj.selected_channel == "488"
-    assert abs_obj.seg == ["mask-488"]
     panel.gui.getStove.return_value.cook.assert_called_once_with(abs_obj)
 
 

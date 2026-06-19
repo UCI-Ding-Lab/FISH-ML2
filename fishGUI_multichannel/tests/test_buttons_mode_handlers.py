@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock, patch
 
-from fishGUI_multichannel.gui.buttons import funcButton
+from fishGUI_multichannel.gui.buttons import funcButton, get_apply_channel_source_choices
 from fishGUI_multichannel.services.session_manager import SessionManager
 
 
@@ -96,7 +96,14 @@ def test_apply_channel_mask_call_shows_warning_when_no_channels_are_available():
     button.toggle["BBOX"].set.assert_called_once_with(0)
     button.toggle["SEGMENTATION_SELECTION"].set.assert_called_once_with(0)
     button.toggle["SEGMENT"].set.assert_called_once_with(0)
-    button.gui.popBox.assert_called_once_with("w", "No Channels", "No available channels found in any frame.")
+    button.gui.popBox.assert_called_once_with("w", "No Channels", "No cytoplasm channels found in any frame.")
+
+
+def test_get_apply_channel_source_choices_excludes_dapi():
+    with patch.object(SessionManager, "get_all_available_channels", return_value=["DAPI", "647", "488"]):
+        channels = get_apply_channel_source_choices()
+
+    assert channels == ["647", "488"]
 
 
 def test_export_call_warns_and_resets_toggle_when_no_image_is_loaded():

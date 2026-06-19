@@ -7,6 +7,8 @@ from fishGUI_multichannel.services.apply_channel_mask import (
     apply_masks_on_main,
     ensure_channel_segmented,
     extract_finalized_masks,
+    filter_cytoplasm_channels,
+    is_cytoplasm_channel,
     update_ui_for_focused_frame,
 )
 
@@ -78,15 +80,27 @@ def test_apply_masks_on_main_replaces_target_channel_segments_and_marks_the_fram
     mask_list = [np.ones((2, 2)), np.zeros((2, 2))]
 
     with patch("fishGUI_multichannel.services.apply_channel_mask.segment", side_effect=[shared_seg_1, shared_seg_2]):
-        apply_masks_on_main(frame, ["647", "488"], mask_list)
+        apply_masks_on_main(frame, "647", ["647", "488"], mask_list)
 
     old_seg_647.draw = False
     old_seg_488.draw = False
     frame._set_seg_list_for_channel.assert_any_call("647", [shared_seg_1, shared_seg_2])
     frame._set_seg_list_for_channel.assert_any_call("488", [shared_seg_1, shared_seg_2])
+    frame.copy_pairings.assert_called_once_with("647", ["647", "488"])
     frame._get_seg_list_for_channel.assert_any_call("488")
     assert frame.seg == [old_seg_488]
     assert frame.segment_generated is True
+
+
+def test_is_cytoplasm_channel_returns_false_for_dapi():
+    assert is_cytoplasm_channel("647") is True
+    assert is_cytoplasm_channel("DAPI") is False
+
+
+def test_filter_cytoplasm_channels_excludes_dapi():
+    channels = filter_cytoplasm_channels(["DAPI", "647", "488"])
+
+    assert channels == ["647", "488"]
 
 
 def test_update_ui_for_focused_frame_only_enables_segmentation_overlay_for_the_focused_frame():

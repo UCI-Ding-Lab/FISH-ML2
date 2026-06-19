@@ -36,6 +36,13 @@ def _prepare_segmentation_input(nucleus_img, cyto1, cyto2):
     return np.stack([nucleus_img, cyto1, cyto2], axis=-1).astype(np.float32, copy=False)
 
 
+def _prepare_nucleus_segmentation_input(nucleus_img: np.ndarray) -> np.ndarray:
+    """
+    Build a simple 3-channel DAPI image for nucleus-only segmentation.
+    """
+    return np.stack([nucleus_img, nucleus_img, nucleus_img], axis=-1).astype(np.float32, copy=False)
+
+
 def _segment_channel(fish_model, img, gui):
     """
     Run the model and convert masks to segment objects.
@@ -48,7 +55,21 @@ def _segment_channel(fish_model, img, gui):
         return []
 
 
-def run_cellpose_sam_segmentation(
+def run_nucleus_segmentation(nucleus_img: np.ndarray, gui) -> list[segment]:
+    """
+    Segment nuclei from the DAPI image and return segment objects.
+    """
+    logger.info("Starting nucleus segmentation (Cellpose-SAM predict) for DAPI ...")
+    if nucleus_img is None:
+        logger.warning("Nucleus segmentation aborted: missing DAPI image")
+        return []
+
+    fish_model = gui.getBackEnd()
+    img = _prepare_nucleus_segmentation_input(nucleus_img)
+    return _segment_channel(fish_model, img, gui)
+
+
+def run_cytoplasm_segmentation(
     nucleus_img: np.ndarray,
     cyto_channels: dict,
     gui,

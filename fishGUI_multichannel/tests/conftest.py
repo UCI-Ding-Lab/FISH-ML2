@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 
 from fishGUI_multichannel.gui.abstract import abstract
+from fishGUI_multichannel.services.pairing import make_empty_pairing_result
 from fishGUI_multichannel.services.session_manager import SessionManager
 
 
@@ -45,14 +46,17 @@ def bare_abstract_factory():
     def make_bare_abstract():
         abs_obj = abstract.__new__(abstract)
         abs_obj._abstract__current_channel = "647"
+        abs_obj._abstract__nucleus_segments = []
         abs_obj._abstract__current_channel_mask = []
         abs_obj._abstract__channel_segments = {ch: [] for ch in abstract.SEGMENT_CHANNELS}
+        abs_obj._abstract__channel_pairings = {ch: make_empty_pairing_result() for ch in abstract.SEGMENT_CHANNELS}
         abs_obj._abstract__segment_generated = False
         abs_obj._abstract__bbox = []
         abs_obj._abstract__bbox_generated = False
         abs_obj._abstract__selected = False
         abs_obj._abstract__selected_for_segmentation = False
         abs_obj._abstract__thumbnail_state = None
+        abs_obj.available_channels = ["647", "488"]
         abs_obj._abstract__img_tk_thumbnail = object()
         abs_obj._abstract__img_tk_thumbnail_bbox = object()
         abs_obj._abstract__img_tk_thumbnail_select = object()

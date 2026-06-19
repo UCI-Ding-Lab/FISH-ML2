@@ -183,7 +183,6 @@ class seasoning():
 
         # select channel and sync mask pointer
         abs_obj.selected_channel = new_chan
-        abs_obj.seg = abs_obj._get_seg_list_for_channel(new_chan)
 
         # redraw canvas with new channel + masks
         self.gui.getStove().cook(abs_obj)

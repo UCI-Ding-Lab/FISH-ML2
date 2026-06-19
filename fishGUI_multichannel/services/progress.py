@@ -5,9 +5,10 @@ from ..gui.abstract import abstract
 from ..gui.canvas.box import box
 from ..gui.canvas.segment import segment
 from .bundle_data import bundle
+from .export_pairs import build_paired_export_data, extract_export_channel
 from .matPacker import create
+from .pairing import export_pairing_debug_pdf
 from .session_manager import SessionManager
-import re
 import pathlib
 
 logger = logging.getLogger('fishcore')
@@ -66,7 +67,7 @@ class Progress:
             
             return nucleus_path, cytoplasm_paths
             
-        def create_abstract_object(sample_id, nucleus_path, cyto_paths, bbox_list, seg_dict, gui):
+        def create_abstract_object(sample_id, nucleus_path, cyto_paths, bbox_list, seg_dict, nucleus_masks, gui):
             abstract_object = abstract(
                 sample_id, 
                 nucleus_path=nucleus_path,
@@ -75,6 +76,7 @@ class Progress:
                 gui=gui
             )
             abstract_object.bbox = [box(b, gui) for b in bbox_list]
+            abstract_object.set_nucleus_segments([segment(gui, m) for m in nucleus_masks])
             for channel, mask_list in seg_dict.items():
                 segs = [segment(gui, m) for m in mask_list]
                 abstract_object.set_segments(channel, segs)
@@ -89,11 +91,11 @@ class Progress:
         for item in session_data:
             try:
                 single_bundle : bundle = item
-                sample_id, nucleus_path, cytoplasm_paths, bbox_list, seg_dict = single_bundle.extract_data_from_bundles() 
+                sample_id, nucleus_path, cytoplasm_paths, bbox_list, seg_dict, nucleus_masks = single_bundle.extract_data_from_bundles() 
                 valid_paths = return_valid_paths(nucleus_path, cytoplasm_paths) 
                 if valid_paths is None: # prevent loading frames and its data with at least one invalid path
                     continue
-                abs_obj =create_abstract_object(sample_id, nucleus_path, cytoplasm_paths, bbox_list, seg_dict, gui)
+                abs_obj =create_abstract_object(sample_id, nucleus_path, cytoplasm_paths, bbox_list, seg_dict, nucleus_masks, gui)
                 gui.getSeasoning().update_channel_menu(abs_obj.available_channels)     
                 gui.getSeasoning().update_channel_selector_for_image(abs_obj)
             except Exception as error:
@@ -115,7 +117,7 @@ class Progress:
             messagebox.showwarning("No Data", "No frames with segmentation data found")
             return
         
-        d = {"name":[],"image":[],"xy":[],"masks":[]}
+        d = {"name":[],"image":[],"xy":[],"masks":[],"nucleus_masks":[]}
         prep_start = time.perf_counter()
         
         # get directory path
@@ -127,29 +129,28 @@ class Progress:
         for abs in toSave:
             cyto_paths = abs.getCytoplasmPaths()
             for path in cyto_paths:
-                stem = path.stem.lower()
-                match = re.search(r"(647|488|555|594|514)", stem)
-                channel = match.group(1) if match else None
+                channel = extract_export_channel(path)
             
                 if not abs.selected or channel is None or not abs.has_segments(channel):
                     img = None
                     xy = []
                     masks = []
+                    nucleus_masks = []
                 else:
-                    segs = abs.get_segments(channel)
-                    img = abs.getImgNumpyRGBCyto(channel)
-                    xy = [mask.xy for mask in segs]
-                    masks = [mask.box for mask in segs]
+                    img = abs.getImgNumpyRGBForChannel(channel)
+                    xy, masks, nucleus_masks = build_paired_export_data(abs, channel)
 
                 d["name"].append(path.name)
                 d["image"].append(img)
                 d["xy"].append(xy)
-                d["masks"].append(masks) 
+                d["masks"].append(masks)
+                d["nucleus_masks"].append(nucleus_masks)
         prep_seconds = time.perf_counter() - prep_start
 
         write_start = time.perf_counter()
-        create(d["name"], d["xy"], d["masks"], f, dirname=str(directory_name))
+        create(d["name"], d["xy"], d["masks"], d["nucleus_masks"], f, dirname=str(directory_name))
         write_seconds = time.perf_counter() - write_start
+        debug_pdf_path = export_pairing_debug_pdf([frame for frame in toSave if frame.selected], pathlib.Path(directory_name))
         total_seconds = time.perf_counter() - total_start
 
         logger.info(
@@ -169,6 +170,7 @@ class Progress:
                     (
                         f"Prepared {len(d['name'])} entries in {prep_seconds:.2f}s\n"
                         f"Wrote MAT in {write_seconds:.2f}s\n"
+                        f"Pairing PDF: {debug_pdf_path.name if debug_pdf_path else 'not written'}\n"
                         f"Total {total_seconds:.2f}s"
                     ),
                 ),

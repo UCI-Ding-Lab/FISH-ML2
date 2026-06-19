@@ -195,9 +195,9 @@ class funcButton():
             self.toggle["BBOX"].set(0)
             self.toggle["SEGMENTATION_SELECTION"].set(0)
             self.toggle["SEGMENT"].set(0)
-            channels = SessionManager.get_all_available_channels()
+            channels = get_apply_channel_source_choices()
             if not channels:
-                self.gui.popBox("w", "No Channels", "No available channels found in any frame.")
+                self.gui.popBox("w", "No Channels", "No cytoplasm channels found in any frame.")
                 return
             ChannelSelectPopup(self.gui.getRoot(), channels, lambda ch: on_channel_selected(self, ch))
 
@@ -271,6 +271,14 @@ def on_channel_selected(self, selected_channel):
 def buffer_has_channel(channel):
     buf = SessionManager.getBuffer()
     return buf is not None and channel in buf.available_channels
+
+
+def get_apply_channel_source_choices():
+    """
+    Return the channel choices that are valid for apply-channel mode.
+    """
+    channels = SessionManager.get_all_available_channels()
+    return [channel for channel in channels if channel != "DAPI"]
 
 
 def get_frame_names():

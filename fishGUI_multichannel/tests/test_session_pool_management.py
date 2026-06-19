@@ -28,6 +28,7 @@ def _make_pool_abstract(selected=False):
     abs_obj._abstract__bbox = [MagicMock(final=[1, 2, 3, 4])]
     abs_obj._abstract__bbox_generated = True
     abs_obj.get_segments = MagicMock(return_value=[])
+    abs_obj.get_nucleus_segments = MagicMock(return_value=[])
     abs_obj.getNucleusPath = MagicMock(return_value="nucleus.tif")
     abs_obj.getCytoplasmPaths = MagicMock(return_value=["cyto_647.tif"])
     abs_obj.sample_id = "sample-001"
@@ -86,6 +87,7 @@ def test_grab_pool_bundles_only_selected_frames():
     selected_frame = _make_pool_abstract(selected=True)
     selected_frame.sample_id = "sample-007"
     selected_frame.get_segments = MagicMock(side_effect=lambda ch: [MagicMock(_segment__data=MagicMock(T=f"mask-{ch}"))])
+    selected_frame.get_nucleus_segments = MagicMock(return_value=[MagicMock(_segment__data=MagicMock(T="mask-DAPI"))])
     unselected_frame = _make_pool_abstract(selected=False)
     SessionManager._SessionManager__pool = [selected_frame, unselected_frame]
 
@@ -98,5 +100,6 @@ def test_grab_pool_bundles_only_selected_frames():
         cyto_paths=["cyto_647.tif"],
         bbox=[[1, 2, 3, 4]],
         segment={"647": ["mask-647"], "488": ["mask-488"]},
+        nucleus_segment=["mask-DAPI"],
     )
     assert result == [mock_bundle.return_value]

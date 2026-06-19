@@ -229,7 +229,8 @@ class SessionManager:
                     nucleus_path=abstract_object.getNucleusPath(),
                     cyto_paths=list(abstract_object.getCytoplasmPaths()),
                     bbox=abstract_object.boundingBoxRevised,
-                    segment=seg_dict
+                    segment=seg_dict,
+                    nucleus_segment=[s._segment__data.T for s in abstract_object.get_nucleus_segments()],
                 )
                 result.append(bundled_info_for_save)
         return result
