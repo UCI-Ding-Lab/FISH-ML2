@@ -50,6 +50,7 @@ def bare_abstract_factory():
         abs_obj._abstract__current_channel_mask = []
         abs_obj._abstract__channel_segments = {ch: [] for ch in abstract.SEGMENT_CHANNELS}
         abs_obj._abstract__channel_pairings = {ch: make_empty_pairing_result() for ch in abstract.SEGMENT_CHANNELS}
+        abs_obj._abstract__img_np_nucleus = np.zeros((10, 10), dtype=np.uint8)
         abs_obj._abstract__segment_generated = False
         abs_obj._abstract__bbox = []
         abs_obj._abstract__bbox_generated = False
