@@ -702,14 +702,23 @@ class abstract():
         self.getLabel().pack_forget()
 
     def update_thumbnail(self):
-        self.__img_np_rgb = self._get_rgb_for_channel(self.__current_channel)
+        """
+        Rebuild the thumbnail image for the currently displayed channel.
+        """
+        self.__img_np_rgb = self._get_rgb_for_display_channel(self.__current_channel)
         self.__img_pil_thumbnail = Image.fromarray(self.__img_np_rgb).resize((64, 64))
         self.__img_tk_thumbnail = ImageTk.PhotoImage(self.__img_pil_thumbnail)
 
         # Clear cached overlays so they are rebuilt for the new channel
+        self.__img_pil_thumbnail_bbox = None
+        self.__img_pil_thumbnail_select = None
+        self.__img_pil_thumbnail_crossout = None
         self.__img_pil_thumbnail_segmented = None
         self.__img_pil_thumbnail_segmentation_selected = None
         self.__img_pil_thumbnail_selected_and_segmented = None
+        self.__img_tk_thumbnail_bbox = None
+        self.__img_tk_thumbnail_select = None
+        self.__img_tk_thumbnail_crossout = None
         self.__img_tk_thumbnail_segmented = None
         self.__img_tk_thumbnail_segmentation_selected = None
         self.__img_tk_thumbnail_selected_and_segmented = None
