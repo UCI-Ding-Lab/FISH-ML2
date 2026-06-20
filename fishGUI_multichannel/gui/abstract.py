@@ -651,51 +651,7 @@ class abstract():
         update the image overlawy
         """
         self.__thumbnail_state = value
-        if value == "default":
-            self.getLabel().config(image=self.__img_tk_thumbnail)
-        elif value == "bbox":
-            if not self.__img_tk_thumbnail_bbox:
-                self.__img_pil_thumbnail_bbox = self.__img_pil_thumbnail.copy()
-                ImageDraw.Draw(self.__img_pil_thumbnail_bbox).ellipse((49, 5, 59, 15), fill=(0,0,255))
-                self.__img_tk_thumbnail_bbox = ImageTk.PhotoImage(self.__img_pil_thumbnail_bbox)
-            self.getLabel().config(image=self.__img_tk_thumbnail_bbox)
-        elif value == "selected":
-            if not self.__img_tk_thumbnail_select:
-                self.__img_pil_thumbnail_select = self.__img_pil_thumbnail.copy()
-                ImageDraw.Draw(self.__img_pil_thumbnail_select).ellipse((5, 5, 15, 15), fill=(0,255,0))
-                self.__img_tk_thumbnail_select = ImageTk.PhotoImage(self.__img_pil_thumbnail_select)
-            self.getLabel().config(image=self.__img_tk_thumbnail_select)
-        elif value == "crossout":
-            if not self.__img_tk_thumbnail_crossout:
-                self.__img_pil_thumbnail_crossout = self.__img_pil_thumbnail.copy()
-                ImageDraw.Draw(self.__img_pil_thumbnail_crossout).line((5, 5, 15, 15), fill=(255,0,0), width=2)
-                ImageDraw.Draw(self.__img_pil_thumbnail_crossout).line((5, 15, 15, 5), fill=(255,0,0), width=2)
-                self.__img_tk_thumbnail_crossout = ImageTk.PhotoImage(self.__img_pil_thumbnail_crossout)
-            self.getLabel().config(image=self.__img_tk_thumbnail_crossout)
-        elif value == "segmentation_selected":
-            if not self.__img_tk_thumbnail_segmentation_selected:
-                self.__img_pil_thumbnail_segmentation_selected = self.__img_pil_thumbnail.copy()
-                ImageDraw.Draw(self.__img_pil_thumbnail_segmentation_selected).ellipse((5, 5, 15, 15), fill=(0,255,0))
-                ImageDraw.Draw(self.__img_pil_thumbnail_segmentation_selected).ellipse((49, 5, 59, 15), fill=(0,0,255))
-                self.__img_tk_thumbnail_segmentation_selected = ImageTk.PhotoImage(self.__img_pil_thumbnail_segmentation_selected)
-            self.getLabel().config(image=self.__img_tk_thumbnail_segmentation_selected)
-        elif value == "segmented":
-            if not self.__img_tk_thumbnail_segmented:
-                self.__img_pil_thumbnail_segmented = self.__img_pil_thumbnail_bbox.copy()
-                ImageDraw.Draw(self.__img_pil_thumbnail_segmented).ellipse((49, 20, 59, 30), fill=(255, 165, 0))
-                self.__img_tk_thumbnail_segmented = ImageTk.PhotoImage(self.__img_pil_thumbnail_segmented)
-            self.getLabel().config(image=self.__img_tk_thumbnail_segmented)
-        elif value == "segmentation_selected_and_segmented": # TODO unnecessary? same as "segmented"
-            if not self.__img_pil_thumbnail_bbox:
-                # Create bbox overlay if it doesn't exist
-                self.__img_pil_thumbnail_bbox = self.__img_pil_thumbnail.copy()
-                ImageDraw.Draw(self.__img_pil_thumbnail_bbox).ellipse((49, 5, 59, 15), fill=(0,0,255))
-                self.__img_tk_thumbnail_bbox = ImageTk.PhotoImage(self.__img_pil_thumbnail_bbox)
-            if not self.__img_tk_thumbnail_selected_and_segmented:
-                self.__img_pil_thumbnail_selected_and_segmented = self.__img_pil_thumbnail_bbox.copy()
-                ImageDraw.Draw(self.__img_pil_thumbnail_selected_and_segmented).ellipse((49, 20, 59, 30), fill=(255, 165, 0))
-                self.__img_tk_thumbnail_selected_and_segmented = ImageTk.PhotoImage(self.__img_pil_thumbnail_selected_and_segmented)
-            self.getLabel().config(image=self.__img_tk_thumbnail_selected_and_segmented)
+        self.getLabel().config(image=self._get_thumbnail_image_for_state(value))
 
     @thumbnail.deleter
     def thumbnail(self):
@@ -736,6 +692,103 @@ class abstract():
                     self.thumbnail = "bbox"  # blue
         else:
             self.thumbnail = "default"  # no dot
+
+    def _get_thumbnail_image_for_state(self, state: str):
+        """
+        Return the Tk image that matches the current thumbnail state.
+        """
+        if state == "default":
+            return self.__img_tk_thumbnail
+        cached = self._get_cached_thumbnail_image(state)
+        if cached is not None:
+            return cached
+        return self._build_and_cache_thumbnail_image(state)
+
+    def _get_cached_thumbnail_image(self, state: str):
+        """
+        Return a cached thumbnail image for one state when it already exists.
+        """
+        if state == "bbox":
+            return self.__img_tk_thumbnail_bbox
+        if state == "selected":
+            return self.__img_tk_thumbnail_select
+        if state == "crossout":
+            return self.__img_tk_thumbnail_crossout
+        if state == "segmentation_selected":
+            return self.__img_tk_thumbnail_segmentation_selected
+        if state == "segmented":
+            return self.__img_tk_thumbnail_segmented
+        if state == "segmentation_selected_and_segmented":
+            return self.__img_tk_thumbnail_selected_and_segmented
+        return self.__img_tk_thumbnail
+
+    def _build_and_cache_thumbnail_image(self, state: str):
+        """
+        Build one state image from the current base thumbnail and cache it.
+        """
+        thumbnail_pil = self._build_thumbnail_pil_for_state(state)
+        thumbnail_tk = ImageTk.PhotoImage(thumbnail_pil)
+        self._set_cached_thumbnail_image(state, thumbnail_pil, thumbnail_tk)
+        return thumbnail_tk
+
+    def _build_thumbnail_pil_for_state(self, state: str):
+        """
+        Build one thumbnail overlay image directly from the current base thumbnail.
+        """
+        thumbnail_pil = self.__img_pil_thumbnail.copy()
+        drawer = ImageDraw.Draw(thumbnail_pil)
+        if state == "bbox":
+            self._draw_thumbnail_dot(drawer, (49, 5, 59, 15), (0, 0, 255))
+        elif state == "selected":
+            self._draw_thumbnail_dot(drawer, (5, 5, 15, 15), (0, 255, 0))
+        elif state == "crossout":
+            self._draw_thumbnail_crossout(drawer)
+        elif state == "segmentation_selected":
+            self._draw_thumbnail_dot(drawer, (5, 5, 15, 15), (0, 255, 0))
+            self._draw_thumbnail_dot(drawer, (49, 5, 59, 15), (0, 0, 255))
+        elif state == "segmented":
+            self._draw_thumbnail_dot(drawer, (49, 5, 59, 15), (0, 0, 255))
+            self._draw_thumbnail_dot(drawer, (49, 20, 59, 30), (255, 165, 0))
+        elif state == "segmentation_selected_and_segmented":
+            self._draw_thumbnail_dot(drawer, (49, 5, 59, 15), (0, 0, 255))
+            self._draw_thumbnail_dot(drawer, (49, 20, 59, 30), (255, 165, 0))
+        return thumbnail_pil
+
+    def _set_cached_thumbnail_image(self, state: str, thumbnail_pil, thumbnail_tk) -> None:
+        """
+        Store one rendered thumbnail image in the cache for later reuse.
+        """
+        if state == "bbox":
+            self.__img_pil_thumbnail_bbox = thumbnail_pil
+            self.__img_tk_thumbnail_bbox = thumbnail_tk
+        elif state == "selected":
+            self.__img_pil_thumbnail_select = thumbnail_pil
+            self.__img_tk_thumbnail_select = thumbnail_tk
+        elif state == "crossout":
+            self.__img_pil_thumbnail_crossout = thumbnail_pil
+            self.__img_tk_thumbnail_crossout = thumbnail_tk
+        elif state == "segmentation_selected":
+            self.__img_pil_thumbnail_segmentation_selected = thumbnail_pil
+            self.__img_tk_thumbnail_segmentation_selected = thumbnail_tk
+        elif state == "segmented":
+            self.__img_pil_thumbnail_segmented = thumbnail_pil
+            self.__img_tk_thumbnail_segmented = thumbnail_tk
+        elif state == "segmentation_selected_and_segmented":
+            self.__img_pil_thumbnail_selected_and_segmented = thumbnail_pil
+            self.__img_tk_thumbnail_selected_and_segmented = thumbnail_tk
+
+    def _draw_thumbnail_dot(self, drawer, bounds: tuple[int, int, int, int], color: tuple[int, int, int]) -> None:
+        """
+        Draw one colored state dot on a thumbnail image.
+        """
+        drawer.ellipse(bounds, fill=color)
+
+    def _draw_thumbnail_crossout(self, drawer) -> None:
+        """
+        Draw the red crossout marker on a thumbnail image.
+        """
+        drawer.line((5, 5, 15, 15), fill=(255, 0, 0), width=2)
+        drawer.line((5, 15, 15, 5), fill=(255, 0, 0), width=2)
 
 
     def _setup_gallery_thumbnail_label_bindings(self, label):
