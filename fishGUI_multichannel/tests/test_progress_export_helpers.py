@@ -24,7 +24,7 @@ def test_build_paired_export_data_returns_only_matched_cytoplasm_and_nucleus_mas
 
     xy, masks, nucleus_masks = build_paired_export_data(abs_obj, "647")
 
-    abs_obj.update_pairings_for_channel.assert_called_once_with("647")
+    abs_obj.update_pairings_for_channel.assert_not_called()
     assert xy == [(3.0, 4.0)]
     assert np.array_equal(masks[0], cyto_seg.box)
     assert np.array_equal(nucleus_masks[0], nucleus_seg.box)

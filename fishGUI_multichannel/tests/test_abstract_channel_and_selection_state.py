@@ -30,6 +30,8 @@ def test_nucleus_segments_api_reads_and_writes_dapi_masks(bare_abstract_factory)
     abs_obj.set_nucleus_segments([7, 8])
 
     assert abs_obj.get_nucleus_segments() == [7, 8]
+    assert abs_obj.get_segments("DAPI") == [7, 8]
+    assert abs_obj.has_segments("DAPI") is True
     assert abs_obj.has_nucleus_segments() is True
     assert abs_obj.get_segments("647") == []
 
@@ -101,7 +103,17 @@ def test_selected_channel_property_uses_dapi_nucleus_masks_for_dapi_view(bare_ab
     abs_obj.selected_channel = "DAPI"
 
     assert abs_obj.selected_channel == "DAPI"
+    assert abs_obj.get_segments() == [9]
     assert abs_obj.current_channel_mask == [9]
+
+
+def test_get_visible_masks_returns_dapi_masks_without_cytoplasm_completion(bare_abstract_factory):
+    abs_obj = bare_abstract_factory()
+    abs_obj.set_nucleus_segments([7, 8])
+    abs_obj.selected_channel = "DAPI"
+    abs_obj.segment_generated = False
+
+    assert abs_obj.get_visible_masks() == [7, 8]
 
 
 def test_bbox_property_marks_bounding_boxes_as_generated_when_assigned(bare_abstract_factory):
@@ -132,3 +144,13 @@ def test_seg_property_updates_the_current_channel_mask(bare_abstract_factory):
 
     assert abs_obj.seg == [3]
     assert abs_obj.get_segments("647") == [3]
+
+
+def test_current_channel_mask_setter_stores_dapi_masks_on_nucleus_storage(bare_abstract_factory):
+    abs_obj = bare_abstract_factory()
+    abs_obj.selected_channel = "DAPI"
+
+    abs_obj.current_channel_mask = [5, 6]
+
+    assert abs_obj.get_nucleus_segments() == [5, 6]
+    assert abs_obj.get_segments("DAPI") == [5, 6]

@@ -5,7 +5,6 @@ import csv
 import pathlib
 import time
 from concurrent.futures import ThreadPoolExecutor
-import pickle, threading, concurrent.futures, time
 
 from ..services.bundle_data import bundle
 from ..services.apply_channel_mask import apply_channel_mask_to_frames
@@ -16,17 +15,13 @@ logger = logging.getLogger('fishcore')
 
 
 class SessionManager:
+    """Coordinates pool-wide state changes for every loaded frame."""
+
     __pool = []
     __buffer = None
     __importPath = None
     __segmentation_timing_rows = []
     __segmentation_timing_lock = threading.Lock()
-
-
-    """
-    Responsible for handling operations that affect the entire session
-    or pool of abstract objects.
-    """
     # --- Pool Management ---
     @classmethod
     def addToPool(cls, abstract_object):
@@ -86,7 +81,7 @@ class SessionManager:
                 try:
                     del abstract_object.thumbnail  # hides from UI
                 except Exception as e:
-                    logger.debug(f"Failed to delete thumbnail for {getattr(abstract_object,'sample_id','?')}: {e}")
+                    logger.debug(f"Failed to delete thumbnail for {abstract_object.sample_id}: {e}")
         cls.__pool = new_pool
         cls.__buffer = None
         cls.sendFirst()
@@ -140,8 +135,9 @@ class SessionManager:
 
     @classmethod
     def _get_inference_worker_limit(cls, gui, total_jobs: int) -> int:
+        """Chooses a safe worker count for model inference work."""
         backend = gui.getBackEnd()
-        if getattr(backend, "device", "cpu") == "cuda":
+        if backend.device == "cuda":
             logger.info("GPU detected; limiting inference concurrency to 1 worker.")
             return 1
         return max(1, min(os.cpu_count() or 1, total_jobs))
@@ -162,11 +158,9 @@ class SessionManager:
 
     @classmethod
     def _generate_one_bbox(cls, gui, abs_obj):
-        start_time = time.time()
+        """Prepare nucleus centers and masks for one frame in the background."""
         _ = abs_obj.bbox
         cls._refresh_if_loaded(gui, abs_obj)
-        elapsed = time.time() - start_time
-        logger.info("Computed nucleus centers for sample %s in %.4f seconds", abs_obj.sample_id, elapsed,)
 
     @classmethod
     def _refresh_if_loaded(cls, gui, abs_obj):
@@ -180,7 +174,7 @@ class SessionManager:
         """
         Ensures GUI is now in a view-only mode. 
         Called when:
-        - The user exits BBOX mode 
+        - The user exits Show Centers mode 
         - The user clicks on "Save" and Progress.save is called
 
         Note for Shizuka:
@@ -197,7 +191,7 @@ class SessionManager:
         """
         Ensures GUI is now in a view-only mode. 
         Called when:
-        - The user exits SEGMENT mode 
+        - The user hides masks with Display Masks 
         - The user clicks on "Save" and Progress.save is called
         """
         cls.getBuffer().drawSegmentation = False
@@ -207,7 +201,7 @@ class SessionManager:
     def grabPool(cls) -> list['bundle']:
         """
         Overview: 
-            Collects all selected frames and pacakges their data using the bundle class in services/bundle_data.
+            Collects all selected frames and packages their data using the bundle class in services/bundle_data.
             Iterates over all abstract objects in the pool, and for each selected frame,
             creates a bundle object containing nucleus path, cytoplasm paths, revised bounding boxes,
             and revised segmentation masks. This is useful for saving session state and loading data.
@@ -313,7 +307,7 @@ class SessionManager:
     def _ui_show_segmented(cls, a, gui):
         a.thumbnail = "segmented" # blue and orange
         a.selected_for_segmentation = False
-        if a is cls.getBuffer() and gui.getFuncButton().segButtonPressed():
+        if a is cls.getBuffer() and gui.getFuncButton().displayMaskButtonPressed():
             a.drawSegmentation = True
 
 

@@ -75,13 +75,14 @@ Important intention:
 
 ---
 
-### 4. Auto-generate bounding boxes in the background
+### 4. Auto-generate nucleus centers and DAPI masks in the background
 
-After import, bounding box generation should start automatically for the session pool.
+After import, nucleus-center generation should start automatically for the session pool.
 
 Expected behavior:
 
-- run bbox generation in the background
+- run nucleus-center generation in the background
+- segment DAPI nuclei while those centers are being prepared
 - do not block the UI
 - skip worker startup if the session pool is empty
 - process each sample independently
@@ -89,8 +90,9 @@ Expected behavior:
 Important intention:
 
 - the UI should remain responsive during heavy computation
-- bbox generation is a preparation step for segmentation
-- bbox generation should feel like part of import, not a separate manual task
+- center generation is a preparation step for segmentation
+- DAPI segmentation should be ready before cytoplasm segmentation starts
+- center generation should feel like part of import, not a separate manual task
 
 ---
 
@@ -114,14 +116,16 @@ Important intention:
 
 ---
 
-### 6. Support channel switching on the focused sample
+### 6. Support channel switching and mask display on the focused sample
 
 The focused sample may have multiple channels, and the user should be able to switch between them.
 
 Expected behavior:
 
 - changing the channel selector updates the sample's current channel
-- load the segmentation list for that selected channel
+- switching to `DAPI` shows the DAPI image
+- switching to a cytoplasm channel shows that channel image
+- the Display Masks toggle shows or hides the masks for the currently shown channel
 - redraw the viewer using the selected channel's state
 - keep segmentation data separated per channel
 
@@ -129,7 +133,7 @@ Important intention:
 
 - segmentation is channel-aware
 - masks for one channel should not silently overwrite another channel's masks
-- the current channel controls which segmentation data the user sees and edits
+- the current channel controls which image and mask data the user sees and edits
 
 ---
 
@@ -170,22 +174,23 @@ Important intention:
 
 ---
 
-### 9. Run segmentation for the selected channel of selected samples
+### 9. Run cytoplasm segmentation for selected samples
 
 Once samples are marked for segmentation, the segmentation action should process them.
 
 Expected behavior:
 
 - only process samples marked for segmentation
-- use the sample's selected channel when generating segmentation
-- store segmentation results under that channel only
-- show segmentation overlays when segmentation mode is active
+- keep DAPI nucleus masks separate from cytoplasm masks
+- segment every available cytoplasm channel for each selected sample
+- store segmentation results under each matching cytoplasm channel
+- show segmentation overlays only when Display Masks is active
 
 Important intention:
 
 - segmentation should respect both:
-  - which samples were selected for segmentation
-  - which channel is currently targeted
+- which samples were selected for segmentation
+- DAPI is a display and nucleus-reference channel, not a cytoplasm target
 - segmentation results are part of the editable workflow, not always the final answer
 
 ---
@@ -229,7 +234,7 @@ Important intention:
 
 ---
 
-### 12. Apply one channel's mask to other channels
+### 12. Copy one channel's mask to other channels
 
 A major multichannel feature is the ability to reuse masks from one channel across other channels.
 
@@ -245,7 +250,7 @@ Expected behavior:
 
 Important intention:
 
-- apply-channel-mask is a core multichannel workflow
+- copy-channel-mask is a core multichannel workflow
 - it is not just a convenience utility
 - it exists because structural masks may be useful across channels for the same sample
 
@@ -273,7 +278,7 @@ Important intention:
 
 The intended high-level flow is:
 
-`import folder -> group by sample -> require DAPI -> create sample sessions -> auto-generate bbox -> focus sample -> switch channel -> prune/select samples -> mark samples for segmentation -> run segmentation -> manually edit masks -> optionally apply one channel mask to other channels -> export finalized masks`
+`import folder -> group by sample -> require DAPI -> create sample sessions -> auto-generate centers and DAPI masks -> focus sample -> switch channel -> show or hide masks -> prune samples -> mark samples for segmentation -> run cytoplasm segmentation -> manually edit masks -> optionally copy one channel mask to other channels -> export finalized masks`
 
 ---
 
@@ -295,13 +300,13 @@ Segmentation for `647` and `488` should not be mixed together by default.
 
 ### The UI should stay responsive
 
-Long-running tasks like bbox generation, segmentation, or channel-mask application should not freeze the interface.
+Long-running tasks like center generation, segmentation, or channel-mask copying should not freeze the interface.
 
 ### Manual editing is part of the intended user journey
 
 Do not treat manual correction as unimportant or optional.
 
-### Apply Channel Mask is a core feature
+### Copy Channel Masks is a core feature
 
 It reflects an important biological/multichannel workflow and should be preserved carefully.
 
@@ -320,7 +325,7 @@ When changing this project, assume the following unless the user says otherwise:
 - Do not turn the app into a single-image-only workflow.
 - Do not remove background processing for heavy tasks unless explicitly requested.
 - Do not remove manual correction tools just because model automation exists.
-- Do not treat apply-channel-mask as dead or secondary behavior.
+- Do not treat copy-channel-mask as dead or secondary behavior.
 - When changing UI logic, preserve the intended flow of:
   - import
   - sample grouping

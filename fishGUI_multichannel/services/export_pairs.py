@@ -14,7 +14,6 @@ def build_paired_export_data(abs_obj, channel: str) -> tuple[list, list, list]:
     """
     Build matched cell positions plus cytoplasm and nucleus masks for one channel.
     """
-    abs_obj.update_pairings_for_channel(channel)
     pairs = abs_obj.get_pairings(channel)["pairs"]
     xy = collect_pair_xy(abs_obj, channel, pairs)
     masks = collect_pair_masks(abs_obj, channel, pairs)

@@ -9,7 +9,7 @@ def _make_button_handler():
     button.gui = MagicMock()
     button.toggle = {
         "BBOX": MagicMock(),
-        "SEGMENT": MagicMock(),
+        "DISPLAY_MASKS": MagicMock(),
         "SEGMENTATION_SELECTION": MagicMock(),
         "EXPORT": MagicMock(),
     }
@@ -62,7 +62,6 @@ def test_segment_selection_call_clears_frame_selection_and_restores_thumbnail_st
     segmented = MagicMock(segment_generated=True, bbox_generated=True)
     bbox_only = MagicMock(segment_generated=False, bbox_generated=True)
     plain = MagicMock(segment_generated=False, bbox_generated=False)
-    button.segButtonPressed = MagicMock(return_value=False)
     button.frameSegButtonPressed = MagicMock(return_value=False)
 
     with patch.object(SessionManager, "getPool", return_value=[segmented, bbox_only, plain]):
@@ -74,17 +73,40 @@ def test_segment_selection_call_clears_frame_selection_and_restores_thumbnail_st
     assert plain.thumbnail == "default"
 
 
-def test_segment_call_starts_segmentation_and_shows_selected_overlays_when_enabled():
+def test_segment_call_starts_segmentation_for_selected_frames():
     button = _make_button_handler()
     selected_frame = MagicMock(selected_for_segmentation=True)
-    button.segButtonPressed = MagicMock(return_value=True)
 
     with patch.object(SessionManager, "getPool", return_value=[selected_frame]), \
          patch.object(SessionManager, "segment_selected") as mock_segment_selected:
         button.SEGMENT_call()
 
     mock_segment_selected.assert_called_once_with(button.gui)
-    assert selected_frame.drawSegmentation is True
+
+
+def test_display_masks_call_shows_masks_for_the_focused_frame_when_enabled():
+    button = _make_button_handler()
+    focused = MagicMock()
+    button.displayMaskButtonPressed = MagicMock(return_value=True)
+
+    with patch.object(SessionManager, "getBuffer", return_value=focused):
+        button.DISPLAY_MASKS_call()
+
+    assert focused.drawSegmentation is True
+
+
+def test_display_masks_call_hides_masks_for_all_frames_when_disabled():
+    button = _make_button_handler()
+    first = MagicMock()
+    second = MagicMock()
+    button.displayMaskButtonPressed = MagicMock(return_value=False)
+
+    with patch.object(SessionManager, "getBuffer", return_value=first), \
+         patch.object(SessionManager, "getPool", return_value=[first, second]):
+        button.DISPLAY_MASKS_call()
+
+    assert first.drawSegmentation is False
+    assert second.drawSegmentation is False
 
 
 def test_apply_channel_mask_call_shows_warning_when_no_channels_are_available():
@@ -95,7 +117,7 @@ def test_apply_channel_mask_call_shows_warning_when_no_channels_are_available():
 
     button.toggle["BBOX"].set.assert_called_once_with(0)
     button.toggle["SEGMENTATION_SELECTION"].set.assert_called_once_with(0)
-    button.toggle["SEGMENT"].set.assert_called_once_with(0)
+    button.toggle["DISPLAY_MASKS"].set.assert_called_once_with(0)
     button.gui.popBox.assert_called_once_with("w", "No Channels", "No cytoplasm channels found in any frame.")
 
 

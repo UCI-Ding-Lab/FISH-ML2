@@ -174,7 +174,7 @@ class stove():
                     return  # Exit early if we found a box
                     
             # Handle SEGMENT mode interactions (only if not handled by bbox above)
-            if self.gui.getFuncButton().segButtonPressed():
+            if self.gui.getFuncButton().displayMaskButtonPressed():
                 brush_active = self.gui.getSeasoning().brushButtonPressed()
                 eraser_active = self.gui.getSeasoning().eraserButtonPressed()
                 buf = segment.getBuffer()
@@ -220,7 +220,7 @@ class stove():
         if self.gui.getFuncButton().bboxButtonPressed():
             anchor.clearBuffer()
             self.old_center = None
-        elif self.gui.getFuncButton().segButtonPressed():
+        elif self.gui.getFuncButton().displayMaskButtonPressed():
             if self.gui.getSeasoning().brushButtonPressed() and segment.getBuffer() and segment.getBuffer().selected:
                 final = list(zip(self.xs, self.ys))
                 for marker in self.markers:
@@ -287,7 +287,7 @@ class stove():
             b.anchorUpdate()
             self.canvas.draw()
 
-        elif self.gui.getFuncButton().segButtonPressed() and segment.getBuffer() and segment.getBuffer().selected:
+        elif self.gui.getFuncButton().displayMaskButtonPressed() and segment.getBuffer() and segment.getBuffer().selected:
             current_x, current_y = event.xdata, event.ydata
             if current_x is None or current_y is None: 
                 return
@@ -334,7 +334,7 @@ class stove():
         self.__onLoad = None
 
     def onUndo(self, event=None):
-        if not self.gui.getFuncButton().segButtonPressed():
+        if not self.gui.getFuncButton().displayMaskButtonPressed():
             return
         loaded = self.getLoaded()
 
@@ -357,7 +357,7 @@ class stove():
 
 
     def onRedo(self, event=None):
-        if not self.gui.getFuncButton().segButtonPressed():
+        if not self.gui.getFuncButton().displayMaskButtonPressed():
             return
         loaded = self.getLoaded()
 
@@ -380,7 +380,7 @@ class stove():
 
 
     def onReset(self, event=None):
-        if not self.gui.getFuncButton().segButtonPressed():
+        if not self.gui.getFuncButton().displayMaskButtonPressed():
             return
         loaded = self.getLoaded()
 

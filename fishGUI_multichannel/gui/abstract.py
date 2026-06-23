@@ -286,22 +286,38 @@ class abstract():
 
 
     # --- Boundary Boxes / Nucleus Center Generation --- # TODO replace name with nucleus generation, remove unnecessary parts 
+    def _compute_nucleus_centers_from_boxes(self, nucleus_boxes: list[tuple]) -> list[tuple]:
+        """Return one `(x, y)` center for each nucleus box."""
+        return [((x0 + x1) / 2, (y0 + y1) / 2) for x0, y0, x1, y1 in nucleus_boxes]
+
+    def _prepare_nucleus_masks_if_needed(self) -> bool:
+        """Create nucleus masks once and return True when new masks were made."""
+        if self.has_nucleus_segments():
+            return False
+        self.segment_nucleus()
+        return True
+
+    def _log_nucleus_import_summary(self, start_time: float, made_masks: bool) -> None:
+        """Write one simple summary after nucleus import work finishes."""
+        elapsed = time.time() - start_time
+        if made_masks:
+            logger.info("Computed nucleus centers and masks for sample %s in %.4f seconds", self.sample_id, elapsed)
+            return
+        logger.info("Computed nucleus centers for sample %s in %.4f seconds", self.sample_id, elapsed)
+
     @property
     def bbox(self):
         """
-        Compute nucleus centers
+        Compute nucleus centers and nucleus masks once for this frame.
         """
-        if not self.bbox_generated: # NOTE new logic for cellpose-sam: if nucleus bbox is not generated
-            nuc_boxes = self.gui.getBackEnd().AppIntDINOwrapper(self.__img_np_nucleus)
-            centers = [
-                ((x0 + x1) / 2, (y0 + y1) / 2)
-                for x0, y0, x1, y1 in nuc_boxes
-            ]
-            self.nucleus_centers = centers
-            if not self.has_nucleus_segments():
-                self.segment_nucleus()
-            # logger.info(f"Computed nucleus centers : {nuc_boxes}")
-            self.bbox_generated = True # TODO change to nucleus_center_computed if bbox is unnecessary
+        if self.bbox_generated:
+            return self.__bbox
+        start_time = time.time()
+        nucleus_boxes = self.gui.getBackEnd().AppIntDINOwrapper(self.__img_np_nucleus)
+        self.nucleus_centers = self._compute_nucleus_centers_from_boxes(nucleus_boxes)
+        made_masks = self._prepare_nucleus_masks_if_needed()
+        self._log_nucleus_import_summary(start_time, made_masks)
+        self.bbox_generated = True # TODO change to nucleus_center_computed if bbox is unnecessary
         return self.__bbox
         
 
@@ -342,21 +358,34 @@ class abstract():
         """
         Run DAPI nucleus segmentation once and store the resulting masks.
         """
-        nucleus_segments = run_nucleus_segmentation(self.__img_np_nucleus, self.gui)
+        nucleus_segments = run_nucleus_segmentation(
+            self.__img_np_nucleus,
+            self.gui,
+            self.sample_id,
+        )
         self.set_nucleus_segments(nucleus_segments)
         return self.get_nucleus_segments()
 
+    def _is_dapi_channel(self, channel) -> bool:
+        """Returns True when the requested channel is the DAPI display channel."""
+        return channel == "DAPI"
 
     def get_segments(self, channel=None) -> list[segment]:
+        """Returns masks for one channel, including DAPI nucleus masks."""
         target_channel = self.__current_channel if channel is None else channel
         if target_channel is None:
             return []
+        if self._is_dapi_channel(target_channel):
+            return self.get_nucleus_segments()
         return self._get_seg_list_for_channel(target_channel)
 
     def set_segments(self, channel, seg_objs) -> None:
         """Store segment objects for one channel and refresh completion state."""
         target_channel = self.__current_channel if channel is None else channel
         if target_channel is None:
+            return
+        if self._is_dapi_channel(target_channel):
+            self.set_nucleus_segments(seg_objs)
             return
         self._set_seg_list_for_channel(target_channel, seg_objs)
         self.update_pairings_for_channel(target_channel)
@@ -389,9 +418,14 @@ class abstract():
         return True
 
     def segment_channel(self, channel=None) -> list[segment]:
+        """Runs segmentation for one cytoplasm channel or DAPI nucleus view."""
         target_channel = self.__current_channel if channel is None else channel
         if target_channel is None:
             return []
+        if self._is_dapi_channel(target_channel):
+            if self.has_nucleus_segments():
+                return self.get_nucleus_segments()
+            return self.segment_nucleus()
         if not self.bbox_generated:
             self.gui.popBox(
                 "w",
@@ -464,10 +498,17 @@ class abstract():
 
     @property
     def current_channel_mask(self):
+        """Returns the mask list that belongs to the currently shown channel."""
         return self._get_mask_list_for_display_channel(self.__current_channel)
+
     @current_channel_mask.setter
     def current_channel_mask(self, value):
+        """Stores masks on the channel that is currently being shown."""
         self.set_segments(self.__current_channel, value)
+
+    def get_visible_masks(self) -> list[segment]:
+        """Returns the masks that should be shown for the current channel."""
+        return list(self.current_channel_mask or [])
 
 
     def set_mask_for_all_channels(self, mask_list):
@@ -595,7 +636,7 @@ class abstract():
 
         func_btn = self.gui.getFuncButton()
         bbox_on = func_btn.bboxButtonPressed()
-        seg_on = func_btn.segButtonPressed()
+        seg_on = func_btn.displayMaskButtonPressed()
 
         # --- Select Mode ---
         if func_btn.selectButtonPressed():
@@ -856,7 +897,8 @@ class abstract():
         return self.__drawSeg
     @drawSegmentation.setter
     def drawSegmentation(self, value: bool):
-        segs = self.seg if self.segment_generated else []
+        """Shows or hides the masks for the channel the user is viewing."""
+        segs = self.get_visible_masks()
         stove = self.gui.getStove()
         stove._batch_segment_draw = True
         try:

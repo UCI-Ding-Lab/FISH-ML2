@@ -45,6 +45,7 @@ def dummy_image_paths(workspace_temp_dir):
 def bare_abstract_factory():
     def make_bare_abstract():
         abs_obj = abstract.__new__(abstract)
+        abs_obj.sample_id = "sample-001"
         abs_obj._abstract__current_channel = "647"
         abs_obj._abstract__nucleus_segments = []
         abs_obj._abstract__current_channel_mask = []

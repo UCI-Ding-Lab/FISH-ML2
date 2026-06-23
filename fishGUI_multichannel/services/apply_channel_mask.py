@@ -8,10 +8,9 @@ import time
 
 logger = logging.getLogger("fishcore")
 
-# --- Helper Functions --- 
 def is_cytoplasm_channel(channel):
     """
-    Return True when a channel should participate in apply-channel mode.
+    Return True when a channel should participate in copy-mask mode.
     """
     return channel != "DAPI"
 
@@ -42,7 +41,7 @@ def extract_finalized_masks(frame, source_channel):
     Extracts finalized mask arrays from the source channel for a frame.
     """
     seg_objs = frame._get_seg_list_for_channel(source_channel) or []
-    mask_list = [obj._segment__data.T for obj in seg_objs] # TODO check why it needs to be transposed -- consistency with export, matlab program?
+    mask_list = [obj._segment__data.T for obj in seg_objs]
     frame.set_finalized_mask(mask_list)
     logger.debug(f"Built {len(mask_list)} masks for frame {frame.sample_id}")
     return mask_list
@@ -97,7 +96,9 @@ def apply_channel_mask_to_frames(
     frame_indices = [i for i, f in enumerate(frame_pool) if f in selected_frames]
     focused_frame = abstract_cls.getBuffer()
     try:
-        seg_mode_on = bool(focused_frame and focused_frame.gui.getFuncButton().segButtonPressed())
+        seg_mode_on = bool(
+            focused_frame and focused_frame.gui.getFuncButton().displayMaskButtonPressed()
+        )
     except Exception:
         seg_mode_on = False
     root = _get_gui_root(abstract_cls, frame_pool)
@@ -110,7 +111,7 @@ def apply_channel_mask_to_frames(
             elif frame_pool and frame_pool[0].gui is not None:
                 backend = frame_pool[0].gui.getBackEnd()
             if getattr(backend, "device", "cpu") == "cuda":
-                logger.info("GPU detected; limiting apply-channel concurrency to 1 worker.")
+                logger.info("GPU detected; limiting copy-mask concurrency to 1 worker.")
                 return 1
         except Exception:
             pass
@@ -144,9 +145,9 @@ def apply_channel_mask_to_frames(
             logger.debug(f"Applied mask to frame {sid}")
         if skipped:
             try:
-                messagebox.showinfo("Skipped Frames", f"No bounding box for: {', '.join(skipped)}")
+                messagebox.showinfo("Skipped Frames", f"No nucleus centers for: {', '.join(skipped)}")
             except Exception:
-                logger.info(f"Skipped Frames: {', '.join(skipped)}")
+                logger.info(f"Skipped Frames without centers: {', '.join(skipped)}")
         if on_done:
             try:
                 on_done()
@@ -161,7 +162,7 @@ def apply_channel_mask_to_frames(
             futures = {ex.submit(compute_worker, i): i for i in frame_indices}
             for fut in as_completed(futures):
                 results.append(fut.result())
-        logger.info(f"Apply Channel Mask: processed {len(results)} frames in {time.perf_counter() - start:.2f}s")
+        logger.info(f"Copy Channel Masks: processed {len(results)} frames in {time.perf_counter() - start:.2f}s")
         if root is not None:
             root.after(0, lambda: apply_results_on_main(results))
         else:

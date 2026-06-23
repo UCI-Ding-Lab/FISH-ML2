@@ -55,13 +55,13 @@ def _segment_channel(fish_model, img, gui):
         return []
 
 
-def run_nucleus_segmentation(nucleus_img: np.ndarray, gui) -> list[segment]:
+def run_nucleus_segmentation(nucleus_img: np.ndarray, gui, sample_id) -> list[segment]:
     """
     Segment nuclei from the DAPI image and return segment objects.
     """
-    logger.info("Starting nucleus segmentation (Cellpose-SAM predict) for DAPI ...")
+    logger.info("Starting nucleus segmentation for sample %s ...", sample_id)
     if nucleus_img is None:
-        logger.warning("Nucleus segmentation aborted: missing DAPI image")
+        logger.warning("Nucleus segmentation aborted for sample %s: missing DAPI image", sample_id)
         return []
 
     fish_model = gui.getBackEnd()

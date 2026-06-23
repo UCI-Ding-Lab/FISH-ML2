@@ -1,8 +1,13 @@
 import pathlib
+import logging
 import numpy as np
-from matplotlib import pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib.figure import Figure
+from matplotlib.patches import PathPatch
+from matplotlib.path import Path
 from scipy.optimize import linear_sum_assignment
+
+logger = logging.getLogger("fishcore")
 
 
 def make_empty_pairing_result() -> dict:
@@ -159,12 +164,34 @@ def export_pairing_debug_pdf(frames: list, output_dir: pathlib.Path) -> pathlib.
         return None
     output_dir.mkdir(parents=True, exist_ok=True)
     pdf_path = output_dir / f"{output_dir.name}_pairing_debug.pdf"
-    with PdfPages(pdf_path) as pdf:
-        for frame, channel, pairing in pages:
-            fig = create_pairing_figure(frame, channel, pairing)
-            pdf.savefig(fig, bbox_inches="tight")
-            plt.close(fig)
+    return write_pairing_debug_pdf_pages(pdf_path, pages)
+
+
+def write_pairing_debug_pdf_pages(pdf_path: pathlib.Path, pages: list[tuple]) -> pathlib.Path | None:
+    """Write pairing debug pages and skip the PDF cleanly if drawing fails."""
+    try:
+        with PdfPages(pdf_path) as pdf:
+            for frame, channel, pairing in pages:
+                save_pairing_debug_page(pdf, frame, channel, pairing)
+    except Exception as error:
+        remove_partial_pairing_pdf(pdf_path)
+        logger.warning("Skipped pairing debug PDF export: %s", error)
+        return None
     return pdf_path
+
+
+def save_pairing_debug_page(pdf, frame, channel: str, pairing: dict) -> None:
+    """Render one frame-and-channel pairing page into the PDF."""
+    figure = create_pairing_figure(frame, channel, pairing)
+    pdf.savefig(figure, bbox_inches="tight")
+    figure.clear()
+
+
+def remove_partial_pairing_pdf(pdf_path: pathlib.Path) -> None:
+    """Delete an unfinished PDF so export does not leave broken files behind."""
+    if pdf_path.exists():
+        pdf_path.unlink()
+        
 
 
 def collect_pairing_debug_pages(frames: list) -> list[tuple]:
@@ -180,7 +207,8 @@ def collect_pairing_debug_pages(frames: list) -> list[tuple]:
 
 def create_pairing_figure(frame, channel: str, pairing: dict):
     """Build one PDF page with cytoplasm on the left and DAPI on the right."""
-    figure, axes = plt.subplots(1, 2, figsize=(12, 6))
+    figure = Figure(figsize=(12, 6))
+    axes = figure.subplots(1, 2)
     figure.suptitle(f"Sample {frame.sample_id} channel {channel} pairing")
     draw_channel_panel(axes[0], frame.getImgNumpyRGBForChannel(channel), frame.get_segments(channel), pairing, "cytoplasm")
     draw_channel_panel(axes[1], frame.getImgNumpyRGBForChannel("DAPI"), frame.get_nucleus_segments(), pairing, "nucleus")
@@ -200,9 +228,9 @@ def draw_matched_masks(axis, seg_objs: list, pairs: list[dict], target: str) -> 
     """Draw matched masks and place the shared pair number at each mask center."""
     index_key = "nucleus_index" if target == "nucleus" else "cytoplasm_index"
     for pair in pairs:
-        mask = segment_to_mask(seg_objs[pair[index_key]])
-        draw_mask_outline(axis, mask, "lime")
-        x, y = mask_center(mask)
+        seg_obj = seg_objs[pair[index_key]]
+        draw_mask_outline(axis, seg_obj, "lime")
+        x, y = get_segment_label_position(seg_obj)
         axis.text(x, y, str(pair["pair_index"]), color="yellow", fontsize=10, weight="bold")
 
 
@@ -211,12 +239,25 @@ def draw_unmatched_masks(axis, seg_objs: list, pairing: dict, target: str) -> No
     unmatched_key = "unmatched_nuclei" if target == "nucleus" else "unmatched_cytoplasms"
     prefix = "N" if target == "nucleus" else "C"
     for offset, mask_index in enumerate(pairing[unmatched_key], start=1):
-        mask = segment_to_mask(seg_objs[mask_index])
-        draw_mask_outline(axis, mask, "red")
-        x, y = mask_center(mask)
+        seg_obj = seg_objs[mask_index]
+        draw_mask_outline(axis, seg_obj, "red")
+        x, y = get_segment_label_position(seg_obj)
         axis.text(x, y, f"{prefix}{offset}", color="red", fontsize=9, weight="bold")
 
 
-def draw_mask_outline(axis, mask: np.ndarray, color: str) -> None:
-    """Draw one binary mask as a contour on the given matplotlib axis."""
-    axis.contour(mask.astype(float), levels=[0.5], colors=[color], linewidths=1.0)
+def get_segment_label_position(seg_obj) -> tuple[float, float]:
+    """Return a readable label position near the middle of one segment."""
+    return mask_center(segment_to_mask(seg_obj))
+
+
+def draw_mask_outline(axis, seg_obj, color: str) -> None:
+    """Draw one segment outline by reusing the segment's stored path."""
+    axis.add_patch(build_outline_patch(seg_obj, color))
+
+
+def build_outline_patch(seg_obj, color: str) -> PathPatch:
+    """Build a fresh outline patch so one segment can be drawn on many figures."""
+    path = seg_obj.patch.get_path()
+    vertices = np.array(path.vertices, copy=True)
+    codes = None if path.codes is None else np.array(path.codes, copy=True)
+    return PathPatch(Path(vertices, codes), facecolor="none", edgecolor=color, linewidth=1.0)

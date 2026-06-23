@@ -17,6 +17,7 @@ def test_on_channel_change_updates_loaded_image_channel_and_recooks_the_stove():
     panel = _make_bare_tool_panel()
     abs_obj = MagicMock()
     panel.gui.getStove.return_value.getLoaded.return_value = abs_obj
+    panel.gui.getFuncButton.return_value.displayMaskButtonPressed.return_value = True
 
     panel.on_channel_change("488")
 
@@ -24,6 +25,17 @@ def test_on_channel_change_updates_loaded_image_channel_and_recooks_the_stove():
     assert abs_obj.drawSegmentation is True
     assert abs_obj.selected_channel == "488"
     panel.gui.getStove.return_value.cook.assert_called_once_with(abs_obj)
+
+
+def test_on_channel_change_keeps_masks_hidden_when_display_masks_is_off():
+    panel = _make_bare_tool_panel()
+    abs_obj = MagicMock()
+    panel.gui.getStove.return_value.getLoaded.return_value = abs_obj
+    panel.gui.getFuncButton.return_value.displayMaskButtonPressed.return_value = False
+
+    panel.on_channel_change("488")
+
+    assert abs_obj.drawSegmentation is False
 
 
 def test_on_channel_change_returns_early_when_no_image_is_loaded():

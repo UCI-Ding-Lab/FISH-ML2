@@ -8,7 +8,7 @@ def _make_bare_tool_panel(seg_on=False, bbox_on=False):
     panel.gui = MagicMock()
 
     func_button = panel.gui.getFuncButton.return_value
-    func_button.segButtonPressed.return_value = seg_on
+    func_button.displayMaskButtonPressed.return_value = seg_on
     func_button.bboxButtonPressed.return_value = bbox_on
 
     brush_var = MagicMock()
@@ -34,7 +34,7 @@ def test_press_act_disables_brush_and_eraser_outside_segmentation_mode():
     panel.gui.popBox.assert_called_once_with(
         "w",
         "Tool Disabled",
-        "Brush and Eraser are only available when Segmentation mode is ON and BBOX mode is OFF.",
+        "Brush and Eraser are only available when Display Masks is ON and BBOX is OFF.",
     )
     panel.tools_var["brush"].set.assert_called_once_with(0)
     panel.tools_var["eraser"].set.assert_called_once_with(0)
