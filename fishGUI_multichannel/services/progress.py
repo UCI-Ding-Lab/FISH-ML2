@@ -23,11 +23,18 @@ class Progress:
                                          filetypes=[("Pickle files", "*.pkl")],
                                          title="Save Session As")
         if not filename: 
+            logger.info("Save session cancelled by user.")
             return
-        list_of_bundled_data = SessionManager.grabPool() # grabPool() returns a list of bundled data (includes file paths, bbox and masks for all abstract objects)
-        with open(filename, "wb") as file:
-            pickle.dump(list_of_bundled_data, file)
-        messagebox.showinfo("Done", "Session saved as " + filename)    
+        try: 
+            logger.info(f"Saving session to {filename}") 
+            list_of_bundled_data = SessionManager.grabPool() 
+            logger.info(f"Collected {len(list_of_bundled_data)} bundles") 
+            with open(filename, "wb") as file: pickle.dump(list_of_bundled_data, file) 
+            logger.info("Session saved successfully") 
+            messagebox.showinfo("Done", "Session saved as " + filename) 
+        except Exception as error:
+            logger.exception("Session save failed") 
+            messagebox.showerror("Save Error", str(error))  
         
     def load(gui):
         """
@@ -66,7 +73,7 @@ class Progress:
             
             return nucleus_path, cytoplasm_paths
             
-        def create_abstract_object(sample_id, nucleus_path, cyto_paths, bbox_list, seg_dict, gui):
+        def create_abstract_object(sample_id, nucleus_path, cyto_paths, bbox_list, seg_dict, nucleus_centers, gui):
             abstract_object = abstract(
                 sample_id, 
                 nucleus_path=nucleus_path,
@@ -75,9 +82,12 @@ class Progress:
                 gui=gui
             )
             abstract_object.bbox = [box(b, gui) for b in bbox_list]
+            abstract_object.nucleus_centers = nucleus_centers
             for channel, mask_list in seg_dict.items():
                 segs = [segment(gui, m) for m in mask_list]
                 abstract_object.set_segments(channel, segs)
+            abstract_object.bbox_generated = (bool(bbox_list) or bool(nucleus_centers))
+            abstract_object.segment_generated = abstract_object.has_all_channel_segments()
             return abstract_object
 
         # --- Main Logic ---
@@ -90,10 +100,11 @@ class Progress:
             try:
                 single_bundle : bundle = item
                 sample_id, nucleus_path, cytoplasm_paths, bbox_list, seg_dict = single_bundle.extract_data_from_bundles() 
+                nucleus_centers = getattr(single_bundle, "nucleus_centers", [])
                 valid_paths = return_valid_paths(nucleus_path, cytoplasm_paths) 
                 if valid_paths is None: # prevent loading frames and its data with at least one invalid path
                     continue
-                abs_obj =create_abstract_object(sample_id, nucleus_path, cytoplasm_paths, bbox_list, seg_dict, gui)
+                abs_obj =create_abstract_object(sample_id, nucleus_path, cytoplasm_paths, bbox_list, seg_dict, nucleus_centers, gui)
                 gui.getSeasoning().update_channel_menu(abs_obj.available_channels)     
                 gui.getSeasoning().update_channel_selector_for_image(abs_obj)
             except Exception as error:

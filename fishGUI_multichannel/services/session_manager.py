@@ -229,7 +229,8 @@ class SessionManager:
                     nucleus_path=abstract_object.getNucleusPath(),
                     cyto_paths=list(abstract_object.getCytoplasmPaths()),
                     bbox=abstract_object.boundingBoxRevised,
-                    segment=seg_dict
+                    segment=seg_dict,
+                    nucleus_centers=abstract_object.nucleus_centers
                 )
                 result.append(bundled_info_for_save)
         return result
@@ -264,11 +265,13 @@ class SessionManager:
             cls._show_bbox_not_ready_popup(gui, not_ready)
         if not ready:
             return
-
         gui.popBox("i", "Segmentation", f"Started segmentation for {len(selected_frames)} images.")
 
+
         def monitor_threads():
-            max_workers = cls._get_inference_worker_limit(gui, len(selected_frames))
+            total_start = time.perf_counter()
+            max_workers = max(1, min(2, len(selected_frames)))
+            logger.info("Using %d segmentation workers.", max_workers)
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = [
                     executor.submit(cls._segment_each, abs_obj, gui)
@@ -276,9 +279,9 @@ class SessionManager:
                 ]
                 for future in futures:
                     future.result()
-            cls._export_segmentation_timing_csv()
+            total_elapsed = time.perf_counter() - total_start
+            logger.info("Completed segmentation for %d images in %.4f seconds.", len(selected_frames), total_elapsed)
             gui.getFuncButton().toggle["SEGMENTATION_SELECTION"].set(0)
-
         threading.Thread(target=monitor_threads, daemon=True).start()
 
 
@@ -341,8 +344,7 @@ class SessionManager:
             })
 
         gui.getRoot().after(0, lambda a=abs_obj: cls._ui_show_segmented(a, gui))
-        logger.debug(f"Thread {thread_name} FINISHED for sample {abs_obj.sample_id} in {elapsed:.2f}s")
-
+        logger.info("Computed segmentation for sample %s in %.4f seconds", abs_obj.sample_id, elapsed)
 
 
     @classmethod

@@ -9,11 +9,12 @@ class bundle():
     and loaded later. It is a data container representing data for
     single frame.
     """
-    def __init__(self, sample_id, nucleus_path: pathlib.Path, cyto_paths: list[pathlib.Path], bbox: list[list], segment: list[np.ndarray]) -> None:
+    def __init__(self, sample_id, nucleus_path: pathlib.Path, cyto_paths: list[pathlib.Path], bbox: list[list], segment: list[np.ndarray], nucleus_centers=None) -> None:
         self.sample_id = sample_id 
         self.nucleus_path = nucleus_path
         self.cyto_paths = cyto_paths  
         self.bbox = np.array(bbox, dtype=np.uint16)
+        self.nucleus_centers = nucleus_centers or []
         self.rleSeg: dict[str, list[dict]] = {}
         for ch in segment:
             self.rleSeg[ch] = []
