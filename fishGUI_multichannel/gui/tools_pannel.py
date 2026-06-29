@@ -165,6 +165,7 @@ class seasoning():
                 self.gui.popBox("e", "Load Error", str(e))
             finally:
                 self.gui.getRoot().after(0, self.gui.dismissWait)
+                self.gui.popBox("i", "Loading Completed", "All frames have finished loading.")
         threading.Thread(target=job, daemon=True).start()
 
     def on_channel_change(self, new_chan: str):
@@ -183,7 +184,10 @@ class seasoning():
 
         # select channel and sync mask pointer
         abs_obj.selected_channel = new_chan
-        abs_obj.seg = abs_obj._get_seg_list_for_channel(new_chan)
+        abs_obj.seg = abs_obj._get_seg_obj_for_channel(new_chan)
+
+        # let abstract rebuild the image and thumbnails
+        abs_obj.update_thumbnail()
 
         # redraw canvas with new channel + masks
         self.gui.getStove().cook(abs_obj)
@@ -215,7 +219,9 @@ class seasoning():
         return True
     
     def update_channel_selector_for_image(self, abs_obj):
-        # Set the OptionMenu to match the current image's selected channel - used in abstract.py
+        # Rebuild options for the focused image so channels stay sample-specific.
+        self.update_channel_menu(getattr(abs_obj, "available_channels", []))
+        # Then sync selection to the image's current channel.
         self.channel_var.set(abs_obj.selected_channel)
 
     def update_channel_menu(self, channels: list[str]):

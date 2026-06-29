@@ -128,7 +128,8 @@ class funcButton():
             SessionManager.removeUnselected()
             self.gui.getTifSequence().resetPosition()
             for abs in SessionManager.getPool():
-                abs.thumbnail = "bbox" if abs.bbox_generated else "default"
+                # Restore thumbnail badges from true frame state
+                abs.update_thumbnail()
             SessionManager.sendFirst()
 
 
@@ -196,20 +197,104 @@ class funcButton():
 
 
     def APPLY_CHANNEL_MASK_call(self):
-            self.toggle["BBOX"].set(0)
-            self.toggle["SEGMENTATION_SELECTION"].set(0)
-            self.toggle["SEGMENT"].set(0)
-            channels = SessionManager.get_all_available_channels()
-            if not channels:
-                self.gui.popBox("w", "No Channels", "No available channels found in any frame.")
+        self.toggle["BBOX"].set(0)
+        self.toggle["SEGMENTATION_SELECTION"].set(0)
+        self.toggle["SEGMENT"].set(0)
+
+        available_channels = SessionManager.get_all_available_channels()
+        if not available_channels:
+            self.gui.popBox("w", "No Channels", "No available channels found in any frame.")
+            return
+
+        def channel_callback(selected_channel: str):
+            buf = SessionManager.getBuffer()
+            if buf and selected_channel not in getattr(buf, "available_channels", []):
+                self.gui.popBox(
+                    "w", "Channel Not Available",
+                    f"Current frame {getattr(buf, 'sample_id', '?')} has no channel {selected_channel}.",
+                )
                 return
-            ChannelSelectPopup(self.gui.getRoot(), channels, lambda ch: on_channel_selected(self, ch))
 
+            frame_names = [getattr(a, "sample_id", "?") for a in SessionManager.getPool()]
 
-# TODO clean below
-            
+            def frame_callback(selection: str):
+                pool = SessionManager.getPool()
+
+                if selection == "all":
+                    frames_sel = "all"
+                elif selection == "next5":
+                    try:
+                        start = pool.index(SessionManager.getBuffer())
+                    except ValueError:
+                        start = 0
+                    frames_sel = range(start, min(start + 5, len(pool)))
+                else:
+                    frames_sel = "all"
+
+                if selection == "all":
+                    idxs = range(len(pool))
+                elif selection == "next5":
+                    try:
+                        start = pool.index(SessionManager.getBuffer())
+                    except ValueError:
+                        start = 0
+                    idxs = range(start, min(start + 5, len(pool)))
+                else:
+                    idxs = range(len(pool))
+
+                missing = [
+                    pool[i].sample_id for i in idxs
+                    if selected_channel not in getattr(pool[i], "available_channels", [])
+                ]
+                if missing:
+                    preview = ", ".join(missing[:5]) + ("..." if len(missing) > 5 else "")
+                    self.gui.popBox(
+                        "w", "Channel Not Available",
+                        f"Channel {selected_channel} is missing for: {preview}",
+                    )
+                    self.toggle["SEGMENT"].set(0)
+                    return
+
+                self.toggle["APPLY_CHANNEL_MASK"].set(1)
+                self.APPLY_CHANNEL_MASK.config(
+                    state="disabled", relief=tk.SUNKEN, text=f"Applying… {selected_channel}"
+                )
+                self.gui.indicateWait(f"Applying channel {selected_channel} mask…")
+
+                def on_done():
+                    try:
+                        buf2 = SessionManager.getBuffer()
+                        if (
+                            buf2
+                            and getattr(buf2, "bbox_generated", False)
+                            and (
+                                getattr(buf2, "segment_generated", False)
+                                or bool(buf2._get_seg_list_for_channel(getattr(buf2, "selected_channel", None)))
+                            )
+                        ):
+                            self.toggle["SEGMENT"].set(1)
+                            buf2.drawSegmentation = True
+                        else:
+                            self.toggle["SEGMENT"].set(0)
+                    finally:
+                        self.gui.dismissWait()
+                        self.toggle["APPLY_CHANNEL_MASK"].set(0)
+                        self.APPLY_CHANNEL_MASK.config(
+                            state="normal", relief=tk.RAISED, text="Apply Channel Mask"
+                        )
+
+                SessionManager.apply_channel_mask_to_frames(
+                    source_channel=selected_channel,
+                    selected_frames=frames_sel,
+                    target_channels="all_channels",
+                    on_done=on_done,
+                )
+
+            FrameSelectPopup(self.gui.getRoot(), frame_names, frame_callback)
+
+        ChannelSelectPopup(self.gui.getRoot(), available_channels, channel_callback)
+
     def EXPORT_call(self):
-        # TODO - understand why an image has to be loaded for export
         if not self.gui.getStove().isLoaded():
             tkinter.messagebox.showwarning("Image Not Loaded", "Please select an image first")
             self.toggle["EXPORT"].set(0)
@@ -223,86 +308,13 @@ class funcButton():
             self.toggle["EXPORT"].set(0)
             return
         self.gui.indicateWait("Dataset conversion")
+
         def job():
             Progress.export(self.gui)
             self.gui.getRoot().after(0, self.gui.dismissWait)
+            tkinter.messagebox.showinfo("Export Confirmation", "Export Finished.")
+
         threading.Thread(target=job, daemon=True).start()
-
-
-
-# --- Helper for Apply channek mask ---
-def start_apply_channel_mask(self, selected_channel, frames):
-    self.toggle["APPLY_CHANNEL_MASK"].set(1)
-    self.APPLY_CHANNEL_MASK.config(state="disabled", relief=tk.SUNKEN, text=f"Applying… {selected_channel}")
-    self.gui.indicateWait(f"Applying channel {selected_channel} mask…")
-    def on_done():
-        buf2 = SessionManager.getBuffer()
-        if (buf2 and buf2.bbox_generated and
-            (buf2.segment_generated or bool(buf2._get_seg_list_for_channel(buf2.selected_channel)))):
-            self.toggle["SEGMENT"].set(1)
-            buf2.drawSegmentation = True
-        else:
-            self.toggle["SEGMENT"].set(0)
-        self.gui.dismissWait()
-        self.toggle["APPLY_CHANNEL_MASK"].set(0)
-        self.APPLY_CHANNEL_MASK.config(state="normal", relief=tk.RAISED, text="Apply Channel Mask")
-    SessionManager.apply_channel_mask_to_frames(
-        source_channel=selected_channel,
-        selected_frames=frames,
-        target_channels="all_channels",
-        on_done=on_done
-    )
-
-def on_frames_selected(self, selected_channel, selection):
-    frames = get_selected_frames(selection) if isinstance(selection, str) else selection
-    missing = frames_missing_channel(frames, selected_channel)
-    if missing:
-        show_channel_missing_popup(self, selected_channel, missing)
-        return
-    start_apply_channel_mask(self, selected_channel, frames)
-
-
-def on_channel_selected(self, selected_channel):
-    if not buffer_has_channel(selected_channel):
-        buf = SessionManager.getBuffer()
-        sid = buf.sample_id if buf else "?"
-        self.gui.popBox("w", "Channel Not Available", f"Current frame {sid} has no channel {selected_channel}.")
-        return
-    frame_names = get_frame_names()
-    FrameSelectPopup(self.gui.getRoot(), frame_names, lambda sel: on_frames_selected(self, selected_channel, sel))
-
-
-def buffer_has_channel(channel):
-    buf = SessionManager.getBuffer()
-    return buf is not None and channel in buf.available_channels
-
-
-def get_frame_names():
-    return [f.sample_id for f in SessionManager.getPool()]
-
-
-def get_selected_frames(selection):
-    pool = SessionManager.getPool()
-    if isinstance(selection, list):
-        return selection
-    if selection == "all":
-        return pool
-    elif selection == "next5":
-        buf = SessionManager.getBuffer()
-        start = pool.index(buf) if buf in pool else 0
-        return pool[start:start+5]
-    return pool
-
-
-def frames_missing_channel(frames, channel):
-    return [f.sample_id for f in frames if channel not in f.available_channels]
-
-
-def show_channel_missing_popup(self, channel, missing):
-    preview = ", ".join(missing[:5]) + ("..." if len(missing) > 5 else "")
-    self.gui.popBox("w", "Channel Not Available", f"Channel {channel} is missing for: {preview}")
-    self.toggle["SEGMENT"].set(0)
-
 
 
 class ChannelSelectPopup(tk.Toplevel):
@@ -310,7 +322,7 @@ class ChannelSelectPopup(tk.Toplevel):
         super().__init__(parent)
         self.title("Select Channel Mask")
         self.callback = callback
-        self.selected_channel = tk.StringVar(value=available_channels[0])
+        self.selected_channel = tk.StringVar(value=list(available_channels)[0])
 
         tk.Label(self, text="Which channel mask do you want to apply for current frame?\n(Chosen channel mask will apply to all channels)").pack(pady=10)
 

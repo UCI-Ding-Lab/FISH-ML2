@@ -6,7 +6,10 @@ from ..gui.canvas.segment import segment
 from .bundle_data import bundle
 from .matPacker import create
 from .session_manager import SessionManager
-import re
+from ..utils.sample_channels import (
+    channels_from_paths,
+    get_cytoplasm_paths_and_names,
+)
 import pathlib
 
 class Progress:
@@ -53,7 +56,7 @@ class Progress:
             
         def return_valid_paths(nucleus_path, cytoplasm_paths):
             if not nucleus_path.exists():
-                messagebox.showwarning("Missing file", "Nucleus image not found:\n{nucleus_path}")
+                messagebox.showwarning("Missing file", f"Nucleus image not found:\n{nucleus_path}")
                 return None
         
             missing_cytoplasm_file = [str(path) for path in cytoplasm_paths if not path.exists()]
@@ -63,26 +66,50 @@ class Progress:
             
             return nucleus_path, cytoplasm_paths
             
-        def create_abstract_object(sample_id, nucleus_path, cyto_paths, bbox_list, seg_dict, gui):
+        def create_abstract_object(
+            sample_id,
+            nucleus_path,
+            cyto_paths,
+            bbox_list,
+            seg_dict,
+            nucleus_centers,
+            gui,
+        ):
+            channels = channels_from_paths(nucleus_path, cyto_paths)
+            if "DAPI" not in channels:
+                messagebox.showwarning(
+                    "Missing DAPI",
+                    f"Could not resolve a DAPI path for sample {sample_id}; skipping.",
+                )
+                return None
+
+            cyto_paths, cyto_channels = get_cytoplasm_paths_and_names(channels)
             abstract_object = abstract(
-                sample_id, 
+                sample_id,
                 nucleus_path=nucleus_path,
                 cyto_paths=cyto_paths,
+                cyto_channels=cyto_channels,
+                channels=channels,
                 gallery_frame=gui.getTifSequence().gallery_frame,
-                gui=gui
+                gui=gui,
             )
+            if nucleus_centers:
+                abstract_object.nucleus_centers = [
+                    (float(x), float(y)) for x, y in nucleus_centers
+                ]
             abstract_object.bbox = [box(b, gui) for b in bbox_list]
-            seg_647 = [segment(gui, m) for m in seg_dict.get("647", [])]
-            seg_488 = [segment(gui, m) for m in seg_dict.get("488", [])]
-            abstract_object._abstract__seg_647 = seg_647
-            abstract_object._abstract__seg_488 = seg_488
-            # Set current channel mask to the selected channel TODO - clean with abstractpy
-            if getattr(abstract_object, "selected_channel", "647") == "647":
-                abstract_object.seg = seg_647 
-            else:
-                abstract_object.seg = seg_488
-            if seg_647 or seg_488:
-                abstract_object.segment_generated = True
+            if abstract_object.getNucleusCenters() or bbox_list:
+                abstract_object.bbox_generated = True
+            elif not abstract_object.bbox_generated:
+                _ = abstract_object.bbox
+            for ch, mask_list in seg_dict.items():
+                seg_objs = [segment(gui, m) for m in mask_list]
+                abstract_object._set_seg_obj_for_channel(ch, seg_objs)
+            abstract_object.segment_generated = any(seg_dict.values())
+            if abstract_object.selected_channel:
+                abstract_object.seg = abstract_object._get_seg_obj_for_channel(
+                    abstract_object.selected_channel
+                )
             return abstract_object
 
         # --- Main Logic ---
@@ -94,11 +121,28 @@ class Progress:
         for item in session_data:
             try:
                 single_bundle : bundle = item
-                sample_id, nucleus_path, cytoplasm_paths, bbox_list, seg_dict = single_bundle.extract_data_from_bundles() 
-                valid_paths = return_valid_paths(nucleus_path, cytoplasm_paths) 
+                (
+                    sample_id,
+                    nucleus_path,
+                    cytoplasm_paths,
+                    bbox_list,
+                    seg_dict,
+                    nucleus_centers,
+                ) = single_bundle.extract_data_from_bundles()
+                valid_paths = return_valid_paths(nucleus_path, cytoplasm_paths)
                 if valid_paths is None: # prevent loading frames and its data with at least one invalid path
                     continue
-                abs_obj =create_abstract_object(sample_id, nucleus_path, cytoplasm_paths, bbox_list, seg_dict, gui)
+                abs_obj = create_abstract_object(
+                    sample_id,
+                    nucleus_path,
+                    cytoplasm_paths,
+                    bbox_list,
+                    seg_dict,
+                    nucleus_centers,
+                    gui,
+                )
+                if abs_obj is None:
+                    continue
                 gui.getSeasoning().update_channel_menu(abs_obj.available_channels)     
                 gui.getSeasoning().update_channel_selector_for_image(abs_obj)
             except Exception as error:
@@ -128,19 +172,17 @@ class Progress:
 
         # TODO - O(n^2) -  think of ways to improve effiiency
         for abs in toSave:
-            cyto_paths = abs.getCytoplasmPaths()
-            for path in cyto_paths:
-                stem = path.stem.lower()
-                channel = re.search(r"(647|488|555|594)", stem)
-            
-                if not abs.selected or len(abs.segmentExplicit) <= 0:
+            cyto_chnls_and_paths = abs.getCytoplasmChannelsAndPaths()
+            for channel, path in cyto_chnls_and_paths.items():
+                seg_objs = abs._get_seg_obj_for_channel(channel)
+                if not abs.selected or not seg_objs:
                     img = None
                     xy = []
                     masks = []
                 else:
-                    img = abs.getImgNumpyRGBCyto(channel) if channel else None
-                    xy = [mask.xy for mask in abs.segment]
-                    masks = [mask.box for mask in abs.segment]
+                    img = abs.getImgNumpyRGBCyto(channel)
+                    xy = [mask.xy for mask in seg_objs]
+                    masks = [mask.box for mask in seg_objs]
 
                 d["name"].append(path.name)
                 d["image"].append(img)

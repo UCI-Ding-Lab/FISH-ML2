@@ -84,7 +84,7 @@ class Fish():
                 "Running on CPU. Install a CUDA-enabled PyTorch build in this environment to use the GPU."
             )
         self.model = models.CellposeModel(gpu=(self.device == "cuda"))
-        checkpoint_path = self.config_path.parent / "cellpose-SAM" / "weights" / "fish_cellpose_v1.pt"
+        checkpoint_path = self.config_path.parent / "fishGUI_multichannel" / "cellpose-SAM" / "weights" / "fish_cellpose_v1.pt"
         checkpoint = torch.load(checkpoint_path, map_location=self.device)
         self.model.net.load_state_dict(checkpoint["state_dict"]) # load weights
         self.model.net.eval() # Ensure inference is deterministic and consistent : dropout is turned off & BatchNorm uses average during training 

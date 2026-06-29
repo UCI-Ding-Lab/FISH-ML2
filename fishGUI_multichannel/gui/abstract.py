@@ -15,6 +15,9 @@ from ..utils.image_preprocessing import (
     preprocess_nucleus_stack,
     preprocess_cytoplasm_stack,
     preprocess_cytoplasm_channels,
+    remove_outliers,
+    clahe,
+    gradient
 )
 
 logger = logging.getLogger('fishcore')
@@ -41,14 +44,14 @@ class abstract():
     - Managing the thumbnail’s state in the gallery (blue, green, orange overlays)
     - Handling all frame-specific interactions with the main GUI
     """
-
-    SEGMENT_CHANNELS = ("647", "488", "555", "594", "514")
     
     def __init__(
         self,
         sample_id, 
         nucleus_path: pathlib.Path,
         cyto_paths: list[pathlib.Path],
+        cyto_channels: list[str],
+        channels: dict[str, pathlib.Path], # {channel: path}, includes DAPI
         gallery_frame,
         gui
     ):
@@ -56,10 +59,61 @@ class abstract():
         self.sample_id = sample_id 
         self.__nucleus_path = nucleus_path
         self.__cyto_paths = cyto_paths
+        self.__cyto_channels = cyto_channels
+        self.__channels_and_paths = channels
         self.gui = gui
 
         # Thumbnail states
-        self.__img_pil_thumbnail_bbox = None # image with bbox overlay - blue dot -- NOTE cellpose-sam version may not need bbox, but this overlay can be used to signifiy that nucleus center was computed
+        self.__img_pil_thumbnail_bbox = None  # image with bbox overlay - blue dot -- NOTE cellpose-sam version may not need bbox, but this overlay can be used to signifiy that nucleus center was computed
+        
+        # Load images
+        self.__img_np_nucleus = self._load_nucleus(nucleus_path) # TODO use .resolve() if loading session data generates an error due to path issues; .resolve() ensures absolute path
+        self.__img_np_cyto: dict[str, np.ndarray] = self._load_cytoplasms(channels)
+
+        # Get available channels and set current channel (channel name string, e.g. "647")
+        self.available_channels = self._get_available_channels()
+        self.__current_channel = self._initialize_default_channel(self.available_channels)
+        if self.__current_channel is None:
+            logger.warning(f"No available cytoplasm channels for sample {self.sample_id} at {nucleus_path}")
+
+        # Build thumbnail from default cyto channel, or nucleus if none
+        thumbnail_img = self._initialize_thumbnail_img()
+        self.__img_np_rgb = grayscale_to_rgb(thumbnail_img)
+        self.__img_pil_thumbnail, self.__img_tk_thumbnail = self._create_pil_and_tkinter_thumbnail(self.__img_np_rgb) # Convert image to display on tkinter thumbnail & main canvas
+        
+        # Set up thumbnail in gui
+        self.__label = self._create_gallery_thumbnail(gallery_frame, self.__img_tk_thumbnail)
+
+        # --- SAFE BIND SETUP -------------------------------------------------
+        self.__label._abs = self  # back reference
+        self.__label.lift()       # bring to front
+
+        # rebuild bindtags: widget tag must come first
+        wname = str(self.__label)
+        tags = [t for t in self.__label.bindtags() if t != wname]
+        tags.insert(0, wname)
+        self.__label.bindtags(tuple(tags))
+        print("[thumb] bindtags:", self.__label.bindtags())
+
+        # main bindings, but add="+" so we don’t overwrite each other
+        self.__label.bind("<Button-1>", self.on_click, add="+")
+        self.__label.bind("<Button-2>", self.on_click, add="+")
+        self.__label.bind("<Button-3>", self.on_click, add="+")
+        self.__label.bind("<Control-Button-1>", self.on_multi_toggle, add="+")
+        self.__label.bind("<Control-Button-3>", self.on_multi_toggle, add="+")
+
+        # debug taps so you can see raw delivery
+        def _dbg(seq):
+            return lambda e: print(f"[thumb] HIT {seq} num={getattr(e,'num',None)} state={getattr(e,'state',None)}")
+
+        self.__label.bind("<Button-1>", _dbg("<Button-1>"), add="+")
+        self.__label.bind("<Button-3>", _dbg("<Button-3>"), add="+")
+        self.__label.bind("<Control-Button-1>", _dbg("<Control-Button-1>"), add="+")
+        self.__label.bind("<Control-Button-3>", _dbg("<Control-Button-3>"), add="+")
+        self.__label.bind("<Enter>", _dbg("<Enter>"), add="+")
+  
+        # --- Thumbnail variants for different GUI states --- 
+        self.__img_pil_thumbnail_bbox = None # image with bbox overlay - blue dot
         self.__img_pil_thumbnail_select = None # image with selection overlay - green dot
         self.__img_pil_thumbnail_crossout = None  # image with crossout overlay - red X
         self.__img_pil_thumbnail_segmented = None # image with segmentation overlay - orange dot
@@ -86,30 +140,14 @@ class abstract():
         self.__bbox_generated: bool = False
         self.__drawBbox: bool = False
         
-        # Segmentation masks
-        self.__current_channel_mask = [] 
-        self.__channel_segments = {}
+        # --- Channel-specific segmentation ---
+        self.__channel_segs: dict[str, list] = {}
         self.__segment_generated: bool = False
         self.__drawSeg: bool = False
         self.__channel_rgb_cache = {}
 
-        # --- MAIN INITIALIZATION LOGIC ---
-        # Load images
-        self.__img_np_nucleus = self._load_nucleus(nucleus_path) 
-        self.__img_np_647, self.__img_np_488,  self.__img_np_555, self.__img_np_594, self.__img_np_514 = self._load_cytoplasms(cyto_paths)
-
-        # Get available channels and set default channel
-        self.available_channels = self._get_available_channels()
-        self.__current_channel = self._initialize_default_channel(self.available_channels)
-        if self.__current_channel is None:
-            logger.warning(f"No available cytoplasm channels for sample {self.sample_id} at {nucleus_path}")
-
         # Build thumbnail gallery
-        thumbnail_img = self._initialize_thumbnail_img()
-        self.__img_np_rgb = grayscale_to_rgb(thumbnail_img) # NOTE Many display libraries, including Tkinter, PIL, and matplotlib, expect images to be in RGB format
-        self.__img_pil_thumbnail, self.__img_tk_thumbnail = self._create_pil_and_tkinter_thumbnail(self.__img_np_rgb) # Convert image to display on tkinter thumbnail & main canvas
-        self.__label = self._create_gallery_thumbnail(gallery_frame, self.__img_tk_thumbnail)
-        self._setup_gallery_thumbnail_label_bindings_and_debug(self.__label) # TODO remove this method if possible
+        # self._setup_gallery_thumbnail_label_bindings_and_debug(self.__label) # TODO remove this method if possible
 
         from ..services.session_manager import SessionManager
         SessionManager.addToPool(self)
@@ -130,82 +168,75 @@ class abstract():
             return preprocess_nucleus_stack(nucleus_array)
         return normalize_to_uint8(np.squeeze(nucleus_array)) # already z-projected
     
-
-    def _load_cytoplasms(self, cyto_paths: list[pathlib.Path]) -> tuple[np.ndarray, np.ndarray]:
+    # TODO -  consider separating methods to two : loading and image preprocesing
+    def _load_cytoplasms(self, cyto_paths: dict[str, pathlib.Path]) -> dict[str, np.ndarray]:
         """
-        Returns the preprocessed image (normalized grayscale) for both 647 and 488
+        cyto_channels list[str] is used to create a list[image_arrays] for self.__img_np_cyto
+        
+        Returns the preprocessed image (normalized grayscale) for all channels
         If either channel does not exist, it returns None
 
         Returns:
         - gray-scale image to ensure compatibility with groundingdino and SAM
         """
-        channel_images = {}
-        for cyto_path in cyto_paths:
-            cyto_array = tifffile.imread(cyto_path)
+        cyto_images = {} # {channel: image}
+        for channel, path in cyto_paths.items():
+            # Z-Project (if needed)
+            cyto_array = tifffile.imread(path)
             zprojected = (
                 preprocess_cytoplasm_stack(cyto_array, top_n=8)
                 if cyto_array.ndim == 3 and cyto_array.shape[0] > 1
                 else np.squeeze(cyto_array)
             )
-            stem = cyto_path.stem.lower()
-            if "647" in stem:
-                channel_images["647"] = zprojected
-            elif "488" in stem:
-                channel_images["488"] = zprojected
-            elif "555" in stem:
-                channel_images["555"] = zprojected
-            elif "594" in stem:
-                channel_images["594"] = zprojected
-            elif "514" in stem:
-                channel_images["514"] = zprojected
-            else:
-                logger.warning(f"Unrecognized cytoplasm channel in file {cyto_path.name}")
 
-        processed = preprocess_cytoplasm_channels(channel_images)
-        return (
-            processed.get("647"),
-            processed.get("488"),
-            processed.get("555"),
-            processed.get("594"),
-            processed.get("514"),
-        )
-        
-        
+            # Documented channels are in separate 'if' statements in case they need specific preprocessing
+            if "647" in channel:
+                img_647 = clahe(normalize_to_uint8(remove_outliers(zprojected, k=20.0, use_median=False)), clip_limit=2.0, tile_size=(8,8))
+                cyto_images[channel] = img_647
+            elif "488" in channel:
+                img_488 = normalize_to_uint8(remove_outliers(zprojected, k=20.0, use_median=False)) 
+                img_488 = clahe(img_488, clip_limit=4.0, tile_size=(8,8))
+                cyto_images[channel] = img_488
+            elif "555" in channel:
+                img_555 = normalize_to_uint8(remove_outliers(zprojected, k=20.0, use_median=False)) 
+                img_555 = clahe(img_555, clip_limit=4.0, tile_size=(8,8))
+                cyto_images[channel] = img_555
+            elif "594" in channel:
+                img_594 = normalize_to_uint8(remove_outliers(zprojected, k=20.0, use_median=False)) 
+                img_594 = clahe(img_594, clip_limit=4.0, tile_size=(8,8))   
+                cyto_images[channel] = img_594
+            elif "514" in channel:
+                img_514 = normalize_to_uint8(remove_outliers(zprojected, k=20.0, use_median=False)) 
+                img_514 = clahe(img_514, clip_limit=4.0, tile_size=(8,8))
+                cyto_images[channel] = img_514
+            else:
+                img_undocumented = normalize_to_uint8(remove_outliers(zprojected, k=20.0, use_median=False))
+                cyto_images[channel] = img_undocumented
+
+        return cyto_images
+    
     def _get_available_channels(self) -> list[str]:
-        channels = []
-        if self.__img_np_647 is not None:
-            channels.append("647")
-        if self.__img_np_488 is not None:
-            channels.append("488")
-        if self.__img_np_555 is not None:
-            channels.append("555")
-        if self.__img_np_594 is not None:
-            channels.append("594")
-        if self.__img_np_514 is not None:
-            channels.append("514")
-        return channels
+        return self.__cyto_channels
 
 
     def _initialize_default_channel(self, channels):
         return channels[0] if channels else None
 
-
-    def _initialize_thumbnail_img(self):
-        """
-        Returns the image to use for the thumbnail
-        """
+    def _initialize_thumbnail_img(self) -> np.ndarray:
+        """Returns the grayscale image to use for the thumbnail."""
         for ch in self.available_channels:
-            if ch == "647" and self.__img_np_647 is not None:
-                return self.__img_np_647
-            elif ch == "488" and self.__img_np_488 is not None:
-                return self.__img_np_488
-            elif ch == "555" and self.__img_np_555 is not None:
-                return self.__img_np_555
-            elif ch == "594" and self.__img_np_594 is not None:
-                return self.__img_np_594
-            elif ch == "514" and self.__img_np_514 is not None:
-                return self.__img_np_514
+            if ch in self.__img_np_cyto:
+                return self.__img_np_cyto[ch]
         return self.__img_np_nucleus
+
+    def _get_rgb_for_channel(self, channel: str | None) -> np.ndarray:
+        if channel == "DAPI":
+            img = self.__img_np_nucleus
+        elif channel and channel in self.__img_np_cyto:
+            img = self.__img_np_cyto[channel]
+        else:
+            img = self._initialize_thumbnail_img()
+        return grayscale_to_rgb(img)
 
 
     def _create_pil_and_tkinter_thumbnail(self, img_np_rgb, size=(64, 64)):
@@ -215,8 +246,8 @@ class abstract():
         """
         pil = Image.fromarray(img_np_rgb).resize(size) # used for image processing, drawing or saving
         tk_img = ImageTk.PhotoImage(pil) # image that will be displayed on gui
+        
         return pil, tk_img
-
 
     def _create_gallery_thumbnail(self, gallery_frame, tk_img, size=(64, 64)):
         """
@@ -266,20 +297,48 @@ class abstract():
 
     # --- Selected Channel ---
     @property
-    def selected_channel(self):
+    def selected_channel(self) -> str | None:
         return self.__current_channel
     @selected_channel.setter
-    def selected_channel(self, new_channel):
+    def selected_channel(self, new_channel: str | None):
         """
-        Based on the newly selected channel, update the current mask
-        and update the thumbnail 
+        Switch the active channel name, refresh display RGB, and update thumbnail.
         """
         if new_channel == self.__current_channel:
             return
         self.__current_channel = new_channel
-        self.__current_channel_mask = self.current_channel_mask
         self.__img_np_rgb = self._get_rgb_for_channel(new_channel)
-        self.update_thumbnail() # TODO should thumbnail be updated in thumbnaisl.py? 
+        self.update_thumbnail()
+
+    # --- Per-channel segmentation storage ---
+    def _set_seg_list_for_channel(self, ch: str, seg_objs) -> None:
+        self.__channel_segs[ch] = list(seg_objs or [])
+
+    def _get_seg_list_for_channel(self, ch: str) -> list:
+        return self.__channel_segs.get(ch, [])
+
+    def _set_seg_obj_for_channel(self, ch: str, seg_objs) -> None:
+        self._set_seg_list_for_channel(ch, seg_objs)
+
+    def _get_seg_obj_for_channel(self, ch: str) -> list:
+        return self._get_seg_list_for_channel(ch)
+
+    @property
+    def current_channel_mask(self) -> list:
+        if not self.__current_channel:
+            return []
+        return self._get_seg_list_for_channel(self.__current_channel)
+
+    @current_channel_mask.setter
+    def current_channel_mask(self, value):
+        if not self.__current_channel:
+            return
+        self._set_seg_list_for_channel(self.__current_channel, value)
+        self.segment_generated = bool(self.current_channel_mask)
+
+    def set_mask_for_all_channels(self, mask_list) -> None:
+        for ch in self.available_channels:
+            self._set_seg_list_for_channel(ch, mask_list)
 
 
     # --- Boundary Boxes / Nucleus Center Generation --- # TODO replace name with nucleus generation, remove unnecessary parts 
@@ -298,89 +357,7 @@ class abstract():
             logger.info(f"Computed nucleus centers : {nuc_boxes}")
             self.bbox_generated = True # TODO change to nucleus_center_computed if bbox is unnecessary
         return self.__bbox
-        
-
-    # --- Segmentation Logic ---
-    @property
-    def segment(self) -> list[segment]:
-        """
-        Run Cellpose-SAM for all available cytoplasmic channels,
-        store each channel's masks, and return the active channel mask
-
-        Flow: 
-        segment_call (buttons.py) -> segment_selected (session_manager.py) 
-        -> segment_each (session_manager.py) -> segment (abstract.py) 
-        -> run_cellpose_segmentation (segmentation.py)
-        """
-        if not self.bbox_generated:
-            self.gui.popBox(
-                "w",
-                "Bounding Boxes Not Ready",
-                "Please generate BBOX before running segmentation.",
-            )
-            return self.current_channel_mask
-        
-        nucleus_img = self.__img_np_nucleus
-        cyto_channels = {
-            "647": self.__img_np_647,
-            "488": self.__img_np_488,
-            "555": self.__img_np_555,
-            "594": self.__img_np_594,
-            "514": self.__img_np_514,
-        }
-        seg_dict = run_cellpose_sam_segmentation(nucleus_img, cyto_channels, self.gui, self.selected_channel)
-        seg_list = seg_dict.get(self.selected_channel, [])
-        self._set_seg_list_for_channel(self.selected_channel, seg_list)
-        self.seg = seg_list
-        self.segment_generated = any(self._get_seg_list_for_channel(ch) for ch in self.SEGMENT_CHANNELS)
-        return self.seg
-
-        return self.current_channel_mask
-
-
-    def _set_seg_list_for_channel(self, ch, seg_objs):
-        self.__channel_segments[ch] = seg_objs if seg_objs is not None else []
-    def _get_seg_list_for_channel(self, ch):
-        return self.__channel_segments.get(ch, [])
-
-    def _get_rgb_for_channel(self, ch):
-        if ch not in self.__channel_rgb_cache:
-            if ch == "647" and self.__img_np_647 is not None:
-                base_img = self.__img_np_647
-            elif ch == "488" and self.__img_np_488 is not None:
-                base_img = self.__img_np_488
-            elif ch == "555" and self.__img_np_555 is not None:
-                base_img = self.__img_np_555
-            elif ch == "594" and self.__img_np_594 is not None:
-                base_img = self.__img_np_594
-            elif ch == "514" and self.__img_np_514 is not None:
-                base_img = self.__img_np_514
-            else:
-                base_img = self.__img_np_nucleus
-            self.__channel_rgb_cache[ch] = grayscale_to_rgb(base_img)
-        return self.__channel_rgb_cache[ch]
-    def getImgNumpyRGBCyto(self, channel):
-        return self._get_rgb_for_channel(channel)
-
-    @property
-    def current_channel_mask(self):
-        return self._get_seg_list_for_channel(self.__current_channel)
-    @current_channel_mask.setter
-    def current_channel_mask(self, value):
-        self._set_seg_list_for_channel(self.__current_channel, value)
-        self.segment_generated = bool(self.current_channel_mask)
-
-
-    def set_mask_for_all_channels(self, mask_list):
-        """
-        Sets the same mask list for all available channels in this frame.
-        Used by Apply Channel Mask.
-        """
-        for ch in self.available_channels:
-            self._set_seg_list_for_channel(ch, mask_list)
-
-# TODO clean code below:
-
+    
     @bbox.setter
     def bbox(self, value: list[box]):
         self.__bbox = value
@@ -401,19 +378,53 @@ class abstract():
         self.__bbox_generated = value
         if not self.gui.getFuncButton().selectButtonPressed():
             self.thumbnail = "bbox" if value else "default"
+    
+    # --- Segmentation Logic ---
+    @property
+    def segment(self) -> list[segment]:
+        """
+        Run Cellpose-SAM for all available cytoplasmic channels,
+        store each channel's masks, and return the active channel mask
+
+        Flow: 
+        segment_call (buttons.py) -> segment_selected (session_manager.py) 
+        -> segment_each (session_manager.py) -> segment (abstract.py) 
+        -> run_cellpose_segmentation (segmentation.py)
+        """
+        if not self.bbox_generated:
+            self.gui.popBox(
+                "w",
+                "Bounding Boxes Not Ready",
+                "Please generate BBOX before running segmentation.",
+            )
+            return self.current_channel_mask
+
+        ch = self.selected_channel
+        if not ch or ch not in self.__img_np_cyto:
+            logger.warning("Segmentation aborted: no valid cytoplasm channel selected")
+            return self.current_channel_mask
+
+        seg_dict = run_cellpose_sam_segmentation(
+            self.__img_np_nucleus, self.__img_np_cyto, self.gui, ch
+        )
+        seg_list = seg_dict.get(ch, [])
+        self._set_seg_list_for_channel(ch, seg_list)
+        self.segment_generated = any(
+            self._get_seg_list_for_channel(c) for c in self.__cyto_channels
+        )
+        return self.current_channel_mask
     # TODO check where these methods are used and why it is necessary -- update: used in tools_pannels.py, on_channel_change
     @segment.setter
     def segment(self, value):
-        self.__current_channel_mask = value
-        self.segment_generated = True if value else False
+        self.current_channel_mask = value
 
     @segment.deleter
     def segment(self):
-        self.__current_channel_mask = []
+        self.current_channel_mask = []
 
-    @property # TODO remove if unnecssary, check export in progress.py
+    @property
     def segmentExplicit(self):
-        return self.__current_channel_mask
+        return self.current_channel_mask
     
     @property
     def segment_generated(self) -> bool:
@@ -434,11 +445,11 @@ class abstract():
 
     @property
     def seg(self):
-        return self.__current_channel_mask
+        return self.current_channel_mask
 
     @seg.setter
     def seg(self, value):
-        self.__current_channel_mask = value
+        self.current_channel_mask = value
 
     def on_click(self, event):
         """
@@ -506,8 +517,6 @@ class abstract():
                 self.__selected_for_segmentation = not self.__selected_for_segmentation
                 self.update_thumbnail()
 
-
-    
     # --- Updating Thumbnail --- 
     @property
     def thumbnail(self) -> str:
@@ -515,7 +524,7 @@ class abstract():
     @thumbnail.setter
     def thumbnail(self, value: str): 
         """
-        Whenever self.thumbnail_state is assigned a value, this method is called to 
+        Whenever self.thumbnail is assigned a value, this method is called to 
         update the image overlawy
         """
         self.__thumbnail_state = value
@@ -596,38 +605,15 @@ class abstract():
         else:
             self.thumbnail = "default"  # no dot
 
-
-    # TODO remove this method if possible
-    def _setup_gallery_thumbnail_label_bindings_and_debug(self, label):
-        # Back reference and bring to front
-        label._abs = self
-        label.lift()
-
-        # Rebuild bindtags: widget tag must come first
-        wname = str(label)
-        tags = [t for t in label.bindtags() if t != wname]
-        tags.insert(0, wname)
-        label.bindtags(tuple(tags))
-        print("[thumb] bindtags:", label.bindtags())
-
-        # Main bindings, add="+" so we don’t overwrite each other
-        label.bind("<Button-1>", self.on_click, add="+")
-        label.bind("<Button-2>", self.on_click, add="+")
-        label.bind("<Button-3>", self.on_click, add="+")
-        label.bind("<Control-Button-1>", self.on_multi_toggle, add="+")
-        label.bind("<Control-Button-3>", self.on_multi_toggle, add="+")
-
-        # Debug taps so you can see raw delivery
-        def _dbg(seq):
-            return lambda e: print(f"[thumb] HIT {seq} num={getattr(e,'num',None)} state={getattr(e,'state',None)}")
-
-        label.bind("<Button-1>", _dbg("<Button-1>"), add="+")
-        label.bind("<Button-3>", _dbg("<Button-3>"), add="+")
-        label.bind("<Control-Button-1>", _dbg("<Control-Button-1>"), add="+")
-        label.bind("<Control-Button-3>", _dbg("<Control-Button-3>"), add="+")
-        label.bind("<Enter>", _dbg("<Enter>"), add="+")
-
     # --- Helper functions ---
+    def getImgNumpyRGBCyto(self, channel: str) -> np.ndarray | None:
+        """Returns the RGB numpy array for a named channel."""
+        if channel == "DAPI":
+            return grayscale_to_rgb(self.__img_np_nucleus)
+        if channel in self.__img_np_cyto:
+            return grayscale_to_rgb(self.__img_np_cyto[channel])
+        return None
+
     @property
     def highlighted(self) -> str:
         return self.__highlighted
@@ -716,14 +702,21 @@ class abstract():
         Provide access to label so that other methods in the class can update the thumbnail
         """
         return self.__label
+    def getCytoplasmChannelsAndPaths(self) -> dict[str, pathlib.Path]:
+        return {
+            ch: self.__channels_and_paths[ch]
+            for ch in self.__cyto_channels
+            if ch in self.__channels_and_paths
+        }
     def getNucleusPath(self) -> pathlib.Path:
         return self.__nucleus_path
+    def getImgNumpyCyto(self) -> dict[str, np.ndarray]:
+        return dict(self.__img_np_cyto)
     def getCytoplasmPaths(self) -> tuple[pathlib.Path, ...]:
         return tuple(self.__cyto_paths)
-    #---Remove when refactoring---
     def noBbox(self) -> bool:
         return not len(self.__bbox)
     def noSegment(self) -> bool:
-        return not len(self.__current_channel_mask)
+        return not len(self.current_channel_mask)
     def getNucleusCenters(self) -> list[tuple]:
         return self.nucleus_centers
