@@ -49,7 +49,7 @@ def create(name: list[str], xy: list[list[(float,float),],], masks: list[list[np
         for eachCell in range(cellCount):
             cell_data = np.zeros((1, 1), dtype=cell_dtype)
             cell_data[0, 0]["mask"] = masks[eachImg][eachCell].astype(np.double)
-            cell_data[0, 0]["pos"] = np.array(xy[eachImg][eachCell]).T.astype(np.double)  
+            cell_data[0, 0]["pos"] = np.array(xy[eachImg][eachCell]).T.astype(np.double) + 1
             cell_data[0, 0]["size"] = np.array([masks[eachImg][eachCell].shape[0], masks[eachImg][eachCell].shape[1]], dtype=np.double)
             cell_data[0, 0]["area"] = np.array([np.sum(masks[eachImg][eachCell])])
 
@@ -68,7 +68,7 @@ def create(name: list[str], xy: list[list[(float,float),],], masks: list[list[np
         # dirname only for the first entry
         if eachImg == 0:
             entry = np.zeros((1, 1), dtype=tracked_dtype_head)
-            entry[0, 0]["dirname"] = np.array([[dirname if dirname else ""]], dtype="O")
+            entry[0, 0]["dirname"] = dirname if dirname else ""
         else:
             entry = np.zeros((1, 1), dtype=tracked_dtype_tail)
 

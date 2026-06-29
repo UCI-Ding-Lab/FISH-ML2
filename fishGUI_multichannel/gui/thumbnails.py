@@ -8,7 +8,7 @@ from ..utils.sample_channels import (
     undocumented_channels_in_grouped,
 )
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('fishcore')
 
 """
 Manages the gallery of TIFF image sequences for the GUI.
@@ -19,8 +19,6 @@ class tifSequence():
         self.gui = gui
         container = gui.getLowerFrame().getFrameB()
         self.base = tkinter.Canvas(container, height=74)
-        # --- DEBUG: see if Canvas is catching the click ---
-        self.base.bind("<Button-1>", lambda e: print("[DEBUG] Canvas got click", e, "at", e.x, e.y, "widget:", e.widget))
 
         self.scrollbar = tkinter.Scrollbar(container, orient=tkinter.HORIZONTAL, command=self.base.xview)
         self.base.configure(xscrollcommand=self.scrollbar.set)
@@ -33,7 +31,7 @@ class tifSequence():
         self.base.bind_all("<Button-4>", self.on_mouse_wheel)
         self.base.bind_all("<Button-5>", self.on_mouse_wheel)
 
-        # --- FIX: delegate clicks that Canvas eats back to labels ---
+        # Delegate clicks that Canvas eats back to labels.
         self.base.bind("<Button-1>", self._delegate_thumb_click, add="+")
         
     def update_scrollregion(self):
@@ -120,8 +118,7 @@ class tifSequence():
             if hasattr(cur, "_abs"):
                 try:
                     return cur._abs.on_click(event)
-                except Exception as ex:
-                    print("[DEBUG] delegate failed:", ex)
+                except Exception:
                     return "break"
             cur = getattr(cur, "master", None)
         return None

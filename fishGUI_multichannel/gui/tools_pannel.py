@@ -193,6 +193,20 @@ class seasoning():
         self.gui.getStove().cook(abs_obj)
         abs_obj.drawSegmentation = True
 
+    def _deactivate_navigation_tool(self):
+        stove = self.gui.getStove()
+        toolbar = getattr(stove, "toolbar", None)
+        if toolbar is None:
+            return
+
+        try:
+            toolbar.clear_active_tool()
+        except Exception:
+            try:
+                toolbar.deactivate_all_tools()
+            except Exception:
+                pass
+
     def press_act(self, widget: str):
         func_btn = self.gui.getFuncButton()
         bbox_on = func_btn.bboxButtonPressed()
@@ -216,6 +230,10 @@ class seasoning():
         for k, v in self.tools_var.items():
             if k != widget:
                 v.set(0)
+
+        if widget in ("brush", "eraser") and self.tools_var[widget].get():
+            self._deactivate_navigation_tool()
+
         return True
     
     def update_channel_selector_for_image(self, abs_obj):

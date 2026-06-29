@@ -7,11 +7,7 @@ import logging
 from ..services.session_manager import SessionManager
 from ..services.progress import Progress
 
-logging.basicConfig(
-    level=logging.DEBUG,            
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-)
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('fishcore')
 
 class funcButton():
     def __init__(self, gui):
@@ -368,8 +364,6 @@ class FrameSelectPopup(tk.Toplevel):
     def on_apply(self):
         try:
             self.callback(self.selection.get())
-        except Exception as e:
-            import traceback
-            print("Exception in FrameSelectPopup callback:", e)
-            traceback.print_exc()
+        except Exception:
+            logger.exception("Exception in FrameSelectPopup callback")
         self.destroy()

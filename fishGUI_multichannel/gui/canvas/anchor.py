@@ -1,4 +1,7 @@
+import logging
 from matplotlib.patches import Circle
+
+logger = logging.getLogger('fishcore')
 
 class anchor():
     __buffer: 'anchor' = None
@@ -46,14 +49,14 @@ class anchor():
                         patches = self.gui.getStove().subplot.patches
                         if self.patch in patches:
                             patches.remove(self.patch)
-        except Exception as e:
-            print(f"Error in anchor draw setter: {e}")
+        except Exception:
+            logger.warning("Error in anchor draw setter", exc_info=True)
         
         self.__draw = value
         try:
             self.gui.getStove().canvas.draw()
-        except Exception as e:
-            print(f"Error drawing canvas: {e}")
+        except Exception:
+            logger.warning("Error drawing anchor canvas", exc_info=True)
 
     @property
     def selected(self) -> bool:

@@ -354,7 +354,7 @@ class abstract():
                 for x0, y0, x1, y1 in nuc_boxes
             ]
             self.nucleus_centers = centers
-            logger.info(f"Computed nucleus centers : {nuc_boxes}")
+            # logger.info(f"Computed nucleus centers : {nuc_boxes}")
             self.bbox_generated = True # TODO change to nucleus_center_computed if bbox is unnecessary
         return self.__bbox
     
@@ -391,6 +391,53 @@ class abstract():
         -> segment_each (session_manager.py) -> segment (abstract.py) 
         -> run_cellpose_segmentation (segmentation.py)
         """
+        return self.segment_channel(self.selected_channel)
+
+
+    def get_segments(self, channel=None) -> list[segment]:
+        target_channel = self.__current_channel if channel is None else channel
+        if target_channel is None:
+            return []
+        return self._get_seg_list_for_channel(target_channel)
+
+    def set_segments(self, channel, seg_objs) -> None:
+        """Store segment objects for one channel and refresh completion state."""
+        target_channel = self.__current_channel if channel is None else channel
+        if target_channel is None:
+            return
+        self._set_seg_list_for_channel(target_channel, seg_objs)
+        self.segment_generated = self.has_all_channel_segments()
+
+    def has_segments(self, channel=None) -> bool:
+        """Return True when the chosen channel already has segmentation masks."""
+        return bool(self.get_segments(channel))
+
+    def _get_channels_requiring_segments(self) -> list[str]:
+        """Return the channels that must be segmented before the frame is complete."""
+        try:
+            channels = list(self.available_channels)
+        except AttributeError:
+            channels = []
+        if channels:
+            return channels
+        if self.__current_channel is None:
+            return []
+        return [self.__current_channel]
+
+    def has_all_channel_segments(self) -> bool:
+        """Return True only when every available channel has segmentation masks."""
+        channels = self._get_channels_requiring_segments()
+        if not channels:
+            return False
+        for channel in channels:
+            if not self.get_segments(channel):
+                return False
+        return True
+
+    def segment_channel(self, channel=None) -> list[segment]:
+        target_channel = self.__current_channel if channel is None else channel
+        if target_channel is None:
+            return []
         if not self.bbox_generated:
             self.gui.popBox(
                 "w",
@@ -457,8 +504,6 @@ class abstract():
         they are in when the user clicks on the thumbnail and sets
         it to focus
         """
-        if event:
-            print("clicked", event.num, event.state)
         self.gui.getSeasoning().update_channel_selector_for_image(self)
         self.gui.getStove().bufferSetCurrent(3)
         self.gui.getStove().dump()
@@ -466,11 +511,6 @@ class abstract():
         prev_thumbnail = SessionManager.getBuffer()
         if prev_thumbnail: del prev_thumbnail.highlighted
         self.highlighted = "red"
-
-        print(f"select={self.gui.getFuncButton().selectButtonPressed()}, "
-        f"frameSeg={self.gui.getFuncButton().frameSegButtonPressed()}, "
-        f"bbox={self.gui.getFuncButton().bboxButtonPressed()}, "
-        f"seg={self.gui.getFuncButton().segButtonPressed()}, ")
 
         func_btn = self.gui.getFuncButton()
         bbox_on = func_btn.bboxButtonPressed()
@@ -605,6 +645,25 @@ class abstract():
         else:
             self.thumbnail = "default"  # no dot
 
+
+    def _setup_gallery_thumbnail_label_bindings(self, label):
+        # Back reference and bring to front
+        label._abs = self
+        label.lift()
+
+        # Rebuild bindtags: widget tag must come first
+        wname = str(label)
+        tags = [t for t in label.bindtags() if t != wname]
+        tags.insert(0, wname)
+        label.bindtags(tuple(tags))
+
+        # Main bindings, add="+" so we don’t overwrite each other
+        label.bind("<Button-1>", self.on_click, add="+")
+        label.bind("<Button-2>", self.on_click, add="+")
+        label.bind("<Button-3>", self.on_click, add="+")
+        label.bind("<Control-Button-1>", self.on_multi_toggle, add="+")
+        label.bind("<Control-Button-3>", self.on_multi_toggle, add="+")
+
     # --- Helper functions ---
     def getImgNumpyRGBCyto(self, channel: str) -> np.ndarray | None:
         """Returns the RGB numpy array for a named channel."""
@@ -643,15 +702,15 @@ class abstract():
                         if not value:
                             box.clearBufferAndDeselect()
                     except Exception as e:
-                        print(f"Error setting drawBbox: {e}")
+                        logger.warning("Error setting drawBbox for sample %s", self.sample_id, exc_info=True)
                         continue
             except Exception as e:
-                print(f"Error in drawBbox setter: {e}")
+                logger.warning("Error in drawBbox setter for sample %s", self.sample_id, exc_info=True)
         
         try:
             self.gui.getStove().canvas.draw()
         except Exception as e:
-            print(f"Error drawing canvas in drawBbox: {e}")
+            logger.warning("Error drawing canvas in drawBbox for sample %s", self.sample_id, exc_info=True)
         
         self.__drawBbox = value
 

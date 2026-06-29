@@ -49,7 +49,7 @@ def apply_masks_on_main(frame, target_channels, mask_list):
                     pass
             frame._set_seg_list_for_channel(ch, shared_segs)
         frame.seg = frame._get_seg_list_for_channel(frame.selected_channel)
-        frame.segment_generated = True
+        frame.segment_generated = bool(frame.has_all_channel_segments())
     except Exception as e:
         logger.error(f"Failed to apply masks: {e}", exc_info=True)
 

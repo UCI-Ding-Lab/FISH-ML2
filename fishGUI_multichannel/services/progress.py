@@ -1,5 +1,6 @@
 import pickle, threading, concurrent.futures, time
 from tkinter import filedialog, messagebox
+import logging
 from ..gui.abstract import abstract
 from ..gui.canvas.box import box
 from ..gui.canvas.segment import segment
@@ -12,6 +13,8 @@ from ..utils.sample_channels import (
 )
 import pathlib
 
+logger = logging.getLogger('fishcore')
+
 class Progress:
     @staticmethod
     def save():
@@ -23,11 +26,18 @@ class Progress:
                                          filetypes=[("Pickle files", "*.pkl")],
                                          title="Save Session As")
         if not filename: 
+            logger.info("Save session cancelled by user.")
             return
-        list_of_bundled_data = SessionManager.grabPool() # grabPool() returns a list of bundled data (includes file paths, bbox and masks for all abstract objects)
-        with open(filename, "wb") as file:
-            pickle.dump(list_of_bundled_data, file)
-        messagebox.showinfo("Done", "Session saved as " + filename)    
+        try: 
+            logger.info(f"Saving session to {filename}") 
+            list_of_bundled_data = SessionManager.grabPool() 
+            logger.info(f"Collected {len(list_of_bundled_data)} bundles") 
+            with open(filename, "wb") as file: pickle.dump(list_of_bundled_data, file) 
+            logger.info("Session saved successfully") 
+            messagebox.showinfo("Done", "Session saved as " + filename) 
+        except Exception as error:
+            logger.exception("Session save failed") 
+            messagebox.showerror("Save Error", str(error))  
         
     def load(gui):
         """
@@ -151,6 +161,7 @@ class Progress:
 
     @staticmethod
     def export(gui):
+        total_start = time.perf_counter()
         f = filedialog.asksaveasfilename(defaultextension=".mat", 
                                          filetypes=[("Matlab files", "*.mat")],
                                          title="Export Results As")
@@ -164,6 +175,7 @@ class Progress:
             return
         
         d = {"name":[],"image":[],"xy":[],"masks":[]}
+        prep_start = time.perf_counter()
         
         # get directory path
         directory_name = SessionManager.getImportDirectory()
@@ -188,4 +200,33 @@ class Progress:
                 d["image"].append(img)
                 d["xy"].append(xy)
                 d["masks"].append(masks) 
+        prep_seconds = time.perf_counter() - prep_start
+
+        write_start = time.perf_counter()
         create(d["name"], d["xy"], d["masks"], f, dirname=str(directory_name))
+        write_seconds = time.perf_counter() - write_start
+        total_seconds = time.perf_counter() - total_start
+
+        logger.info(
+            "Export timing for %s: prepared %d entries in %.2fs, wrote MAT in %.2fs, total %.2fs",
+            pathlib.Path(f).name,
+            len(d["name"]),
+            prep_seconds,
+            write_seconds,
+            total_seconds,
+        )
+
+        try:
+            gui.getRoot().after(
+                0,
+                lambda: messagebox.showinfo(
+                    "Export Complete",
+                    (
+                        f"Prepared {len(d['name'])} entries in {prep_seconds:.2f}s\n"
+                        f"Wrote MAT in {write_seconds:.2f}s\n"
+                        f"Total {total_seconds:.2f}s"
+                    ),
+                ),
+            )
+        except Exception:
+            pass

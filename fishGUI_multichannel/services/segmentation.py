@@ -58,8 +58,6 @@ def run_cellpose_sam_segmentation(
     Segment only the selected channel.
     Return a dict with all channels present, but only the selected one populated.
     """
-    logger.info(f"Starting segmentation (Cellpose-SAM predict) for channel {selected_channel} ...")
-
     fish_model = gui.getBackEnd()
     results = {k: [] for k in cyto_channels}
     if not cyto_channels or nucleus_img is None:

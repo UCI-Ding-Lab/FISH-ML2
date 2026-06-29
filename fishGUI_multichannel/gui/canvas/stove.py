@@ -184,7 +184,8 @@ class stove():
                 # the click is within that selected segment. This prevents accidental
                 # switching to overlapping segments while editing.
                 if brush_active or eraser_active:
-                    if buf and buf.selected and buf.contains(event.xdata, event.ydata):
+                    edit_margin = max(2, min(6, int(self.gui.getSeasoning().get_marker_size() / 2)))
+                    if buf and buf.selected and buf.contains(event.xdata, event.ydata, margin=edit_margin):
                         try:
                             buf.push_undo() # record undo snapshot at the start of the stroke if available
                         except Exception:
@@ -204,7 +205,6 @@ class stove():
                             pass
                     else:
                         # ignore click when brush/eraser active but no valid selected buffer
-                        print("[DEBUG] Brush/Eraser active but click is outside selected mask -> ignoring")
                         self.press = False
                         return
                 else:
