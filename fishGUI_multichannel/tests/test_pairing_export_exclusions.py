@@ -21,7 +21,7 @@ def test_finalize_pairing_excludes_one_cytoplasm_with_two_nuclei():
 
 
 def test_build_paired_export_data_skips_unmatched_nucleus_masks():
-    """Ensure export still returns only stored clean pairs."""
+    """Ensure export still returns only rebuilt clean pairs."""
     class FakeSegment:
         """Store simple exportable segment values for one test."""
 
@@ -32,13 +32,19 @@ def test_build_paired_export_data_skips_unmatched_nucleus_masks():
     class FakeAbstract:
         """Store pairing and segment data used by one export test."""
 
+        def update_pairings_for_channel(self, channel):
+            """Refresh pairing before export for the requested channel."""
+
         def get_pairings(self, channel):
+            """Return one clean pair for the requested channel."""
             return {"pairs": [{"cytoplasm_index": 0, "nucleus_index": 0}]}
 
         def get_segments(self, channel):
+            """Return one cytoplasm segment for the requested channel."""
             return [FakeSegment(xy=(3.0, 4.0), box=np.array([[1, 0], [0, 1]]))]
 
         def get_nucleus_segments(self):
+            """Return two nucleus segments for this export test."""
             return [
                 FakeSegment(box=np.array([[0, 1], [1, 0]])),
                 FakeSegment(box=np.array([[1, 1], [0, 0]])),
@@ -49,3 +55,37 @@ def test_build_paired_export_data_skips_unmatched_nucleus_masks():
     assert xy == [(3.0, 4.0)]
     assert len(masks) == 1
     assert len(nucleus_masks) == 1
+
+
+def test_build_paired_export_data_skips_stale_pair_indexes():
+    """Ensure export skips stale pair indexes instead of crashing."""
+    class FakeSegment:
+        """Store simple exportable segment values for one test."""
+
+        def __init__(self, xy=None, box=None):
+            self.xy = xy
+            self.box = box
+
+    class FakeAbstract:
+        """Store stale pairing data used by one export test."""
+
+        def update_pairings_for_channel(self, channel):
+            """Leave the stale pair in place for this safety test."""
+
+        def get_pairings(self, channel):
+            """Return one stale pair whose indexes are too large."""
+            return {"pairs": [{"cytoplasm_index": 2, "nucleus_index": 3}]}
+
+        def get_segments(self, channel):
+            """Return one cytoplasm segment for the requested channel."""
+            return [FakeSegment(xy=(3.0, 4.0), box=np.array([[1, 0], [0, 1]]))]
+
+        def get_nucleus_segments(self):
+            """Return one nucleus segment for this export test."""
+            return [FakeSegment(box=np.array([[0, 1], [1, 0]]))]
+
+    xy, masks, nucleus_masks = build_paired_export_data(FakeAbstract(), "647")
+
+    assert xy == []
+    assert masks == []
+    assert nucleus_masks == []

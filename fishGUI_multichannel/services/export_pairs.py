@@ -14,11 +14,31 @@ def build_paired_export_data(abs_obj, channel: str) -> tuple[list, list, list]:
     """
     Build matched cell positions plus cytoplasm and nucleus masks for one channel.
     """
-    pairs = abs_obj.get_pairings(channel)["pairs"]
+    abs_obj.update_pairings_for_channel(channel)
+    pairs = collect_valid_export_pairs(abs_obj, channel)
     xy = collect_pair_xy(abs_obj, channel, pairs)
     masks = collect_pair_masks(abs_obj, channel, pairs)
     nucleus_masks = collect_pair_nucleus_masks(abs_obj, pairs)
     return xy, masks, nucleus_masks
+
+
+def collect_valid_export_pairs(abs_obj, channel: str) -> list[dict]:
+    """
+    Return only pairs whose nucleus and cytoplasm indexes still exist for export.
+    """
+    pairs = abs_obj.get_pairings(channel)["pairs"]
+    segs = abs_obj.get_segments(channel)
+    nuclei = abs_obj.get_nucleus_segments()
+    return [pair for pair in pairs if pair_indexes_exist(pair, segs, nuclei)]
+
+
+def pair_indexes_exist(pair: dict, segs: list, nuclei: list) -> bool:
+    """
+    Return True when one pair points to existing cytoplasm and nucleus masks.
+    """
+    cyto_index = pair["cytoplasm_index"]
+    nucleus_index = pair["nucleus_index"]
+    return cyto_index < len(segs) and nucleus_index < len(nuclei)
 
 
 def collect_pair_xy(abs_obj, channel: str, pairs: list[dict]) -> list:

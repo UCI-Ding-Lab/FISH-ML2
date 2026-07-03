@@ -346,7 +346,6 @@ class abstract():
         Store DAPI nucleus masks for this frame.
         """
         self.__nucleus_segments = seg_objs if seg_objs is not None else []
-        self.refresh_all_pairings()
 
     def has_nucleus_segments(self) -> bool:
         """
@@ -388,7 +387,6 @@ class abstract():
             self.set_nucleus_segments(seg_objs)
             return
         self._set_seg_list_for_channel(target_channel, seg_objs)
-        self.update_pairings_for_channel(target_channel)
         self.segment_generated = self.has_all_channel_segments()
 
     def has_segments(self, channel=None) -> bool:
