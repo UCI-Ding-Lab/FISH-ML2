@@ -124,17 +124,74 @@ def build_cost_matrix(nucleus_masks: list[np.ndarray], cytoplasm_masks: list[np.
 
 
 def finalize_pairing(rows, cols, meta: dict, nucleus_count: int, cytoplasm_count: int) -> dict:
-    """Turn Hungarian assignments into accepted pairs plus unmatched indices."""
-    result = make_empty_pairing_result()
-    matched_nuclei = set()
-    matched_cytoplasms = set()
+    """Turn Hungarian assignments into clean pairs plus unmatched indices."""
+    pairs = collect_valid_pairs(rows, cols, meta)
+    pairs = remove_ambiguous_pairs(pairs, meta)
+    return build_result_from_pairs(pairs, nucleus_count, cytoplasm_count)
+
+
+def collect_valid_pairs(rows, cols, meta: dict) -> list[dict]:
+    """Collect the Hungarian matches that pass the basic pairing quality rule."""
+    pairs = []
     for pair_index, (row, col) in enumerate(zip(rows, cols), start=1):
-        center_inside, containment, distance = meta[(row, col)]
-        if not match_quality_is_good(center_inside, containment, distance):
+        pair = build_valid_pair(pair_index, row, col, meta)
+        if pair is not None:
+            pairs.append(pair)
+    return pairs
+
+
+def build_valid_pair(pair_index: int, row: int, col: int, meta: dict) -> dict | None:
+    """Build one pair when the nucleus and cytoplasm look like a valid match."""
+    center_inside, containment, distance = meta[(row, col)]
+    if not match_quality_is_good(center_inside, containment, distance):
+        return None
+    return build_pair_entry(pair_index, row, col, center_inside, containment, distance)
+
+
+def remove_ambiguous_pairs(pairs: list[dict], meta: dict) -> list[dict]:
+    """Keep only pairs whose cytoplasm contains one nucleus center."""
+    clean_pairs = []
+    for pair in pairs:
+        if pair_is_ambiguous(pair, meta):
             continue
-        result["pairs"].append(build_pair_entry(pair_index, row, col, center_inside, containment, distance))
-        matched_nuclei.add(int(row))
-        matched_cytoplasms.add(int(col))
+        clean_pairs.append(pair)
+    return clean_pairs
+
+
+def pair_is_ambiguous(pair: dict, meta: dict) -> bool:
+    """Return True when a pair's cytoplasm has more than one nucleus center inside."""
+    cytoplasm_index = pair["cytoplasm_index"]
+    return count_nuclei_inside_cytoplasm(cytoplasm_index, meta) > 1
+
+
+def count_nuclei_inside_cytoplasm(cytoplasm_index: int, meta: dict) -> int:
+    """Count how many nucleus centers fall inside one cytoplasm mask."""
+    inside_count = 0
+    for nucleus_cytoplasm, values in meta.items():
+        if not is_same_cytoplasm(nucleus_cytoplasm, cytoplasm_index):
+            continue
+        if nucleus_center_is_inside(values):
+            inside_count += 1
+    return inside_count
+
+
+def is_same_cytoplasm(nucleus_cytoplasm: tuple[int, int], cytoplasm_index: int) -> bool:
+    """Return True when one metadata entry belongs to the requested cytoplasm."""
+    return nucleus_cytoplasm[1] == cytoplasm_index
+
+
+def nucleus_center_is_inside(values: tuple[bool, float, float]) -> bool:
+    """Return True when one nucleus center lies inside the cytoplasm mask."""
+    center_inside, _, _ = values
+    return center_inside
+
+
+def build_result_from_pairs(pairs: list[dict], nucleus_count: int, cytoplasm_count: int) -> dict:
+    """Build the final pairing result using the accepted clean pairs."""
+    result = make_empty_pairing_result()
+    result["pairs"] = pairs
+    matched_nuclei = {pair["nucleus_index"] for pair in pairs}
+    matched_cytoplasms = {pair["cytoplasm_index"] for pair in pairs}
     result["unmatched_nuclei"] = collect_unmatched_indices(nucleus_count, matched_nuclei)
     result["unmatched_cytoplasms"] = collect_unmatched_indices(cytoplasm_count, matched_cytoplasms)
     return result
