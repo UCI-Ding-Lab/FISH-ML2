@@ -446,10 +446,10 @@ class abstract():
             )
             return self.current_channel_mask
 
-        ch = self.selected_channel
+        ch = target_channel
         if not ch or ch not in self.__img_np_cyto:
             logger.warning("Segmentation aborted: no valid cytoplasm channel selected")
-            return self.current_channel_mask
+            return self._get_seg_list_for_channel(target_channel)
 
         seg_dict = run_cellpose_sam_segmentation(
             self.__img_np_nucleus, self.__img_np_cyto, self.gui, ch
@@ -459,7 +459,7 @@ class abstract():
         self.segment_generated = any(
             self._get_seg_list_for_channel(c) for c in self.__cyto_channels
         )
-        return self.current_channel_mask
+        return self._get_seg_list_for_channel(target_channel)
     # TODO check where these methods are used and why it is necessary -- update: used in tools_pannels.py, on_channel_change
     @segment.setter
     def segment(self, value):
