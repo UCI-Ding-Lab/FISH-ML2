@@ -1,0 +1,11 @@
+# Minimal dependencies for unit tests in CI.
+# Full ML stack (torch, cellpose, groundingdino, etc.) is not required because
+# tests mock inference and only import GUI/service modules.
+pytest
+numpy
+pycocotools
+matplotlib
+scikit-image
+opencv-python-headless
+pillow
+tifffile
