@@ -1,3 +1,4 @@
+import numpy as np
 from unittest.mock import MagicMock, patch
 
 from fishGUI_multichannel.gui.abstract import abstract
@@ -23,13 +24,16 @@ def _make_pool_abstract(selected=False):
     abs_obj.update_thumbnail = MagicMock()
     abs_obj.gui = MagicMock()
     abs_obj.gui.getFuncButton.return_value.selectButtonPressed.return_value = False
-    abs_obj.available_channels = []
-    abs_obj.SEGMENT_CHANNELS = ["647", "488"]
+    abs_obj.available_channels = ["647", "488"]
     abs_obj._abstract__bbox = [MagicMock(final=[1, 2, 3, 4])]
     abs_obj._abstract__bbox_generated = True
-    abs_obj.get_segments = MagicMock(return_value=[])
     abs_obj.getNucleusPath = MagicMock(return_value="nucleus.tif")
-    abs_obj.getCytoplasmPaths = MagicMock(return_value=["cyto_647.tif"])
+    abs_obj.getCytoplasmPaths = MagicMock(return_value=["cyto_647.tif", "cyto_488.tif"])
+    abs_obj.getNucleusCenters = MagicMock(return_value=[])
+    abs_obj.getImgNumpyCyto = MagicMock(return_value={"647": np.zeros((10, 10)), "488": np.zeros((10, 10))})
+    abs_obj._get_seg_obj_for_channel = MagicMock(
+        side_effect=lambda ch: [MagicMock(_segment__data=MagicMock(T=f"mask-{ch}"))]
+    )
     abs_obj.sample_id = "sample-001"
     abs_obj.on_click = MagicMock()
     return abs_obj
@@ -85,7 +89,6 @@ def test_get_all_available_channels_returns_unique_sorted_channels():
 def test_grab_pool_bundles_only_selected_frames():
     selected_frame = _make_pool_abstract(selected=True)
     selected_frame.sample_id = "sample-007"
-    selected_frame.get_segments = MagicMock(side_effect=lambda ch: [MagicMock(_segment__data=MagicMock(T=f"mask-{ch}"))])
     unselected_frame = _make_pool_abstract(selected=False)
     SessionManager._SessionManager__pool = [selected_frame, unselected_frame]
 
@@ -95,8 +98,9 @@ def test_grab_pool_bundles_only_selected_frames():
     mock_bundle.assert_called_once_with(
         "sample-007",
         nucleus_path="nucleus.tif",
-        cyto_paths=["cyto_647.tif"],
+        cyto_paths=["cyto_647.tif", "cyto_488.tif"],
         bbox=[[1, 2, 3, 4]],
         segment={"647": ["mask-647"], "488": ["mask-488"]},
+        nucleus_centers=[],
     )
     assert result == [mock_bundle.return_value]

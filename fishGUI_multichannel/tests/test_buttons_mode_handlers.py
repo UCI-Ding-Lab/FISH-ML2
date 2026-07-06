@@ -30,8 +30,8 @@ def test_select_call_when_turning_off_resets_gallery_and_refocuses_selected_pool
 
     mock_remove.assert_called_once_with()
     button.gui.getTifSequence.return_value.resetPosition.assert_called_once_with()
-    assert first.thumbnail == "bbox"
-    assert second.thumbnail == "default"
+    first.update_thumbnail.assert_called_once_with()
+    second.update_thumbnail.assert_called_once_with()
     mock_send_first.assert_called_once_with()
 
 
