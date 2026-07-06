@@ -65,6 +65,17 @@ def update_ui_for_focused_frame(frame, focused_frame, seg_mode_on):
         logger.error(f"UI update failed: {e}", exc_info=True)
 
 
+def _resolve_frame_indices(frame_pool, selected_frames):
+    if selected_frames == "all":
+        return list(range(len(frame_pool)))
+    if isinstance(selected_frames, range):
+        return list(selected_frames)
+    if isinstance(selected_frames, (list, tuple)) and selected_frames:
+        if isinstance(selected_frames[0], int):
+            return list(selected_frames)
+    return [i for i, f in enumerate(frame_pool) if f in selected_frames]
+
+
 def apply_channel_mask_to_frames(
     abstract_cls, source_channel, selected_frames, target_channels, on_done=None
 ):
@@ -73,7 +84,7 @@ def apply_channel_mask_to_frames(
     Runs compute in background threads, UI updates on main thread.
     """
     frame_pool = abstract_cls.getPool()
-    frame_indices = [i for i, f in enumerate(frame_pool) if f in selected_frames]
+    frame_indices = _resolve_frame_indices(frame_pool, selected_frames)
     focused_frame = abstract_cls.getBuffer()
     try:
         seg_mode_on = bool(focused_frame and focused_frame.gui.getFuncButton().segButtonPressed())

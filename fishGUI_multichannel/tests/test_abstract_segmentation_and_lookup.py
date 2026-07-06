@@ -6,19 +6,22 @@ def test_segment_channel_stores_results_only_for_the_requested_channel(bare_abst
     abs_obj = bare_abstract_factory()
     abs_obj._abstract__bbox_generated = True
     abs_obj._abstract__img_np_nucleus = np.zeros((10, 10))
-    abs_obj._abstract__img_np_647 = np.zeros((10, 10))
-    abs_obj._abstract__img_np_488 = np.zeros((10, 10))
-    abs_obj._abstract__img_np_555 = None
-    abs_obj._abstract__img_np_594 = None
-    abs_obj._abstract__img_np_514 = None
 
-    with patch("fishGUI_multichannel.gui.abstract.run_cellpose_sam_segmentation", return_value={"488": [99]}) as mock_segment:
+    with patch(
+        "fishGUI_multichannel.gui.abstract.run_cellpose_sam_segmentation",
+        return_value={"488": [99]},
+    ) as mock_segment:
         result = abs_obj.segment_channel("488")
 
     assert result == [99]
     assert abs_obj.get_segments("488") == [99]
     assert abs_obj.get_segments("647") == []
-    mock_segment.assert_called_once()
+    mock_segment.assert_called_once_with(
+        abs_obj._abstract__img_np_nucleus,
+        abs_obj._abstract__img_np_cyto,
+        abs_obj.gui,
+        "488",
+    )
 
 
 def test_find_methods_return_the_matching_box_and_segment_or_none(bare_abstract_factory):

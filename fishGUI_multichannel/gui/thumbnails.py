@@ -1,8 +1,12 @@
 import tkinter
 import pathlib
-import re
 import logging
 from ..services.session_manager import SessionManager
+from ..utils.sample_channels import (
+    group_files_by_sample_and_channel,
+    get_cytoplasm_paths_and_names,
+    undocumented_channels_in_grouped,
+)
 
 logger = logging.getLogger('fishcore')
 
@@ -57,48 +61,32 @@ class tifSequence():
         self.base.xview_moveto(0)
         self.base.yview_moveto(0)
 
-    # Called in buttons.py, IMPORT_call method    
+    # Called in buttons.py, IMPORT_call method
     def addToGallery(self, tif_files: list):
         from .abstract import abstract # prevent circular imports
 
-        def parse_sampleID_and_channel(path: pathlib.Path):
+        def on_parse_error(path: pathlib.Path):
             stem = path.stem
-            sample_match = re.search(r"s(\d{1,4})", stem, re.IGNORECASE)
-            channel_match = re.search(r"w[-_]?(?:.*?)?(DAPI|488|647|555|594|514)", stem, re.IGNORECASE)
-            if not (sample_match and channel_match):
-                logger.warning(f"addToGallery → skipping {stem!r}, couldn't parse s### or w###")
-                return None, None
-            sample_id = sample_match.group(1)
-            channel_name = channel_match.group(1).upper()
-            return sample_id, channel_name
+            logger.warning(f"addToGallery → skipping {stem!r}, couldn't parse s### or w###")
+            self.gui.popBox(
+                "e",
+                "File Path Error",
+                f"WARNING:\nCouldn't parse file path → skipping {stem!r}, couldn't parse s### or w###",
+            )
+        # Grouped: {'0026': {'488': WindowsPath('C:/Users/msgal/Downloads/Ding_Lab/image_testing/gui_vadym_single/MAX_EXP_w488_s0026.tif')}}
+        # Grouped: {'SAMPLE_ID': {'CHANNEL': pathlib.Path}}
+        grouped = group_files_by_sample_and_channel(tif_files, on_parse_error=on_parse_error)
+        logger.debug(f"addToGallery → grouped into samples: {list(grouped.keys())}")
 
-        def group_files_by_sample_and_channel(file_paths: list):
-            """Group files into a dict[sample_id][channel_name] = path."""
-            grouped = {}
-            for file_path in file_paths:
-                path = pathlib.Path(file_path)
-                sample_id, channel_name = parse_sampleID_and_channel(path)
-                if sample_id and channel_name:
-                    grouped.setdefault(sample_id, {})[channel_name] = path
-            return grouped
-        
-        # TODO - can be replaced by getCytoplasmPaths in abstract.py? -- no since its not instantiated yet 
-        def get_cytoplasm_paths(channels: dict):
-            """Return list of cytoplasm channel paths (647, 488) if present."""
-            cyto_paths = []
-            if "647" in channels:
-                cyto_paths.append(channels["647"])
-            if "488" in channels:
-                cyto_paths.append(channels["488"])
-            if "555" in channels:
-                cyto_paths.append(channels["555"])
-            if "594" in channels:
-                cyto_paths.append(channels["594"])
-            if "514" in channels:
-                cyto_paths.append(channels["514"])
-            return cyto_paths
-        
-        grouped = group_files_by_sample_and_channel(tif_files)
+        undocumented = undocumented_channels_in_grouped(grouped)
+        if undocumented:
+            channel_text = ", ".join(undocumented)
+            self.gui.popBox(
+                "w",
+                "Channel Caution",
+                f"CAUTION: The channels [{channel_text}] have not been fully documented and may not have accurate initial segmentation results."
+            )
+            logger.warning(f"addToGallery → undocumented channels detected: {channel_text}")
 
         for sample_id, channels in grouped.items():
             nucleus_path = channels.get("DAPI")
@@ -106,12 +94,14 @@ class tifSequence():
                 logger.warning(f"addToGallery → sample {sample_id} has no DAPI, skipping")
                 continue
 
-            cyto_paths = get_cytoplasm_paths(channels)
-            logger.info(f"addToGallery → instantiating abstract for sample {sample_id}")
-            abs_obj = abstract(
+            cyto_paths, cyto_channels = get_cytoplasm_paths_and_names(channels)
+            logger.info(f"addToGallery → instantiating abstract for sample {sample_id}") # Abstract is initiated for EACH sample_id
+            abs_obj = abstract( # Abstract class is called --> where everything begins
                 sample_id,
                 nucleus_path,
                 cyto_paths,
+                cyto_channels,
+                channels,
                 self.gallery_frame,
                 self.gui
             )
@@ -120,7 +110,6 @@ class tifSequence():
         SessionManager.sendFirst()
         self.update_scrollregion()
     
-    # TODO - unnnecessary now?
     def _delegate_thumb_click(self, event):
         """If the Canvas eats a click, find the Label under the pointer and call its on_click."""
         w = self.base.winfo_containing(event.x_root, event.y_root)

@@ -221,16 +221,18 @@ class SessionManager:
                 logger.debug(f"Object {abstract_object} is not an instance of abstract. Skipping.")
                 continue 
             if abstract_object.selected:
-                seg_dict = {}
-                for ch in abstract_object.SEGMENT_CHANNELS:
-                    seg_dict[ch] = [s._segment__data.T for s in abstract_object.get_segments(ch)]
+                cyto_channels = list(abstract_object.getImgNumpyCyto().keys())
+                seg_dict = {
+                    ch: [s._segment__data.T for s in abstract_object._get_seg_obj_for_channel(ch)]
+                    for ch in cyto_channels
+                }
                 bundled_info_for_save = bundle(
                     abstract_object.sample_id,
                     nucleus_path=abstract_object.getNucleusPath(),
                     cyto_paths=list(abstract_object.getCytoplasmPaths()),
                     bbox=abstract_object.boundingBoxRevised,
                     segment=seg_dict,
-                    nucleus_centers=abstract_object.nucleus_centers
+                    nucleus_centers=abstract_object.getNucleusCenters(),
                 )
                 result.append(bundled_info_for_save)
         return result
@@ -323,29 +325,36 @@ class SessionManager:
     def _segment_each(cls, abs_obj: abstract, gui):
         """Run segmentation for every available channel in one frame."""
         thread_name = threading.current_thread().name
-        logger.debug(f"Thread {thread_name} STARTED for sample {abs_obj.sample_id}")
-        start = time.perf_counter()
+        
+        print(f"[DEBUG] Thread {thread_name} STARTED for sample {abs_obj.sample_id}")
+        start = time.time()
+        saved_channel = abs_obj.selected_channel
 
-        original_channel = abs_obj.selected_channel
-        channels_to_segment = [ch for ch in abs_obj.available_channels if ch in abs_obj.SEGMENT_CHANNELS]
-        for ch in channels_to_segment:
-            abs_obj.segment_channel(ch)
-        abs_obj.selected_channel = original_channel
-        abs_obj.segment_generated = abs_obj.has_all_channel_segments()
+        for channel in abs_obj.available_channels:
+            seg_list = abs_obj._get_seg_list_for_channel(channel)
+            if not seg_list:
+                abs_obj.selected_channel = channel
+                seg_list = abs_obj.segment
+                abs_obj._set_seg_list_for_channel(channel, seg_list)
 
-        elapsed = time.perf_counter() - start
-        num_masks = len(abs_obj.get_segments(abs_obj.selected_channel))
-        frame_number = f"s{str(abs_obj.sample_id).zfill(3)}"
-        with cls.__segmentation_timing_lock:
-            cls.__segmentation_timing_rows.append({
-                "frame_number": frame_number,
-                "segmentation_seconds": round(elapsed, 3),
-                "num_masks_predicted": num_masks,
-            })
+            elapsed = time.perf_counter() - start
+            num_masks = len(seg_list) if seg_list else 0
+            frame_number = f"s{str(abs_obj.sample_id).zfill(3)}"
+            with cls.__segmentation_timing_lock:
+                cls.__segmentation_timing_rows.append({
+                    "frame_number": frame_number,
+                    "segmentation_seconds": round(elapsed, 3),
+                    "num_masks_predicted": num_masks,
+                })
 
-        gui.getRoot().after(0, lambda a=abs_obj: cls._ui_show_segmented(a, gui))
-        logger.info("Computed segmentation for sample %s in %.4f seconds", abs_obj.sample_id, elapsed)
+            gui.getRoot().after(0, lambda a=abs_obj: cls._ui_show_segmented(a, gui))
 
+        if saved_channel:
+            abs_obj.selected_channel = saved_channel
+            abs_obj.seg = abs_obj._get_seg_list_for_channel(saved_channel)
+
+        end = time.time()
+        print(f"[DEBUG] Thread {thread_name} FINISHED for sample {abs_obj.sample_id} in {end-start:.2f}s")
 
     @classmethod
     def _export_segmentation_timing_csv(cls):
@@ -371,4 +380,9 @@ class SessionManager:
             writer.writeheader()
             writer.writerows(rows)
 
-        logger.info("Saved segmentation timing table to %s", out_path)
+        logging.info("Saved segmentation timing table to %s", out_path)
+    
+
+
+
+    

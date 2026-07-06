@@ -1,3 +1,6 @@
+# Model Weights
+fishGUI_multichannel/cellpose-SAM/weights/fish_cellpose_v1.pt
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

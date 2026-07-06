@@ -33,11 +33,14 @@ def workspace_temp_dir():
 
 @pytest.fixture
 def dummy_image_paths(workspace_temp_dir):
-    """Build example image paths that look like imported microscopy files."""
-    nucleus = workspace_temp_dir / "nucleus.tif"
-    cyto1 = workspace_temp_dir / "cyto_647.tif"
-    cyto2 = workspace_temp_dir / "cyto_488.tif"
-    return nucleus, [cyto1, cyto2]
+    """Build example image paths that match sample_channels filename parsing."""
+    nucleus = workspace_temp_dir / "img_s001_wDAPI_s001.tif"
+    cyto1 = workspace_temp_dir / "img_s001_w647_s001.tif"
+    cyto2 = workspace_temp_dir / "img_s001_w488_s001.tif"
+    cyto_paths = [cyto1, cyto2]
+    cyto_channels = ["647", "488"]
+    channels = {"DAPI": nucleus, "647": cyto1, "488": cyto2}
+    return nucleus, cyto_paths, cyto_channels, channels
 
 
 @pytest.fixture
@@ -45,8 +48,13 @@ def bare_abstract_factory():
     def make_bare_abstract():
         abs_obj = abstract.__new__(abstract)
         abs_obj._abstract__current_channel = "647"
-        abs_obj._abstract__current_channel_mask = []
-        abs_obj._abstract__channel_segments = {ch: [] for ch in abstract.SEGMENT_CHANNELS}
+        abs_obj._abstract__cyto_channels = ["647", "488"]
+        abs_obj.available_channels = ["647", "488"]
+        abs_obj._abstract__img_np_cyto = {
+            "647": np.zeros((10, 10)),
+            "488": np.zeros((10, 10)),
+        }
+        abs_obj._abstract__channel_segs = {}
         abs_obj._abstract__segment_generated = False
         abs_obj._abstract__bbox = []
         abs_obj._abstract__bbox_generated = False
