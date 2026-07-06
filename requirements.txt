@@ -60,7 +60,7 @@ fsspec==2023.6.0
 gmpy2==2.2.1
 google-auth==2.40.3
 google-auth-oauthlib==1.2.2
-groundingdino @ git+https://github.com/IDEA-Research/GroundingDINO.git@5a890bd867ab0eacb851046c7f5a55cab0e77925#subdirectory=.
+-e git+https://github.com/IDEA-Research/GroundingDINO.git@5a890bd867ab0eacb851046c7f5a55cab0e77925#egg=groundingdino
 grpcio==1.65.1
 grpcio-tools==1.65.1
 HeapDict==1.0.1
