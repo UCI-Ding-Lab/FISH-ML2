@@ -326,6 +326,7 @@ class abstract():
         Store DAPI nucleus masks for this frame.
         """
         self.__nucleus_segments = seg_objs if seg_objs is not None else []
+        self.update_thumbnail()
 
     def has_nucleus_segments(self) -> bool:
         """
@@ -560,7 +561,7 @@ class abstract():
     def bbox_generated(self, value: bool):
         self.__bbox_generated = value
         if not self.gui.getFuncButton().selectButtonPressed():
-            self.thumbnail = "bbox" if value else "default"
+            self.update_thumbnail()
     # TODO check where these methods are used and why it is necessary -- update: used in tools_pannels.py, on_channel_change
     @segment.setter
     def segment(self, value):
@@ -699,19 +700,23 @@ class abstract():
         self.__img_tk_thumbnail_segmentation_selected = None
         self.__img_tk_thumbnail_selected_and_segmented = None
         
-        if self.bbox_generated:
-            if self.selected_for_segmentation:
-                if self.segment_generated:
-                    self.thumbnail = "segmentation_selected_and_segmented"  # blue + orange 
-                else:
-                    self.thumbnail = "segmentation_selected"  # blue + green
-            else:
-                if self.segment_generated:
-                    self.thumbnail = "segmented"  # blue + orange
-                else:
-                    self.thumbnail = "bbox"  # blue
-        else:
-            self.thumbnail = "default"  # no dot
+        has_nucleus_masks = self.has_nucleus_segments()
+        if self.selected_for_segmentation:
+            if self.segment_generated and has_nucleus_masks:
+                self.thumbnail = "segmentation_selected_and_segmented"  # blue + orange
+                return
+            if has_nucleus_masks:
+                self.thumbnail = "segmentation_selected"  # blue + green
+                return
+            self.thumbnail = "selected"  # green
+            return
+        if self.segment_generated and has_nucleus_masks:
+            self.thumbnail = "segmented"  # blue + orange
+            return
+        if has_nucleus_masks:
+            self.thumbnail = "bbox"  # blue
+            return
+        self.thumbnail = "default"  # no dot
 
     def _get_thumbnail_image_for_state(self, state: str):
         """

@@ -296,7 +296,7 @@ class funcButton:
         if abs_obj.segment_generated:
             abs_obj.thumbnail = "segmented"
             return
-        if abs_obj.bbox_generated:
+        if abs_obj.has_nucleus_segments():
             abs_obj.thumbnail = "bbox"
             return
         abs_obj.thumbnail = "default"
