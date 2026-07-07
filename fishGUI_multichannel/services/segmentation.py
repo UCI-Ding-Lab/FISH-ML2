@@ -43,19 +43,18 @@ def _prepare_nucleus_segmentation_input(nucleus_img: np.ndarray) -> np.ndarray:
     return np.stack([nucleus_img, nucleus_img, nucleus_img], axis=-1).astype(np.float32, copy=False)
 
 
-def _segment_channel(fish_model, img, gui):
+def _segment_mask_array(mask_output, gui) -> list[segment]:
     """
-    Run the model and convert masks to segment objects.
+    Convert one backend mask output into segment objects.
     """
-    try:
-        masks, flows = fish_model.predict(img)  # defined in fishCore.py
-        return _masks_to_segments(masks, gui)   # convert each mask numpy array to segment object (defined in gui/canvas/segment.py)
-    except Exception as e:
-        logger.exception(f"Predict failed: {e}")
-        return []
+    if isinstance(mask_output, tuple):
+        masks = mask_output[0]
+    else:
+        masks = mask_output
+    return _masks_to_segments(masks, gui)
 
 
-def run_nucleus_segmentation(nucleus_img: np.ndarray, gui, sample_id) -> list[segment]:
+def run_nucleus_segmentation(nucleus_img: np.ndarray, gui, sample_id, bbox_list=None) -> list[segment]:
     """
     Segment nuclei from the DAPI image and return segment objects.
     """
@@ -64,9 +63,14 @@ def run_nucleus_segmentation(nucleus_img: np.ndarray, gui, sample_id) -> list[se
         logger.warning("Nucleus segmentation aborted for sample %s: missing DAPI image", sample_id)
         return []
 
-    fish_model = gui.getBackEnd()
+    backend = gui.getBackEnd()
     img = _prepare_nucleus_segmentation_input(nucleus_img)
-    return _segment_channel(fish_model, img, gui)
+    try:
+        mask_output = backend.predict_nucleus(img, bbox_list)
+        return _segment_mask_array(mask_output, gui)
+    except Exception as e:
+        logger.exception(f"Nucleus predict failed: {e}")
+        return []
 
 
 def run_cytoplasm_segmentation(
@@ -81,7 +85,7 @@ def run_cytoplasm_segmentation(
     """
     logger.info(f"Starting segmentation (Cellpose-SAM predict) for channel {selected_channel} ...")
 
-    fish_model = gui.getBackEnd()
+    backend = gui.getBackEnd()
     results = {k: [] for k in cyto_channels}
     if not cyto_channels or nucleus_img is None:
         logger.warning("Segmentation aborted: missing nucleus or cytoplasm channel")
@@ -96,8 +100,11 @@ def run_cytoplasm_segmentation(
         cyto2 = np.zeros_like(cyto1)
 
     img = _prepare_segmentation_input(nucleus_img, cyto1, cyto2)
-    seg_objs = _segment_channel(fish_model, img, gui)
-    results[selected_channel] = seg_objs
+    try:
+        mask_output = backend.predict_cytoplasm(img)
+        results[selected_channel] = _segment_mask_array(mask_output, gui)
+    except Exception as e:
+        logger.exception(f"Cytoplasm predict failed: {e}")
 
     return results
 

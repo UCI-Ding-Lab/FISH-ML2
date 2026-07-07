@@ -290,33 +290,15 @@ class abstract():
         """Return one `(x, y)` center for each nucleus box."""
         return [((x0 + x1) / 2, (y0 + y1) / 2) for x0, y0, x1, y1 in nucleus_boxes]
 
-    def _prepare_nucleus_masks_if_needed(self) -> bool:
-        """Create nucleus masks once and return True when new masks were made."""
-        if self.has_nucleus_segments():
-            return False
-        self.segment_nucleus()
-        return True
-
-    def _log_nucleus_import_summary(self, start_time: float, made_masks: bool) -> None:
-        """Write one simple summary after nucleus import work finishes."""
-        elapsed = time.time() - start_time
-        if made_masks:
-            logger.info("Computed nucleus centers and masks for sample %s in %.4f seconds", self.sample_id, elapsed)
-            return
-        logger.info("Computed nucleus centers for sample %s in %.4f seconds", self.sample_id, elapsed)
-
     @property
     def bbox(self):
         """
-        Compute nucleus centers and nucleus masks once for this frame.
+        Compute nucleus centers once for this frame.
         """
         if self.bbox_generated:
             return self.__bbox
-        start_time = time.time()
-        nucleus_boxes = self.gui.getBackEnd().AppIntDINOwrapper(self.__img_np_nucleus)
+        nucleus_boxes = self.gui.getBackEnd().generate_bboxes(self.__img_np_nucleus)
         self.nucleus_centers = self._compute_nucleus_centers_from_boxes(nucleus_boxes)
-        made_masks = self._prepare_nucleus_masks_if_needed()
-        self._log_nucleus_import_summary(start_time, made_masks)
         self.bbox_generated = True # TODO change to nucleus_center_computed if bbox is unnecessary
         return self.__bbox
         
@@ -361,6 +343,7 @@ class abstract():
             self.__img_np_nucleus,
             self.gui,
             self.sample_id,
+            bbox_list=self.boundingBoxRevised,
         )
         self.set_nucleus_segments(nucleus_segments)
         return self.get_nucleus_segments()
