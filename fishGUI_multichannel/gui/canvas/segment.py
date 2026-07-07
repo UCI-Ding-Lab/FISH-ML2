@@ -27,6 +27,13 @@ class segment():
         mask = self._get_mask()
         self._original_mask = mask.copy() if mask is not None else None
 
+    @classmethod
+    def create_empty_mask(cls, gui, image_shape):
+        """Create one blank mask that matches the loaded image size."""
+        height, width = image_shape[:2]
+        empty_mask = np.zeros((height, width), dtype=np.uint8)
+        return cls(gui, empty_mask)
+
 
     @property
     def xy(self):

@@ -121,3 +121,13 @@ def test_reset_loaded_restores_deleted_segments_and_original_masks():
     assert np.array_equal(seg._get_mask(), seg._original_mask)
     assert seg._undo_stack == []
     assert seg._redo_stack == []
+
+
+def test_create_empty_mask_matches_loaded_image_size():
+    seg, gui, _ = _make_segment()
+
+    new_seg = segment.create_empty_mask(gui, (5, 7, 3))
+
+    assert new_seg is not seg
+    assert new_seg._get_mask().shape == (5, 7)
+    assert np.count_nonzero(new_seg._get_mask()) == 0

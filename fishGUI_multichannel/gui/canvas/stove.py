@@ -43,6 +43,7 @@ class stove():
         self.old_center = None
         self.markers: list[Circle] = []
         self.press = False
+        self.creating_new_mask = False
         
         self.__onLoad = None
 
@@ -57,6 +58,38 @@ class stove():
             self.BILT_BUFFER2 = self.biltbg
         elif buffer == 3:
             self.BILT_BUFFER3 = self.biltbg
+
+    def _shift_pressed(self, event: MouseEvent) -> bool:
+        """Return True when the user is holding Shift during this event."""
+        return event.key == "shift"
+
+    def _begin_stroke_preview(self, x: float, y: float):
+        """Store the first stroke point and show the brush preview."""
+        self.xs = [x]
+        self.ys = [y]
+        self.bufferSetCurrent(1)
+        self.bufferSetCurrent(2)
+        self.canvas.restore_region(self.BILT_BUFFER1)
+        self.marker_draw(x, y)
+        self.canvas.blit(self.subplot.bbox)
+
+    def _can_edit_selected_mask(self, event: MouseEvent, selected_mask) -> bool:
+        """Return True when the stroke starts inside the selected mask."""
+        edit_margin = max(2, min(6, int(self.gui.getSeasoning().get_marker_size() / 2)))
+        return selected_mask and selected_mask.selected and selected_mask.contains(
+            event.xdata, event.ydata, margin=edit_margin
+        )
+
+    def _create_new_mask_for_loaded_frame(self):
+        """Create and select one blank mask on the current channel."""
+        loaded = self.getLoaded()
+        new_mask = segment.create_empty_mask(self.gui, loaded.getImgNumpyRGB().shape)
+        segment.clearBufferAndDeselect()
+        loaded.current_channel_mask.append(new_mask)
+        new_mask.selected = True
+        new_mask.draw = True
+        segment.setBuffer(new_mask)
+        self.creating_new_mask = True
 
     def pack(self):
         self.pit.pack(side=tkinter.LEFT, fill=tkinter.BOTH, expand=True)
@@ -145,6 +178,7 @@ class stove():
 
         self.canvas.get_tk_widget().focus_set()  # ensure that any click on the canvas will receive keyboard events
         self.press = True
+        self.creating_new_mask = False
         if stove.isLeftClick(event):
             if event.inaxes != self.subplot:
                 return
@@ -184,25 +218,16 @@ class stove():
                 # the click is within that selected segment. This prevents accidental
                 # switching to overlapping segments while editing.
                 if brush_active or eraser_active:
-                    edit_margin = max(2, min(6, int(self.gui.getSeasoning().get_marker_size() / 2)))
-                    if buf and buf.selected and buf.contains(event.xdata, event.ydata, margin=edit_margin):
+                    if brush_active and self._shift_pressed(event):
+                        self._create_new_mask_for_loaded_frame()
+                        segment.getBuffer().push_undo()
+                        self._begin_stroke_preview(event.xdata, event.ydata)
+                    elif self._can_edit_selected_mask(event, buf):
                         try:
                             buf.push_undo() # record undo snapshot at the start of the stroke if available
                         except Exception:
                                 pass
-                        self.xs = [event.xdata]
-                        self.ys = [event.ydata]
-                        self.bufferSetCurrent(1)
-                        self.bufferSetCurrent(2)
-                        try:
-                            self.canvas.restore_region(self.BILT_BUFFER1)
-                        except Exception:
-                            pass
-                        self.marker_draw(event.xdata, event.ydata)
-                        try:
-                            self.canvas.blit(self.subplot.bbox)
-                        except Exception:
-                            pass
+                        self._begin_stroke_preview(event.xdata, event.ydata)
                     else:
                         # ignore click when brush/eraser active but no valid selected buffer
                         self.press = False
@@ -232,6 +257,7 @@ class stove():
                 self.canvas.draw_idle()
                 self.xs.clear()
                 self.ys.clear()
+                self.creating_new_mask = False
             elif self.gui.getSeasoning().eraserButtonPressed() and segment.getBuffer() and segment.getBuffer().selected:
                 final = list(zip(self.xs, self.ys))
                 for marker in self.markers:
@@ -243,6 +269,7 @@ class stove():
                 self.canvas.draw_idle()
                 self.xs.clear()
                 self.ys.clear()
+                self.creating_new_mask = False
 
     def onCanvasDrag(self, event: MouseEvent):
         if not self.press: 
