@@ -220,6 +220,7 @@ ParseArguments(nargin)
         end
     end
 
+    % New helpers for nucleus-cytoplasm pairing (7/7/2026)
     function yesno = is_dapi_channel(channel_value)
         % Return true when one selected channel is the DAPI channel
         yesno = contains(upper(char(channel_value)), 'DAPI');
@@ -290,24 +291,17 @@ ParseArguments(nargin)
 
     % find H threshold
     function [H_thres, f, X, Y] = estimate_H_thres(channel)
-        if is_dapi_channel(FISH{channel,1}.channel)
-            H_thres = 10;
-            f = [];
-            X = [];
-            Y = [];
-            return
-        end
         all_maxH  = [];
         for cframe=1:min(length(Tracked),10)
             for num_cell = 1:length(Tracked{1,cframe}.cells)
                 if length(all_maxH)<1000
                     if isfield(Tracked{1,cframe}.cells{num_cell}, 'pos')
-                        cell_mask = get_cell_mask(Tracked{1,cframe}.cells{num_cell}, channel);
                         pos_x = Tracked{1,cframe}.cells{num_cell}.pos(1);
                         pos_y = Tracked{1,cframe}.cells{num_cell}.pos(2);
                         size_x = Tracked{1,cframe}.cells{num_cell}.size(1);
                         size_y = Tracked{1,cframe}.cells{num_cell}.size(2);
                         im_temp = AllImg{channel,cframe};
+                        cell_mask = get_cell_mask(Tracked{1,cframe}.cells{num_cell}, channel);
                         cell_image = cell_mask.*im_temp(pos_x:pos_x+size_x-1, pos_y:pos_y+size_y-1);
                         [FISH{channel, cframe}.cells{num_cell}.mask_H, FISH{channel, cframe}.cells{num_cell}.bg] = dot_mask(cell_image);
                     end
@@ -327,13 +321,6 @@ ParseArguments(nargin)
             [N, edges] = histcounts(all_maxH, 'BinWidth', 1);
             Y = N;
             X = edges(1:end-1) + (edges(2)-edges(1))/2;
-            if length(X)<3 || nnz(Y)>0 && nnz(Y)<3
-                H_thres = 10;
-                f = [];
-                X = [];
-                Y = [];
-                return
-            end
             options = fitoptions('gauss1');
             options.Lower = [0 1 0];
             options.Upper = [Inf 100 Inf];
@@ -349,12 +336,12 @@ ParseArguments(nargin)
                 FISH{num, frame}.cells{num_cell}.dots = {};
                 if isfield(Tracked{frame}.cells{num_cell}, 'pos')
                     FISH{num, frame}.cells{num_cell}.dots = {};
-                    cell_mask = get_cell_mask(Tracked{frame}.cells{num_cell}, num);
                     pos_x = Tracked{frame}.cells{num_cell}.pos(1);
                     pos_y = Tracked{frame}.cells{num_cell}.pos(2);
                     size_x = Tracked{frame}.cells{num_cell}.size(1);
                     size_y = Tracked{frame}.cells{num_cell}.size(2);
                     im_temp = AllImg{num,frame};
+                    cell_mask = get_cell_mask(Tracked{frame}.cells{num_cell}, num);
                     cell_image = cell_mask.*im_temp(pos_x:pos_x+size_x-1, pos_y:pos_y+size_y-1);
                     [FISH{num, frame}.cells{num_cell}.mask_H, FISH{num, frame}.cells{num_cell}.bg] = dot_mask(cell_image);
                     FISH{num, frame}.cells{num_cell}.dots = identify_dots(cell_image, FISH{num, frame}.cells{num_cell}.mask_H,...
@@ -365,12 +352,12 @@ ParseArguments(nargin)
             FISH{num, frame}.cells{selectcell}.dots = {};
             if isfield(Tracked{frame}.cells{selectcell}, 'pos')
                 FISH{num, frame}.cells{selectcell}.dots = {};
-                cell_mask = get_cell_mask(Tracked{frame}.cells{selectcell}, num);
                 pos_x = Tracked{frame}.cells{selectcell}.pos(1);
                 pos_y = Tracked{frame}.cells{selectcell}.pos(2);
                 size_x = Tracked{frame}.cells{selectcell}.size(1);
                 size_y = Tracked{frame}.cells{selectcell}.size(2);
                 im_temp = AllImg{num,frame};
+                cell_mask = get_cell_mask(Tracked{frame}.cells{selectcell}, num);
                 cell_image = cell_mask.*im_temp(pos_x:pos_x+size_x-1, pos_y:pos_y+size_y-1);
                 [FISH{num, frame}.cells{selectcell}.mask_H, FISH{num, frame}.cells{selectcell}.bg] = dot_mask(cell_image);
                 FISH{num, frame}.cells{selectcell}.dots = identify_dots(cell_image, FISH{num, frame}.cells{selectcell}.mask_H,...
@@ -619,8 +606,8 @@ ParseArguments(nargin)
                 
                 for cell=1:length(Tracked{frame}.cells)
                     curcell=Tracked{frame}.cells{cell};
-                    curmask=get_cell_mask(curcell, num);
                     cmask=zeros(double(curcell.size)+[2,2]);
+                    curmask = get_cell_mask(curcell, num);
                     cmask(2:end-1,2:end-1)=curmask;
                     dpos=double(curcell.pos);
                     dsize=double(curcell.size);
@@ -633,24 +620,24 @@ ParseArguments(nargin)
                     end
                     if isempty(curcell.descendants)
                         IMdisapp(dpos(1):dpos(1)+dsize(1)-1,dpos(2):dpos(2)+dsize(2)-1)=...
-                            IMdisapp(dpos(1):dpos(1)+dsize(1)-1,dpos(2):dpos(2)+dsize(2)-1)+curmask;
+                            IMdisapp(dpos(1):dpos(1)+dsize(1)-1,dpos(2):dpos(2)+dsize(2)-1)+curcell.mask;
                     elseif isempty(curcell.progenitor)
                         IMapp(dpos(1):dpos(1)+dsize(1)-1,dpos(2):dpos(2)+dsize(2)-1)=...
-                            IMapp(dpos(1):dpos(1)+dsize(1)-1,dpos(2):dpos(2)+dsize(2)-1)+curmask;
+                            IMapp(dpos(1):dpos(1)+dsize(1)-1,dpos(2):dpos(2)+dsize(2)-1)+curcell.mask;
                     else
                         prevcell=Tracked{frame-1}.cells{curcell.progenitor};
                         if ~isscalar(curcell.descendants)
                             IMprog(dpos(1):dpos(1)+dsize(1)-1,dpos(2):dpos(2)+dsize(2)-1)=...
-                                IMprog(dpos(1):dpos(1)+dsize(1)-1,dpos(2):dpos(2)+dsize(2)-1)+curmask;
+                                IMprog(dpos(1):dpos(1)+dsize(1)-1,dpos(2):dpos(2)+dsize(2)-1)+curcell.mask;
                         end
                         if ~isscalar(prevcell.descendants)
                             IMdesc(dpos(1):dpos(1)+dsize(1)-1,dpos(2):dpos(2)+dsize(2)-1)=...
-                                IMdesc(dpos(1):dpos(1)+dsize(1)-1,dpos(2):dpos(2)+dsize(2)-1)+curmask;
+                                IMdesc(dpos(1):dpos(1)+dsize(1)-1,dpos(2):dpos(2)+dsize(2)-1)+curcell.mask;
                         end
                     end
                     if any(selectedcell==cell)
                         IMselcell(dpos(1):dpos(1)+dsize(1)-1,dpos(2):dpos(2)+dsize(2)-1)=...
-                            IMselcell(dpos(1):dpos(1)+dsize(1)-1,dpos(2):dpos(2)+dsize(2)-1)+curmask;
+                            IMselcell(dpos(1):dpos(1)+dsize(1)-1,dpos(2):dpos(2)+dsize(2)-1)+curcell.mask;
                         IMborderSel(dpos(1):dpos(1)+dsize(1)-1,dpos(2):dpos(2)+dsize(2)-1)=...
                             IMborderSel(dpos(1):dpos(1)+dsize(1)-1,dpos(2):dpos(2)+dsize(2)-1)+...
                             border(2:end-1,2:end-1);
