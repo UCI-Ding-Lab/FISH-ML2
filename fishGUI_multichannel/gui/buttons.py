@@ -115,15 +115,81 @@ class funcButton:
             indicatoron=False,
             command=self.EXPORT_call,
         )
+        self.DONE = tkinter.Button(
+            self.container,
+            text="Done",
+            height=2,
+            relief=tkinter.RAISED,
+            command=self.DONE_call,
+        )
 
     def pack(self):
-        """Places the buttons left to right in the main control row."""
-        self.IMPORT.pack(side=tkinter.LEFT, expand=True, fill=tkinter.X)
-        self.SELECT.pack(side=tkinter.LEFT, expand=True, fill=tkinter.X)
-        self.SEGMENT_NUCLEUS.pack(side=tkinter.LEFT, expand=True, fill=tkinter.X)
-        self.SEGMENT.pack(side=tkinter.LEFT, expand=True, fill=tkinter.X)
-        self.DISPLAY_MASKS.pack(side=tkinter.LEFT, expand=True, fill=tkinter.X)
-        self.EXPORT.pack(side=tkinter.LEFT, expand=True, fill=tkinter.X)
+        """Places the buttons that belong to the current workflow mode."""
+        self.refresh_toolbar()
+
+    def refresh_toolbar(self):
+        """Rebuild the workflow toolbar so it matches the current GUI mode."""
+        self._clear_toolbar()
+        self._render_toolbar_for_mode()
+
+    def _clear_toolbar(self):
+        """Hide every workflow button before packing the current mode layout."""
+        buttons = [
+            self.IMPORT,
+            self.SELECT,
+            self.BBOX,
+            self.SEGMENT_NUCLEUS,
+            self.SEGMENTATION_SELECTION,
+            self.SEGMENT,
+            self.DISPLAY_MASKS,
+            self.APPLY_CHANNEL_MASK,
+            self.EXPORT,
+            self.DONE,
+        ]
+        for button in buttons:
+            button.pack_forget()
+
+    def _render_toolbar_for_mode(self):
+        """Show only the buttons that belong to the active workflow mode."""
+        mode = self.gui.getWorkflowMode()
+        if mode == "neutral":
+            self._pack_neutral_toolbar()
+            return
+        if mode == "nucleus_gdino":
+            self._pack_nucleus_gdino_toolbar()
+            return
+        if mode == "nucleus_cellpose":
+            self._pack_nucleus_cellpose_toolbar()
+            return
+        self._pack_cytoplasm_toolbar()
+
+    def _pack_toolbar_buttons(self, buttons):
+        """Pack one ordered group of workflow buttons into the main row."""
+        for button in buttons:
+            button.pack(side=tkinter.LEFT, expand=True, fill=tkinter.X)
+
+    def _pack_neutral_toolbar(self):
+        """Show the top-level workflow buttons."""
+        self.SEGMENT_NUCLEUS.config(text="Segment Nucleus")
+        self.SEGMENT.config(text="Segment Cytoplasm")
+        self._pack_toolbar_buttons(
+            [self.IMPORT, self.SELECT, self.SEGMENT_NUCLEUS, self.SEGMENT, self.EXPORT]
+        )
+
+    def _pack_nucleus_gdino_toolbar(self):
+        """Show the nucleus toolbar for GroundingDINO and SAM workflow."""
+        self.SEGMENT_NUCLEUS.config(text="Segment Mode")
+        self._pack_toolbar_buttons([self.BBOX, self.SEGMENT_NUCLEUS, self.DISPLAY_MASKS, self.DONE])
+
+    def _pack_nucleus_cellpose_toolbar(self):
+        """Show the nucleus toolbar for Cellpose-SAM workflow."""
+        self.SEGMENT_NUCLEUS.config(text="Segment Mode")
+        self._pack_toolbar_buttons([self.SEGMENT_NUCLEUS, self.DISPLAY_MASKS, self.DONE])
+
+    def _pack_cytoplasm_toolbar(self):
+        """Show the cytoplasm toolbar for segmentation and mask copying."""
+        self.SEGMENT.config(text="Segment")
+        self._pack_toolbar_buttons([self.SEGMENT, self.DISPLAY_MASKS, self.APPLY_CHANNEL_MASK, self.DONE])
 
     def selectButtonPressed(self) -> bool:
         """Returns True when frame-selection mode is on."""
@@ -345,6 +411,12 @@ class funcButton:
             self.gui.getRoot().after(0, self.gui.dismissWait)
 
         threading.Thread(target=job, daemon=True).start()
+
+    def DONE_call(self):
+        """Return the workflow toolbar to neutral mode and clear edit toggles."""
+        self._reset_modes_before_copy()
+        self.gui.setWorkflowMode("neutral")
+        self.refresh_toolbar()
 
     def _get_selected_frames_for_segmentation(self):
         """Returns the frames that the user marked for segmentation."""
