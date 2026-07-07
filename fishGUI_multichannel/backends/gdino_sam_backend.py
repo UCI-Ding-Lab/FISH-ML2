@@ -5,8 +5,9 @@ import fishCore_gdino_sam
 class GdinoSamBackend:
     """Wrap the prototype GroundingDINO + SAM backend behind the same shared API."""
 
-    def __init__(self, config_path: pathlib.Path):
-        self._core = fishCore_gdino_sam.Fish(config_path)
+    def __init__(self, config_path: pathlib.Path, backend_role: str = "backend"):
+        """Create one GroundingDINO and SAM backend for a specific GUI role."""
+        self._core = fishCore_gdino_sam.Fish(config_path, backend_role)
 
     @property
     def device(self):

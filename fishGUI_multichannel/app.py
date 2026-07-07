@@ -20,6 +20,7 @@ class FishGUI(object):
         self.__root: tk.Tk = root
         self.__root.title("FISH UI Prototype")
         self.__root.geometry("870x1000")
+        self.__workflow_mode = "neutral"
 
         self.__config_path = pathlib.Path("./config.ini")
         self.__nucleus_backend_mode = "cellpose_sam"
@@ -28,12 +29,14 @@ class FishGUI(object):
         self.__cytoplasm_backend = self._build_cytoplasm_backend(self.__config_path)
 
         self.__lf = lf(self)
+        self.__mode_banner = self._build_mode_banner()
         self.__tifSequence = tifSequence(self)
         self.__funcButton = funcButton(self)
         self.__seasoning = seasoning(self)
         self.__stove = stove(self)
 
         self.__lf.pack()
+        self.updateModeBanner()
         self.__stove.pack()
         self.__tifSequence.pack()
         self.__funcButton.pack()
@@ -76,7 +79,7 @@ class FishGUI(object):
     def _build_nucleus_backend(self, config_path: pathlib.Path):
         """Build the selected nucleus backend and show a readable error if it fails."""
         try:
-            return build_backend(self.__nucleus_backend_mode, config_path)
+            return build_backend(self.__nucleus_backend_mode, config_path, "nucleus")
         except Exception as error:
             self.popBox(
                 "e",
@@ -87,7 +90,30 @@ class FishGUI(object):
 
     def _build_cytoplasm_backend(self, config_path: pathlib.Path):
         """Build the fixed backend used for cytoplasm segmentation."""
-        return build_backend(self.__cytoplasm_backend_mode, config_path)
+        return build_backend(self.__cytoplasm_backend_mode, config_path, "cytoplasm")
+
+    def _build_mode_banner(self) -> tk.Label:
+        """Create the centered banner that shows the active workflow mode."""
+        banner = tk.Label(
+            self.__lf.getFrameB(),
+            text="Neutral Mode",
+            height=2,
+            anchor="center",
+            justify="center",
+            font=("TkDefaultFont", 10, "bold"),
+        )
+        banner.pack(fill=tk.X)
+        return banner
+
+    def _get_mode_banner_style(self, mode: str) -> tuple[str, str, str]:
+        """Return the text and colors used by the centered workflow banner."""
+        styles = {
+            "neutral": ("Neutral Mode", "#6B7280", "white"),
+            "nucleus_gdino": ("Nucleus Segmentation Mode - GroundingDINO + SAM", "#2563EB", "white"),
+            "nucleus_cellpose": ("Nucleus Segmentation Mode - Cellpose-SAM", "#16A34A", "white"),
+            "cytoplasm": ("Cytoplasm Segmentation Mode", "#EA580C", "white"),
+        }
+        return styles.get(mode, styles["neutral"])
 
     def prompt_nucleus_backend_mode(self) -> str:
         """Ask the user which backend to use for the next nucleus run."""
@@ -185,9 +211,29 @@ class FishGUI(object):
         """Return the fixed backend mode used for cytoplasm segmentation."""
         return self.__cytoplasm_backend_mode
 
+    def setWorkflowMode(self, mode: str):
+        """Store the current workflow mode used by the GUI."""
+        self.__workflow_mode = mode
+        self.updateModeBanner()
+
+    def getWorkflowMode(self) -> str:
+        """Return the current workflow mode used by the GUI."""
+        return self.__workflow_mode
+
+    def getNucleusWorkflowMode(self) -> str:
+        """Return the nucleus workflow mode that matches the chosen backend."""
+        if self.__nucleus_backend_mode == "gdino_sam":
+            return "nucleus_gdino"
+        return "nucleus_cellpose"
+
     def getRoot(self) -> tk.Tk:
         """Return the root Tk window."""
         return self.__root
+
+    def updateModeBanner(self):
+        """Refresh the centered banner so it matches the current workflow mode."""
+        text, bg, fg = self._get_mode_banner_style(self.getWorkflowMode())
+        self.__mode_banner.config(text=text, bg=bg, fg=fg)
 
     # ---- popups / status ----
     def popBox(self, level: str, title: str, msg: str):

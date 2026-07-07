@@ -6,8 +6,9 @@ import fishCore
 class CellposeBackend:
     """Wrap the current Cellpose-SAM backend behind a simple shared API."""
 
-    def __init__(self, config_path: pathlib.Path):
-        self._core = fishCore.Fish(config_path)
+    def __init__(self, config_path: pathlib.Path, backend_role: str = "backend"):
+        """Create one Cellpose-SAM backend for a specific GUI role."""
+        self._core = fishCore.Fish(config_path, backend_role)
 
     @property
     def device(self):
