@@ -20,7 +20,10 @@ class GdinoSamBackend:
         return self._core.AppIntDINOwrapper(nucleus_img)
 
     def predict_nucleus(self, nucleus_img, bbox_list=None):
-        return self._core.AppIntPREDICTwrapper(nucleus_img, bbox_list)
+        """Segment nuclei using SAM with bbox prompts when they exist."""
+        prompt_boxes = bbox_list if bbox_list else None
+        return self._core.AppIntPREDICTwrapper(nucleus_img, prompt_boxes)
 
     def predict_cytoplasm(self, model_input):
+        """Run the legacy SAM prediction path for cytoplasm prototype testing."""
         return self._core.AppIntPREDICTwrapper(model_input)

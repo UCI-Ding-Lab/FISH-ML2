@@ -20,7 +20,10 @@ class CellposeBackend:
         return self._core.AppIntDINOwrapper(nucleus_img)
 
     def predict_nucleus(self, nucleus_img, bbox_list=None):
+        """Segment nuclei without using bbox prompts."""
+        _ = bbox_list
         return self._core.predict(nucleus_img)
 
     def predict_cytoplasm(self, model_input):
+        """Segment cytoplasm using the current Cellpose-SAM path."""
         return self._core.predict(model_input)
