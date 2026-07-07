@@ -36,13 +36,6 @@ def _prepare_segmentation_input(nucleus_img, cyto1, cyto2):
     return np.stack([nucleus_img, cyto1, cyto2], axis=-1).astype(np.float32, copy=False)
 
 
-def _prepare_nucleus_segmentation_input(nucleus_img: np.ndarray) -> np.ndarray:
-    """
-    Build a simple 3-channel DAPI image for nucleus-only segmentation.
-    """
-    return np.stack([nucleus_img, nucleus_img, nucleus_img], axis=-1).astype(np.float32, copy=False)
-
-
 def _segment_mask_array(mask_output, gui) -> list[segment]:
     """
     Convert one backend mask output into segment objects.
@@ -56,7 +49,7 @@ def _segment_mask_array(mask_output, gui) -> list[segment]:
 
 def run_nucleus_segmentation(nucleus_img: np.ndarray, gui, sample_id, bbox_list=None) -> list[segment]:
     """
-    Segment nuclei from the DAPI image and return segment objects.
+    Segment nuclei with the selected nucleus backend and return segment objects.
     """
     logger.info("Starting nucleus segmentation for sample %s ...", sample_id)
     if nucleus_img is None:
@@ -67,8 +60,8 @@ def run_nucleus_segmentation(nucleus_img: np.ndarray, gui, sample_id, bbox_list=
     try:
         mask_output = nucleus_backend.predict_nucleus(nucleus_img, bbox_list)
         return _segment_mask_array(mask_output, gui)
-    except Exception as e:
-        logger.exception(f"Nucleus predict failed: {e}")
+    except Exception as error:
+        logger.exception("Nucleus predict failed: %s", error)
         return []
 
 

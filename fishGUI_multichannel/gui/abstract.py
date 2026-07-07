@@ -308,13 +308,10 @@ class abstract():
     @property
     def segment(self) -> list[segment]:
         """
-        Run Cellpose-SAM for all available cytoplasmic channels,
-        store each channel's masks, and return the active channel mask
+        Run segmentation for the currently selected view.
 
-        Flow: 
-        segment_call (buttons.py) -> segment_selected (session_manager.py) 
-        -> segment_each (session_manager.py) -> segment (abstract.py) 
-        -> run_cellpose_segmentation (segmentation.py)
+        DAPI uses the selected nucleus backend.
+        Cytoplasm channels use the fixed Cellpose-SAM backend.
         """
         return self.segment_channel(self.selected_channel)
 
@@ -400,7 +397,7 @@ class abstract():
         return True
 
     def segment_channel(self, channel=None) -> list[segment]:
-        """Runs segmentation for one cytoplasm channel or DAPI nucleus view."""
+        """Run nucleus segmentation for DAPI or cytoplasm segmentation for one channel."""
         target_channel = self.__current_channel if channel is None else channel
         if target_channel is None:
             return []
