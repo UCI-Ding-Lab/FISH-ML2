@@ -25,5 +25,7 @@ class GdinoSamBackend:
         return self._core.AppIntPREDICTwrapper(nucleus_img, prompt_boxes)
 
     def predict_cytoplasm(self, model_input):
-        """Run the legacy SAM prediction path for cytoplasm prototype testing."""
-        return self._core.AppIntPREDICTwrapper(model_input)
+        """Legacy gdino and SAM backend does not support current cytoplasm segmentation flow."""
+        raise NotImplementedError(
+            "GroundingDINO + SAM prototype currently supports nucleus segmentation only."
+        )
