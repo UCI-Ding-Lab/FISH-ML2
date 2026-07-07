@@ -1,7 +1,7 @@
 from tkinter import messagebox
 import tkinter as tk
 import pathlib
-import fishCore
+from .backends.factory import build_backend
 from .gui.thumbnails import tifSequence
 from .gui.buttons import funcButton
 from .gui.frames import lf
@@ -20,7 +20,8 @@ class FishGUI(object):
         self.__root.title("FISH UI Prototype")
         self.__root.geometry("870x1000")
 
-        self.__be: fishCore.Fish = fishCore.Fish(pathlib.Path("./config.ini"))
+        self.__backend_mode = self._choose_backend_mode()
+        self.__backend = build_backend(self.__backend_mode, pathlib.Path("./config.ini"))
 
         self.__lf = lf(self)
         self.__tifSequence = tifSequence(self)
@@ -38,6 +39,35 @@ class FishGUI(object):
 
         self._bind_shortcuts()
         self.__root.focus_set()
+
+    def _choose_backend_mode(self) -> str:
+        """Ask the user which backend to use for this GUI session."""
+        popup = tk.Toplevel(self.__root)
+        popup.title("Choose Backend")
+        popup.geometry("260x120")
+        popup.resizable(False, False)
+
+        choice = tk.StringVar(value="cellpose_sam")
+
+        tk.Label(popup, text="Select segmentation backend").pack(pady=8)
+        tk.Radiobutton(
+            popup,
+            text="Cellpose-SAM",
+            variable=choice,
+            value="cellpose_sam",
+        ).pack(anchor="w", padx=20)
+        tk.Radiobutton(
+            popup,
+            text="GroundingDINO + SAM",
+            variable=choice,
+            value="gdino_sam",
+        ).pack(anchor="w", padx=20)
+        tk.Button(popup, text="Start", command=popup.destroy).pack(pady=10)
+
+        popup.transient(self.__root)
+        popup.grab_set()
+        self.__root.wait_window(popup)
+        return choice.get()
 
     def _bind_shortcuts(self):
         self.__root.bind_all("<Control-z>", self._onUndoShortcut, add="+")
@@ -90,8 +120,10 @@ class FishGUI(object):
         return self.__funcButton
     def getSeasoning(self) -> seasoning:
         return self.__seasoning
-    def getBackEnd(self) -> fishCore.Fish:
-        return self.__be
+    def getBackEnd(self):
+        return self.__backend
+    def getBackendMode(self) -> str:
+        return self.__backend_mode
     def getRoot(self) -> tk.Tk:
         return self.__root
 
