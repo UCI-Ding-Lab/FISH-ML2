@@ -62,7 +62,7 @@ def test_generate_bboxes_submits_each_frame_to_the_background_worker_job():
 
     with patch("fishGUI_multichannel.services.session_manager.ThreadPoolExecutor", return_value=FakeExecutor()) as mock_executor, \
          patch("fishGUI_multichannel.services.session_manager.threading.Thread", side_effect=FakeThread) as mock_thread, \
-         patch.object(SessionManager, "_get_inference_worker_limit", return_value=2) as mock_limit, \
+         patch.object(SessionManager, "_get_nucleus_worker_limit", return_value=2) as mock_limit, \
          patch.object(SessionManager, "_generate_one_bbox") as mock_generate_one_bbox:
         SessionManager.generate_bboxes(gui)
 

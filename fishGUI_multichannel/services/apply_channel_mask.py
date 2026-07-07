@@ -103,7 +103,8 @@ def apply_channel_mask_to_frames(
         seg_mode_on = False
     root = _get_gui_root(abstract_cls, frame_pool)
 
-    def _get_inference_worker_limit(total_jobs):
+    def _get_cytoplasm_worker_limit(total_jobs):
+        """Choose a safe worker count for cytoplasm mask preparation."""
         try:
             if focused_frame is not None and focused_frame.gui is not None:
                 backend = focused_frame.gui.getCytoplasmBackend()
@@ -158,7 +159,7 @@ def apply_channel_mask_to_frames(
     def coordinator():
         start = time.perf_counter()
         results = []
-        max_workers = _get_inference_worker_limit(len(frame_indices))
+        max_workers = _get_cytoplasm_worker_limit(len(frame_indices))
         with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="ApplyMask") as ex:
             futures = {ex.submit(compute_worker, i): i for i in frame_indices}
             for fut in as_completed(futures):

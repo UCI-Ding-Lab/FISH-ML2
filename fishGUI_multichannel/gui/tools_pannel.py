@@ -17,8 +17,7 @@ class seasoning():
         self.button2 = tkinter.Button(self.toolbank, height=2, text="Load Progress", command=self.LOADPROG_CALL)
         self.sep = tkinter.Frame(self.toolbank, height=1, bd=0, relief=tkinter.SUNKEN, bg="black")
         self.seg_editor = tkinter.LabelFrame(self.toolbank, text="Mask Editor")
-        
-        icon_path = pathlib.Path(self.gui.getCytoplasmBackend().config["gui"]["icon_folder"])
+        icon_path = self._get_icon_path()
         
         self.tools_icon = {"brush": ImageTk.PhotoImage(Image.open(icon_path/"brush.png")),
                            "eraser": ImageTk.PhotoImage(Image.open(icon_path/"eraser.png")),
@@ -74,6 +73,11 @@ class seasoning():
         self.brightness_reset = tkinter.Button(self.toolbank, text="Reset", command=lambda: self.on_brightness_bar_change(None))
         self.channel_var = tkinter.StringVar(value="647")
         self.channel_selector = tkinter.OptionMenu(self.toolbank, self.channel_var, "")
+
+    def _get_icon_path(self) -> pathlib.Path:
+        """Return the shared GUI icon folder from the app config."""
+        config = self.gui.getNucleusBackend().config
+        return pathlib.Path(config["gui"]["icon_folder"])
 
     def pack(self):
         """Places the tool panel widgets on the right side of the window."""

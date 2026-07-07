@@ -134,22 +134,32 @@ class SessionManager:
         return cls.__importPath
 
     @classmethod
-    def _get_inference_worker_limit(cls, gui, total_jobs: int) -> int:
-        """Chooses a safe worker count for model inference work."""
+    def _get_nucleus_worker_limit(cls, gui, total_jobs: int) -> int:
+        """Choose a safe worker count for nucleus center generation."""
+        backend = gui.getNucleusBackend()
+        if backend.device == "cuda":
+            logger.info("GPU detected; limiting nucleus work to 1 worker.")
+            return 1
+        return max(1, min(os.cpu_count() or 1, total_jobs))
+
+    @classmethod
+    def _get_cytoplasm_worker_limit(cls, gui, total_jobs: int) -> int:
+        """Choose a safe worker count for cytoplasm segmentation work."""
         backend = gui.getCytoplasmBackend()
         if backend.device == "cuda":
-            logger.info("GPU detected; limiting inference concurrency to 1 worker.")
+            logger.info("GPU detected; limiting cytoplasm work to 1 worker.")
             return 1
         return max(1, min(os.cpu_count() or 1, total_jobs))
 
     @classmethod
     def generate_bboxes(cls, gui):
+        """Start background nucleus center generation for every loaded frame."""
         abstracts = cls.getPool()
         if not abstracts:
             return
 
         def job():
-            max_workers = cls._get_inference_worker_limit(gui, len(abstracts))
+            max_workers = cls._get_nucleus_worker_limit(gui, len(abstracts))
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 for abs_obj in abstracts:
                     executor.submit(cls._generate_one_bbox, gui, abs_obj)
@@ -263,7 +273,7 @@ class SessionManager:
         gui.popBox("i", "Segmentation", f"Started segmentation for {len(selected_frames)} images.")
 
         def monitor_threads():
-            max_workers = cls._get_inference_worker_limit(gui, len(selected_frames))
+            max_workers = cls._get_cytoplasm_worker_limit(gui, len(selected_frames))
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = [
                     executor.submit(cls._segment_each, abs_obj, gui)
