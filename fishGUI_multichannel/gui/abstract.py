@@ -409,8 +409,8 @@ class abstract():
         if not self.bbox_generated:
             self.gui.popBox(
                 "w",
-                "Bounding Boxes Not Ready",
-                "Please generate BBOX before running segmentation.",
+                "Nucleus Prompts Not Ready",
+                "Please prepare nucleus prompts before running cytoplasm segmentation.",
             )
             return self.get_segments(target_channel)
         
@@ -652,7 +652,11 @@ class abstract():
         """
         if self.gui.getFuncButton().frameSegButtonPressed():
             if not self.bbox_generated:
-                self.gui.popBox("w", "BBOX Not Ready", "Generate bounding box before selecting for segmentation.")
+                self.gui.popBox(
+                    "w",
+                    "Nucleus Prompts Not Ready",
+                    "Prepare nucleus prompts before selecting frames for cytoplasm segmentation.",
+                )
                 return
             # Only toggle if Control key (0x0004) is pressed
             if event is not None and (event.state & 0x0004):
@@ -853,7 +857,7 @@ class abstract():
     @drawBbox.setter
     def drawBbox(self, value: bool):
         if not self.bbox_generated:
-            self.gui.popBox("w", "No BBOX", "No BBOX is available for this image")
+            self.gui.popBox("w", "No Nucleus Prompts", "No nucleus prompts are available for this image")
             self.__drawBbox = False
             return
         else:

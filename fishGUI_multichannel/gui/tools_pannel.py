@@ -16,7 +16,7 @@ class seasoning():
         self.button1 = tkinter.Button(self.toolbank, height=2, text="Save Progress", command=self.SAVEPROG_CALL)
         self.button2 = tkinter.Button(self.toolbank, height=2, text="Load Progress", command=self.LOADPROG_CALL)
         self.sep = tkinter.Frame(self.toolbank, height=1, bd=0, relief=tkinter.SUNKEN, bg="black")
-        self.seg_editor = tkinter.LabelFrame(self.toolbank, text="Mask Editor")
+        self.seg_editor = tkinter.LabelFrame(self.toolbank, text="Edit Masks")
         icon_path = self._get_icon_path()
         
         self.tools_icon = {"brush": ImageTk.PhotoImage(Image.open(icon_path/"brush.png")),
@@ -130,8 +130,8 @@ class seasoning():
         """Adds one editable center box to the currently loaded frame."""
         if not self.press_act("add_bbox"):
             return
-        if not self.gui.getFuncButton().bboxButtonPressed():
-            self.gui.popBox("w", "BBOX Mode", "Please turn on BBOX first")
+        if not self.gui.getFuncButton().nucleusPromptModeActive():
+            self.gui.popBox("w", "Nucleus Prompt Mode", "Choose GroundingDINO + SAM first")
             return
         loaded_image = self.gui.getStove().getLoaded()
         if not loaded_image:
@@ -216,7 +216,7 @@ class seasoning():
     def press_act(self, widget: str):
         """Validates which editing tools are allowed in the current view mode."""
         func_btn = self.gui.getFuncButton()
-        bbox_on = func_btn.bboxButtonPressed()
+        bbox_on = func_btn.nucleusPromptModeActive()
         seg_on = func_btn.displayMaskButtonPressed()
 
         if widget == "add_bbox":
@@ -224,7 +224,7 @@ class seasoning():
                 self.gui.popBox(
                     "w",
                     "Tool Disabled",
-                    "Add Box is only available when BBOX is ON and Display Masks is OFF.",
+                    "Add Box is only available during nucleus prompt review while Edit Masks is off.",
                 )
                 return False
 
@@ -233,7 +233,7 @@ class seasoning():
                 self.gui.popBox(
                     "w",
                     "Tool Disabled",
-                    "Brush and Eraser are only available when Display Masks is ON and BBOX is OFF.",
+                    "Brush and Eraser are only available while Edit Masks is on and nucleus prompt review is off.",
                 )
                 for k, v in self.tools_var.items():
                     v.set(0)

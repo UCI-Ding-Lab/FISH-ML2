@@ -21,11 +21,11 @@ class FishGUI(object):
         self.__root.title("FISH UI Prototype")
         self.__root.geometry("870x1000")
 
-        config_path = pathlib.Path("./config.ini")
-        self.__nucleus_backend_mode = self._choose_nucleus_backend_mode()
+        self.__config_path = pathlib.Path("./config.ini")
+        self.__nucleus_backend_mode = "cellpose_sam"
         self.__cytoplasm_backend_mode = "cellpose_sam"
-        self.__nucleus_backend = self._build_nucleus_backend(config_path)
-        self.__cytoplasm_backend = self._build_cytoplasm_backend(config_path)
+        self.__nucleus_backend = self._build_nucleus_backend(self.__config_path)
+        self.__cytoplasm_backend = self._build_cytoplasm_backend(self.__config_path)
 
         self.__lf = lf(self)
         self.__tifSequence = tifSequence(self)
@@ -88,6 +88,17 @@ class FishGUI(object):
     def _build_cytoplasm_backend(self, config_path: pathlib.Path):
         """Build the fixed backend used for cytoplasm segmentation."""
         return build_backend(self.__cytoplasm_backend_mode, config_path)
+
+    def prompt_nucleus_backend_mode(self) -> str:
+        """Ask the user which backend to use for the next nucleus run."""
+        return self._choose_nucleus_backend_mode()
+
+    def set_nucleus_backend_mode(self, mode: str):
+        """Store one nucleus backend mode and rebuild that backend when needed."""
+        if mode == self.__nucleus_backend_mode:
+            return
+        self.__nucleus_backend_mode = mode
+        self.__nucleus_backend = self._build_nucleus_backend(self.__config_path)
 
     def _bind_shortcuts(self):
         """Register the keyboard shortcuts used by the GUI."""
