@@ -64,9 +64,16 @@ class funcButton:
             indicatoron=False,
             command=self.BBOX_call,
         )
+        self.SEGMENT_NUCLEUS = tkinter.Button(
+            self.container,
+            text="Segment Nucleus",
+            height=2,
+            relief=tkinter.RAISED,
+            command=self.SEGMENT_NUCLEUS_call,
+        )
         self.SEGMENTATION_SELECTION = tkinter.Checkbutton(
             self.container,
-            text="Select Frames for Segmentation",
+            text="Select Frames for Cytoplasm Segmentation",
             height=2,
             variable=self.toggle["SEGMENTATION_SELECTION"],
             onvalue=1,
@@ -114,6 +121,7 @@ class funcButton:
         self.IMPORT.pack(side=tkinter.LEFT, expand=True, fill=tkinter.X)
         self.SELECT.pack(side=tkinter.LEFT, expand=True, fill=tkinter.X)
         self.BBOX.pack(side=tkinter.LEFT, expand=True, fill=tkinter.X)
+        self.SEGMENT_NUCLEUS.pack(side=tkinter.LEFT, expand=True, fill=tkinter.X)
         self.SEGMENTATION_SELECTION.pack(side=tkinter.LEFT, expand=True, fill=tkinter.X)
         self.SEGMENT.pack(side=tkinter.LEFT, expand=True, fill=tkinter.X)
         self.DISPLAY_MASKS.pack(side=tkinter.LEFT, expand=True, fill=tkinter.X)
@@ -208,6 +216,29 @@ class funcButton:
             )
             return
         SessionManager.segment_selected(self.gui)
+
+    def SEGMENT_NUCLEUS_call(self):
+        """Run nucleus segmentation for the currently focused sample."""
+        focused = SessionManager.getBuffer()
+        if focused is None:
+            self.gui.popBox("w", "No Image Selected", "Please select an image first")
+            return
+
+        self.gui.indicateWait("Nucleus segmentation")
+
+        def job():
+            try:
+                focused.segment_nucleus()
+                self.gui.getRoot().after(0, lambda: self.gui.getStove().cook(focused))
+            except Exception as error:
+                self.gui.getRoot().after(
+                    0,
+                    lambda: self.gui.popBox("e", "Nucleus Segmentation Error", str(error)),
+                )
+            finally:
+                self.gui.getRoot().after(0, self.gui.dismissWait)
+
+        threading.Thread(target=job, daemon=True).start()
 
     def DISPLAY_MASKS_call(self):
         """Shows or hides masks for the focused frame without running segmentation."""
