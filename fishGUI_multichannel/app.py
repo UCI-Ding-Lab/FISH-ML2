@@ -21,7 +21,7 @@ class FishGUI(object):
         self.__root.geometry("870x1000")
 
         self.__backend_mode = self._choose_backend_mode()
-        self.__backend = build_backend(self.__backend_mode, pathlib.Path("./config.ini"))
+        self.__backend = self._build_selected_backend(pathlib.Path("./config.ini"))
 
         self.__lf = lf(self)
         self.__tifSequence = tifSequence(self)
@@ -68,6 +68,18 @@ class FishGUI(object):
         popup.grab_set()
         self.__root.wait_window(popup)
         return choice.get()
+
+    def _build_selected_backend(self, config_path: pathlib.Path):
+        """Build the selected backend and show a readable error if it fails."""
+        try:
+            return build_backend(self.__backend_mode, config_path)
+        except Exception as error:
+            self.popBox(
+                "e",
+                "Backend Load Error",
+                f"Failed to start backend '{self.__backend_mode}': {error}",
+            )
+            raise
 
     def _bind_shortcuts(self):
         self.__root.bind_all("<Control-z>", self._onUndoShortcut, add="+")
