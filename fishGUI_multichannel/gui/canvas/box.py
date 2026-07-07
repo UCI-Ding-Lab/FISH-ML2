@@ -13,7 +13,7 @@ class box():
         self.__rect = Rectangle((min_x, min_y),
                                 max_x - min_x,
                                 max_y - min_y,
-                                linewidth=float(self.gui.getBackEnd().config["info"]["bbox_preview_line_width"]),
+                                linewidth=float(self.gui.getNucleusBackend().config["info"]["bbox_preview_line_width"]),
                                 edgecolor='r',
                                 facecolor='none')
         # self.__center = Circle(center, radius=5, color='lime', fill=True)

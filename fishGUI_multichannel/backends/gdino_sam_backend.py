@@ -10,7 +10,11 @@ class GdinoSamBackend:
 
     @property
     def device(self):
-        return getattr(self._core, "device", "cpu")
+        """Return the compute device string used by the legacy backend."""
+        device_name = self._core.device
+        if device_name is None:
+            return "cpu"
+        return device_name
 
     @property
     def config(self):

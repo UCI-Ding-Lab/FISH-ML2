@@ -63,9 +63,9 @@ def run_nucleus_segmentation(nucleus_img: np.ndarray, gui, sample_id, bbox_list=
         logger.warning("Nucleus segmentation aborted for sample %s: missing DAPI image", sample_id)
         return []
 
-    backend = gui.getBackEnd()
+    nucleus_backend = gui.getNucleusBackend()
     try:
-        mask_output = backend.predict_nucleus(nucleus_img, bbox_list)
+        mask_output = nucleus_backend.predict_nucleus(nucleus_img, bbox_list)
         return _segment_mask_array(mask_output, gui)
     except Exception as e:
         logger.exception(f"Nucleus predict failed: {e}")
@@ -84,7 +84,7 @@ def run_cytoplasm_segmentation(
     """
     logger.info(f"Starting segmentation (Cellpose-SAM predict) for channel {selected_channel} ...")
 
-    backend = gui.getBackEnd()
+    cytoplasm_backend = gui.getCytoplasmBackend()
     results = {k: [] for k in cyto_channels}
     if not cyto_channels or nucleus_img is None:
         logger.warning("Segmentation aborted: missing nucleus or cytoplasm channel")
@@ -100,7 +100,7 @@ def run_cytoplasm_segmentation(
 
     img = _prepare_segmentation_input(nucleus_img, cyto1, cyto2)
     try:
-        mask_output = backend.predict_cytoplasm(img)
+        mask_output = cytoplasm_backend.predict_cytoplasm(img)
         results[selected_channel] = _segment_mask_array(mask_output, gui)
     except Exception as e:
         logger.exception(f"Cytoplasm predict failed: {e}")

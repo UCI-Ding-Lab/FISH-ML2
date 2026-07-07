@@ -297,7 +297,8 @@ class abstract():
         """
         if self.bbox_generated:
             return self.__bbox
-        nucleus_boxes = self.gui.getBackEnd().generate_bboxes(self.__img_np_nucleus)
+        nucleus_backend = self.gui.getNucleusBackend()
+        nucleus_boxes = nucleus_backend.generate_bboxes(self.__img_np_nucleus)
         self.nucleus_centers = self._compute_nucleus_centers_from_boxes(nucleus_boxes)
         self.bbox_generated = True # TODO change to nucleus_center_computed if bbox is unnecessary
         return self.__bbox

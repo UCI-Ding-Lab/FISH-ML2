@@ -105,12 +105,13 @@ def apply_channel_mask_to_frames(
 
     def _get_inference_worker_limit(total_jobs):
         try:
-            backend = None
             if focused_frame is not None and focused_frame.gui is not None:
-                backend = focused_frame.gui.getBackEnd()
+                backend = focused_frame.gui.getCytoplasmBackend()
             elif frame_pool and frame_pool[0].gui is not None:
-                backend = frame_pool[0].gui.getBackEnd()
-            if getattr(backend, "device", "cpu") == "cuda":
+                backend = frame_pool[0].gui.getCytoplasmBackend()
+            else:
+                backend = None
+            if backend is not None and backend.device == "cuda":
                 logger.info("GPU detected; limiting copy-mask concurrency to 1 worker.")
                 return 1
         except Exception:

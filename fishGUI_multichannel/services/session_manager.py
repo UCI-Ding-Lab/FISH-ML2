@@ -136,7 +136,7 @@ class SessionManager:
     @classmethod
     def _get_inference_worker_limit(cls, gui, total_jobs: int) -> int:
         """Chooses a safe worker count for model inference work."""
-        backend = gui.getBackEnd()
+        backend = gui.getCytoplasmBackend()
         if backend.device == "cuda":
             logger.info("GPU detected; limiting inference concurrency to 1 worker.")
             return 1

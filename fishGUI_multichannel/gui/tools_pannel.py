@@ -18,7 +18,7 @@ class seasoning():
         self.sep = tkinter.Frame(self.toolbank, height=1, bd=0, relief=tkinter.SUNKEN, bg="black")
         self.seg_editor = tkinter.LabelFrame(self.toolbank, text="Mask Editor")
         
-        icon_path = pathlib.Path(self.gui.getBackEnd().config["gui"]["icon_folder"])
+        icon_path = pathlib.Path(self.gui.getCytoplasmBackend().config["gui"]["icon_folder"])
         
         self.tools_icon = {"brush": ImageTk.PhotoImage(Image.open(icon_path/"brush.png")),
                            "eraser": ImageTk.PhotoImage(Image.open(icon_path/"eraser.png")),

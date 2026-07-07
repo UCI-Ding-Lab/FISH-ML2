@@ -31,7 +31,12 @@ def test_segment_nucleus_stores_dapi_masks_separately(bare_abstract_factory):
     assert result == [11, 12]
     assert abs_obj.get_nucleus_segments() == [11, 12]
     assert abs_obj.get_segments("647") == []
-    mock_segment.assert_called_once_with(abs_obj._abstract__img_np_nucleus, abs_obj.gui, abs_obj.sample_id)
+    mock_segment.assert_called_once_with(
+        abs_obj._abstract__img_np_nucleus,
+        abs_obj.gui,
+        abs_obj.sample_id,
+        bbox_list=[],
+    )
 
 
 def test_segment_channel_uses_nucleus_segmentation_when_dapi_is_selected(bare_abstract_factory):
@@ -45,18 +50,16 @@ def test_segment_channel_uses_nucleus_segmentation_when_dapi_is_selected(bare_ab
     mock_segment_nucleus.assert_called_once_with()
 
 
-def test_bbox_computes_nucleus_centers_and_runs_nucleus_segmentation_once(bare_abstract_factory):
+def test_bbox_computes_nucleus_centers_once_from_the_nucleus_backend(bare_abstract_factory):
     abs_obj = bare_abstract_factory()
     abs_obj._abstract__img_np_nucleus = np.zeros((10, 10))
-    abs_obj.gui.getBackEnd.return_value.AppIntDINOwrapper.return_value = [(0, 0, 4, 6)]
+    abs_obj.gui.getNucleusBackend.return_value.generate_bboxes.return_value = [(0, 0, 4, 6)]
 
-    with patch.object(abs_obj, "segment_nucleus", return_value=[21]) as mock_segment_nucleus:
-        result = abs_obj.bbox
+    result = abs_obj.bbox
 
     assert result == []
     assert abs_obj.nucleus_centers == [(2.0, 3.0)]
     assert abs_obj.bbox_generated is True
-    mock_segment_nucleus.assert_called_once_with()
 
 
 def test_find_methods_return_the_matching_box_and_segment_or_none(bare_abstract_factory):
