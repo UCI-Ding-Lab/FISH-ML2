@@ -64,9 +64,8 @@ def run_nucleus_segmentation(nucleus_img: np.ndarray, gui, sample_id, bbox_list=
         return []
 
     backend = gui.getBackEnd()
-    img = _prepare_nucleus_segmentation_input(nucleus_img)
     try:
-        mask_output = backend.predict_nucleus(img, bbox_list)
+        mask_output = backend.predict_nucleus(nucleus_img, bbox_list)
         return _segment_mask_array(mask_output, gui)
     except Exception as e:
         logger.exception(f"Nucleus predict failed: {e}")

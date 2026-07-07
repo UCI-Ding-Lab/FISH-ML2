@@ -1,4 +1,5 @@
 import pathlib
+import numpy as np
 import fishCore
 
 
@@ -22,6 +23,7 @@ class CellposeBackend:
     def predict_nucleus(self, nucleus_img, bbox_list=None):
         """Segment nuclei without using bbox prompts."""
         _ = bbox_list
+        nucleus_img = np.stack([nucleus_img, nucleus_img, nucleus_img], axis=-1).astype(np.float32, copy=False)
         return self._core.predict(nucleus_img)
 
     def predict_cytoplasm(self, model_input):
