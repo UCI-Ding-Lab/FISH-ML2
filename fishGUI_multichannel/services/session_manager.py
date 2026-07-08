@@ -242,6 +242,7 @@ class SessionManager:
                     bbox=abstract_object.boundingBoxRevised,
                     segment=seg_dict,
                     nucleus_segment=[s._segment__data.T for s in abstract_object.get_nucleus_segments()],
+                    selected_channel=abstract_object.selected_channel,
                 )
                 result.append(bundled_info_for_save)
         return result

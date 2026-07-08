@@ -8,6 +8,11 @@ class GdinoSamBackend:
     def __init__(self, config_path: pathlib.Path, backend_role: str = "backend"):
         """Create one GroundingDINO and SAM backend for a specific GUI role."""
         self._core = fishCore_gdino_sam.Fish(config_path, backend_role)
+        self._load_default_nucleus_model()
+
+    def _load_default_nucleus_model(self) -> None:
+        """Load the legacy SAM nucleus weights expected by the old GDINO workflow."""
+        self._core.set_model_version("3.50")
 
     @property
     def device(self):

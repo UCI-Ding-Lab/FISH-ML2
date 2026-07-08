@@ -305,10 +305,6 @@ class abstract():
             return
         logger.info("Bbox generated for sample %s in %.2f seconds", self.sample_id, elapsed)
 
-    def _log_nucleus_center_computation(self, elapsed: float) -> None:
-        """Log nucleus center computation time for one sample."""
-        logger.info("Computed nucleus centers for sample %s in %.2f seconds", self.sample_id, elapsed)
-
     def _log_total_nucleus_preparation(self, elapsed: float) -> None:
         """Log the full nucleus bbox and center preparation time for one sample."""
         logger.info(
@@ -356,9 +352,7 @@ class abstract():
         nucleus_backend = self.gui.getNucleusBackend()
         nucleus_boxes = nucleus_backend.generate_bboxes(self.__img_np_nucleus)
         self._log_bbox_generation(time.perf_counter() - bbox_start)
-        center_start = time.perf_counter()
         self.nucleus_centers = self._compute_nucleus_centers_from_boxes(nucleus_boxes)
-        self._log_nucleus_center_computation(time.perf_counter() - center_start)
         self.__bbox = self._build_editable_bbox_objects(nucleus_boxes)
         self._log_total_nucleus_preparation(time.perf_counter() - total_start)
         self.bbox_generated = True # TODO change to nucleus_center_computed if bbox is unnecessary

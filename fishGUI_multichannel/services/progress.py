@@ -67,7 +67,7 @@ class Progress:
             
             return nucleus_path, cytoplasm_paths
             
-        def create_abstract_object(sample_id, nucleus_path, cyto_paths, bbox_list, seg_dict, nucleus_masks, gui):
+        def create_abstract_object(sample_id, nucleus_path, cyto_paths, bbox_list, seg_dict, nucleus_masks, selected_channel, gui):
             abstract_object = abstract(
                 sample_id, 
                 nucleus_path=nucleus_path,
@@ -76,10 +76,12 @@ class Progress:
                 gui=gui
             )
             abstract_object.bbox = [box(b, gui) for b in bbox_list]
+            abstract_object.nucleus_centers = abstract_object._compute_nucleus_centers_from_boxes(bbox_list)
             abstract_object.set_nucleus_segments([segment(gui, m) for m in nucleus_masks])
             for channel, mask_list in seg_dict.items():
                 segs = [segment(gui, m) for m in mask_list]
                 abstract_object.set_segments(channel, segs)
+            abstract_object.selected_channel = selected_channel
             return abstract_object
 
         # --- Main Logic ---
@@ -91,15 +93,34 @@ class Progress:
         for item in session_data:
             try:
                 single_bundle : bundle = item
-                sample_id, nucleus_path, cytoplasm_paths, bbox_list, seg_dict, nucleus_masks = single_bundle.extract_data_from_bundles() 
+                (
+                    sample_id,
+                    nucleus_path,
+                    cytoplasm_paths,
+                    bbox_list,
+                    seg_dict,
+                    nucleus_masks,
+                    selected_channel,
+                ) = single_bundle.extract_data_from_bundles() 
                 valid_paths = return_valid_paths(nucleus_path, cytoplasm_paths) 
                 if valid_paths is None: # prevent loading frames and its data with at least one invalid path
                     continue
-                abs_obj =create_abstract_object(sample_id, nucleus_path, cytoplasm_paths, bbox_list, seg_dict, nucleus_masks, gui)
+                abs_obj = create_abstract_object(
+                    sample_id,
+                    nucleus_path,
+                    cytoplasm_paths,
+                    bbox_list,
+                    seg_dict,
+                    nucleus_masks,
+                    selected_channel,
+                    gui,
+                )
                 gui.getSeasoning().update_channel_menu(abs_obj.available_channels)     
                 gui.getSeasoning().update_channel_selector_for_image(abs_obj)
             except Exception as error:
                 messagebox.showwarning("Skipped one row", f"Reason:{error}")
+        gui.setWorkflowMode("neutral")
+        gui.getFuncButton().refresh_toolbar()
         SessionManager.sendFirst()
 
     @staticmethod

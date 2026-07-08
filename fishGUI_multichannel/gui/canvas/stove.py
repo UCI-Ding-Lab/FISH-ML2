@@ -52,7 +52,7 @@ class stove():
         self.tb_pointer = Circle((0, 0), 15, linewidth=0.5, edgecolor='cyan', facecolor='none')
         self.xs = []
         self.ys = []
-        self.old_center = None
+        self.nucleus_center = None
         self.markers: list[Circle] = []
         self.press = False
         
@@ -179,8 +179,8 @@ class stove():
                         anchor.setBuffer(target)
 
                         b = box.getBuffer()
-                        if self.old_center is None:
-                            self.old_center = b.rect.get_center()
+                        if self.nucleus_center is None:
+                            self.nucleus_center = b.rect.get_center()
 
                         return
                 target = self.getLoaded().findBoxFromPoint(event.xdata, event.ydata) 
@@ -237,7 +237,7 @@ class stove():
         self.press = False
         if self.gui.getFuncButton().bboxButtonPressed():
             anchor.clearBuffer()
-            self.old_center = None
+            self.nucleus_center = None
         elif self.gui.getFuncButton().displayMaskButtonPressed():
             if self.gui.getSeasoning().brushButtonPressed() and segment.getBuffer() and segment.getBuffer().selected:
                 final = list(zip(self.xs, self.ys))
@@ -300,8 +300,7 @@ class stove():
             
             b.rect.set_width(w)
             b.rect.set_height(h)
-            new_center = b.rect.get_center()
-            b.center = new_center # Successfully adds dot once bbox is clicked out
+            self.nucleus_center = b.rect.get_center()
             b.anchorUpdate()
             self.canvas.draw()
 

@@ -15,6 +15,7 @@ class bundle():
         bbox: list[list],
         segment: dict[str, list[np.ndarray]],
         nucleus_segment: list[np.ndarray],
+        selected_channel: str,
     ) -> None:
         """
         Store one frame's masks in RLE form so the session can be restored later.
@@ -22,6 +23,7 @@ class bundle():
         self.sample_id = sample_id 
         self.nucleus_path = nucleus_path
         self.cyto_paths = cyto_paths  
+        self.selected_channel = selected_channel
         self.bbox = np.array(bbox, dtype=np.uint16)
         self.rle_nucleus_masks = encode_mask_list(nucleus_segment)
         self.rle_cytoplasm_masks_by_channel: dict[str, list[dict]] = {}
@@ -37,7 +39,15 @@ class bundle():
         for ch in cytoplasm_masks:
             segment_r[ch] = decode_mask_list(cytoplasm_masks[ch])
         nucleus_segment_r = decode_mask_list(get_saved_nucleus_masks(self))
-        return self.sample_id, self.nucleus_path, self.cyto_paths, self.bbox.tolist(), segment_r, nucleus_segment_r
+        return (
+            self.sample_id,
+            self.nucleus_path,
+            self.cyto_paths,
+            self.bbox.tolist(),
+            segment_r,
+            nucleus_segment_r,
+            get_saved_selected_channel(self),
+        )
 
 
 def get_saved_cytoplasm_masks_by_channel(bundle_obj) -> dict[str, list[dict]]:
@@ -56,6 +66,15 @@ def get_saved_nucleus_masks(bundle_obj) -> list[dict]:
     if "rle_nucleus_masks" in bundle_obj.__dict__:
         return bundle_obj.rle_nucleus_masks
     return bundle_obj.rleNucleusSeg
+
+
+def get_saved_selected_channel(bundle_obj) -> str:
+    """
+    Return the stored selected channel and fall back to the legacy default when missing.
+    """
+    if "selected_channel" in bundle_obj.__dict__:
+        return bundle_obj.selected_channel
+    return "647"
 
 
 def encode_mask_list(mask_list: list[np.ndarray]) -> list[dict]:
