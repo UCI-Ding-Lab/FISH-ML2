@@ -178,12 +178,12 @@ class funcButton:
 
     def _pack_nucleus_gdino_toolbar(self):
         """Show the nucleus toolbar for GroundingDINO and SAM workflow."""
-        self.SEGMENT_NUCLEUS.config(text="Segment Mode")
+        self.SEGMENT_NUCLEUS.config(text="Segment")
         self._pack_toolbar_buttons([self.BBOX, self.SEGMENT_NUCLEUS, self.DISPLAY_MASKS, self.DONE])
 
     def _pack_nucleus_cellpose_toolbar(self):
         """Show the nucleus toolbar for Cellpose-SAM workflow."""
-        self.SEGMENT_NUCLEUS.config(text="Segment Mode")
+        self.SEGMENT_NUCLEUS.config(text="Segment")
         self._pack_toolbar_buttons([self.SEGMENT_NUCLEUS, self.DISPLAY_MASKS, self.DONE])
 
     def _pack_cytoplasm_toolbar(self):
@@ -210,6 +210,23 @@ class funcButton:
     def displayMaskButtonPressed(self) -> bool:
         """Returns True when mask-display mode is on."""
         return self.toggle["DISPLAY_MASKS"].get()
+
+    def _set_nucleus_segment_running(self, running: bool) -> None:
+        """Show whether the nucleus segment batch is still running."""
+        relief = tkinter.SUNKEN if running else tkinter.RAISED
+        state = tkinter.DISABLED if running else tkinter.NORMAL
+        self.SEGMENT_NUCLEUS.config(relief=relief, state=state)
+
+    def _warn_conflicting_nucleus_action(self, current_action: str, requested_action: str) -> bool:
+        """Warn when one nucleus workflow action is already active."""
+        if current_action == requested_action:
+            return False
+        self.gui.popBox(
+            "w",
+            f"{current_action} Active",
+            f"Please turn off {current_action} before using {requested_action}.",
+        )
+        return True
 
     def IMPORT_call(self):
         """Imports TIFF files and starts background nucleus-center generation."""
@@ -255,6 +272,10 @@ class funcButton:
             self.gui.popBox("w", "No Image Selected", "Please select an image first")
             self.toggle["BBOX"].set(0)
             return
+        if self.bboxButtonPressed() and self.displayMaskButtonPressed():
+            self.toggle["BBOX"].set(0)
+            self._warn_conflicting_nucleus_action("Display/Edit", "BBOX")
+            return
         if not self.bboxButtonPressed():
             focused.drawBbox = False
             return
@@ -269,11 +290,6 @@ class funcButton:
         self.toggle["BBOX"].set(1)
         focused.drawBbox = True
         self.gui.getStove().cook(focused)
-        self.gui.popBox(
-            "i",
-            "Review Nucleus Prompts",
-            "Adjust prompt boxes if needed, then click Segment Nucleus again.",
-        )
 
     def _exit_nucleus_prompt_mode(self):
         """Hide nucleus prompt editing and restore the normal button label."""
@@ -307,6 +323,7 @@ class funcButton:
 
     def _run_nucleus_segmentation(self, focused):
         """Run nucleus segmentation for every loaded frame and refresh the focused view."""
+        self._set_nucleus_segment_running(True)
         self.gui.indicateWait("Nucleus segmentation")
 
         def job():
@@ -321,6 +338,7 @@ class funcButton:
                     lambda: self.gui.popBox("e", "Nucleus Segmentation Error", str(error)),
                 )
             finally:
+                self.gui.getRoot().after(0, lambda: self._set_nucleus_segment_running(False))
                 self.gui.getRoot().after(0, self.gui.dismissWait)
 
         threading.Thread(target=job, daemon=True).start()
@@ -390,6 +408,12 @@ class funcButton:
         if focused is None:
             self.gui.popBox("w", "No Image Selected", "Please select an image first")
             return
+        if self.displayMaskButtonPressed():
+            self._warn_conflicting_nucleus_action("Display/Edit", "Segment")
+            return
+        if self.bboxButtonPressed() and self.gui.getWorkflowMode() != "nucleus_gdino":
+            self._warn_conflicting_nucleus_action("BBOX", "Segment")
+            return
 
         if self.gui.getWorkflowMode() == "neutral":
             self._enter_nucleus_mode(focused)
@@ -409,6 +433,10 @@ class funcButton:
         if focused is None:
             self.toggle["DISPLAY_MASKS"].set(0)
             self.gui.popBox("w", "No Image Selected", "Please select an image first")
+            return
+        if self.displayMaskButtonPressed() and self.bboxButtonPressed():
+            self.toggle["DISPLAY_MASKS"].set(0)
+            self._warn_conflicting_nucleus_action("BBOX", "Display/Edit")
             return
         if self.displayMaskButtonPressed():
             self._exit_nucleus_prompt_mode()
