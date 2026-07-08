@@ -29,7 +29,6 @@ class FishGUI(object):
         self.__cytoplasm_backend = self._build_cytoplasm_backend(self.__config_path)
 
         self.__lf = lf(self)
-        self.__mode_banner = self._build_mode_banner()
         self.__tifSequence = tifSequence(self)
         self.__funcButton = funcButton(self)
         self.__seasoning = seasoning(self)
@@ -92,25 +91,12 @@ class FishGUI(object):
         """Build the fixed backend used for cytoplasm segmentation."""
         return build_backend(self.__cytoplasm_backend_mode, config_path, "cytoplasm")
 
-    def _build_mode_banner(self) -> tk.Label:
-        """Create the centered banner that shows the active workflow mode."""
-        banner = tk.Label(
-            self.__lf.getFrameB(),
-            text="Neutral Mode",
-            height=2,
-            anchor="center",
-            justify="center",
-            font=("TkDefaultFont", 10, "bold"),
-        )
-        banner.pack(fill=tk.X)
-        return banner
-
     def _get_mode_banner_style(self, mode: str) -> tuple[str, str, str]:
         """Return the text and colors used by the centered workflow banner."""
         styles = {
-            "neutral": ("Neutral Mode", "#6B7280", "white"),
-            "nucleus_gdino": ("Nucleus Segmentation Mode - GroundingDINO + SAM", "#2563EB", "white"),
-            "nucleus_cellpose": ("Nucleus Segmentation Mode - Cellpose-SAM", "#16A34A", "white"),
+            "neutral": ("Main Mode", "#6B7280", "white"),
+            "nucleus_gdino": ("Nucleus Mode - GroundingDINO + SAM", "#2563EB", "white"),
+            "nucleus_cellpose": ("Nucleus Mode - Cellpose-SAM", "#16A34A", "white"),
             "cytoplasm": ("Cytoplasm Segmentation Mode", "#EA580C", "white"),
         }
         return styles.get(mode, styles["neutral"])
@@ -215,6 +201,7 @@ class FishGUI(object):
         """Store the current workflow mode used by the GUI."""
         self.__workflow_mode = mode
         self.updateModeBanner()
+        self._refresh_workflow_thumbnails()
 
     def getWorkflowMode(self) -> str:
         """Return the current workflow mode used by the GUI."""
@@ -233,7 +220,16 @@ class FishGUI(object):
     def updateModeBanner(self):
         """Refresh the centered banner so it matches the current workflow mode."""
         text, bg, fg = self._get_mode_banner_style(self.getWorkflowMode())
-        self.__mode_banner.config(text=text, bg=bg, fg=fg)
+        self.__stove.set_mode_banner(text, bg, fg)
+
+    def _refresh_workflow_thumbnails(self):
+        """Refresh every thumbnail so mode-based status dots update together."""
+        try:
+            from .services.session_manager import SessionManager
+            for abs_obj in SessionManager.getPool():
+                abs_obj.update_thumbnail()
+        except Exception:
+            pass
 
     # ---- popups / status ----
     def popBox(self, level: str, title: str, msg: str):

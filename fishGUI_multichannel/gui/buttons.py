@@ -267,7 +267,6 @@ class funcButton:
     def _enter_nucleus_prompt_mode(self, focused):
         """Show editable nucleus prompt boxes for one gdino nucleus run."""
         self.toggle["BBOX"].set(1)
-        self.SEGMENT_NUCLEUS.config(text="Run Nucleus Segmentation")
         focused.drawBbox = True
         self.gui.getStove().cook(focused)
         self.gui.popBox(
@@ -280,9 +279,31 @@ class funcButton:
         """Hide nucleus prompt editing and restore the normal button label."""
         focused = SessionManager.getBuffer()
         self.toggle["BBOX"].set(0)
-        self.SEGMENT_NUCLEUS.config(text="Segment Nucleus")
         if focused is not None:
             focused.drawBbox = False
+
+    def _show_nucleus_centers(self, focused):
+        """Show nucleus centers when the user enters nucleus workflow mode."""
+        if not focused.bbox_generated:
+            _ = focused.bbox
+        focused.drawBbox = True
+        self.gui.getStove().cook(focused)
+
+    def _switch_all_frames_to_dapi(self):
+        """Switch every loaded frame to the DAPI channel for nucleus workflow."""
+        for frame in SessionManager.getPool():
+            frame.selected_channel = "DAPI"
+
+    def _enter_nucleus_mode(self, focused):
+        """Switch the UI into the nucleus workflow mode for the chosen backend."""
+        backend_mode = self.gui.prompt_nucleus_backend_mode()
+        self.gui.set_nucleus_backend_mode(backend_mode)
+        self.gui.setWorkflowMode(self.gui.getNucleusWorkflowMode())
+        self._switch_all_frames_to_dapi()
+        self.refresh_toolbar()
+        self._show_nucleus_centers(focused)
+        if backend_mode == "gdino_sam":
+            self._enter_nucleus_prompt_mode(focused)
 
     def _run_nucleus_segmentation(self, focused):
         """Run one nucleus segmentation job for the focused sample."""
@@ -325,44 +346,57 @@ class funcButton:
             "Control-click thumbnails to choose frames for cytoplasm segmentation.",
         )
 
+    def _prepare_cytoplasm_source_channel(self, focused):
+        """Switch the focused frame to one cytoplasm channel before cytoplasm mode starts."""
+        if not focused.available_channels:
+            self.gui.popBox("w", "No Cytoplasm Channel", "This frame has no cytoplasm channel.")
+            return False
+        if focused.selected_channel == "DAPI":
+            focused.selected_channel = focused.available_channels[0]
+        return True
+
     def SEGMENT_call(self):
-        """Open the cytoplasm workflow choices for segmentation or mask copying."""
-        self._exit_nucleus_prompt_mode()
-        CytoplasmActionPopup(
-            self.gui.getRoot(),
-            self._toggle_cytoplasm_frame_selection,
-            self._run_cytoplasm_segmentation,
-            self.APPLY_CHANNEL_MASK_call,
-        )
+        """Enter cytoplasm mode or run the active cytoplasm segmentation action."""
+        focused = SessionManager.getBuffer()
+        if focused is None:
+            self.gui.popBox("w", "No Image Selected", "Please select an image first")
+            return
+        if self.gui.getWorkflowMode() == "neutral":
+            if not self._prepare_cytoplasm_source_channel(focused):
+                return
+            self._exit_nucleus_prompt_mode()
+            self.gui.setWorkflowMode("cytoplasm")
+            self.refresh_toolbar()
+            self.gui.getStove().cook(focused)
+            return
+        self._run_cytoplasm_segmentation()
 
     def _run_cytoplasm_segmentation(self):
-        """Run cytoplasm segmentation for the frames chosen by the user."""
-        selected_frames = self._get_selected_frames_for_segmentation()
-        if not selected_frames:
-            self.gui.popBox(
-                "w",
-                "No Frames Selected",
-                "Please choose frames with Select Cytoplasm Frames first.",
-            )
+        """Run cytoplasm segmentation for the focused frame and selected source channel."""
+        focused = SessionManager.getBuffer()
+        if focused is None:
+            self.gui.popBox("w", "No Image Selected", "Please select an image first")
             return
-        SessionManager.segment_selected(self.gui)
+        if not self._prepare_cytoplasm_source_channel(focused):
+            return
+        _ = focused.segment
+        self.gui.getStove().cook(focused)
 
     def SEGMENT_NUCLEUS_call(self):
-        """Run nucleus segmentation for the currently focused sample."""
+        """Enter nucleus mode or run the active nucleus segmentation action."""
         focused = SessionManager.getBuffer()
         if focused is None:
             self.gui.popBox("w", "No Image Selected", "Please select an image first")
             return
 
-        if self.nucleusPromptModeActive():
-            self._exit_nucleus_prompt_mode()
-            self._run_nucleus_segmentation(focused)
+        if self.gui.getWorkflowMode() == "neutral":
+            self._enter_nucleus_mode(focused)
             return
 
-        backend_mode = self.gui.prompt_nucleus_backend_mode()
-        self.gui.set_nucleus_backend_mode(backend_mode)
-        if backend_mode == "gdino_sam":
-            self._enter_nucleus_prompt_mode(focused)
+        if self.gui.getWorkflowMode() == "nucleus_gdino":
+            if self.nucleusPromptModeActive():
+                self._exit_nucleus_prompt_mode()
+            self._run_nucleus_segmentation(focused)
             return
 
         self._run_nucleus_segmentation(focused)
@@ -416,6 +450,9 @@ class funcButton:
         """Return the workflow toolbar to neutral mode and clear edit toggles."""
         self._reset_modes_before_copy()
         self.gui.setWorkflowMode("neutral")
+        focused = SessionManager.getBuffer()
+        if focused is not None:
+            focused.drawBbox = False
         self.refresh_toolbar()
 
     def _get_selected_frames_for_segmentation(self):

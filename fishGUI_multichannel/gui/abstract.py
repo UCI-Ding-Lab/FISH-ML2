@@ -64,6 +64,7 @@ class abstract():
         self.__img_pil_thumbnail_select = None # image with selection overlay - green dot
         self.__img_pil_thumbnail_crossout = None  # image with crossout overlay - red X
         self.__img_pil_thumbnail_segmented = None # image with segmentation overlay - orange dot
+        self.__img_pil_thumbnail_mask_generated = None # image with orange dot only
         self.__img_pil_thumbnail_segmentation_selected = None   # image with selection and bbox overlay -- green and blue dot -- TODO : ensure that user cannot select a frame without bbox 
         self.__img_pil_thumbnail_selected_and_segmented = None # image that was selected and segmentation is complete - blue and orange dot
 
@@ -71,6 +72,7 @@ class abstract():
         self.__img_tk_thumbnail_select = None
         self.__img_tk_thumbnail_crossout = None
         self.__img_tk_thumbnail_segmented = None
+        self.__img_tk_thumbnail_mask_generated = None
         self.__img_tk_thumbnail_segmentation_selected = None  
         self.__img_tk_thumbnail_selected_and_segmented = None 
 
@@ -290,6 +292,50 @@ class abstract():
         """Return one `(x, y)` center for each nucleus box."""
         return [((x0 + x1) / 2, (y0 + y1) / 2) for x0, y0, x1, y1 in nucleus_boxes]
 
+    def _build_editable_bbox_objects(self, nucleus_boxes: list[tuple]) -> list[box]:
+        """Build editable bbox objects from one list of raw nucleus box coordinates."""
+        bbox_objects = []
+        for nucleus_box in nucleus_boxes:
+            bbox_objects.append(box(list(nucleus_box), self.gui))
+        return bbox_objects
+
+    def _log_bbox_generation(self, elapsed: float) -> None:
+        """Log bbox generation time when the gdino nucleus backend is active."""
+        if self.gui.getNucleusBackendMode() != "gdino_sam":
+            return
+        logger.info("Bbox generated for sample %s in %.2f seconds", self.sample_id, elapsed)
+
+    def _log_nucleus_center_computation(self, elapsed: float) -> None:
+        """Log nucleus center computation time for one sample."""
+        logger.info("Computed nucleus centers for sample %s in %.2f seconds", self.sample_id, elapsed)
+
+    def _is_nucleus_workflow_mode(self) -> bool:
+        """Return True when the GUI is in one nucleus workflow mode."""
+        mode = self.gui.getWorkflowMode()
+        return mode in ("nucleus_gdino", "nucleus_cellpose")
+
+    def _shows_bbox_indicator(self) -> bool:
+        """Return True when the current mode should show the blue bbox dot."""
+        return self.bbox_generated
+
+    def _shows_orange_mask_indicator(self) -> bool:
+        """Return True when the current mode should show the orange mask dot."""
+        if self._is_nucleus_workflow_mode():
+            return self.has_nucleus_segments()
+        return self.has_all_channel_segments()
+
+    def _get_mode_thumbnail_state(self) -> str:
+        """Return the thumbnail state that matches the current mode indicators."""
+        has_blue = self._shows_bbox_indicator()
+        has_orange = self._shows_orange_mask_indicator()
+        if has_blue and has_orange:
+            return "segmented"
+        if has_blue:
+            return "bbox"
+        if has_orange:
+            return "mask_generated"
+        return "default"
+
     @property
     def bbox(self):
         """
@@ -297,9 +343,14 @@ class abstract():
         """
         if self.bbox_generated:
             return self.__bbox
+        bbox_start = time.perf_counter()
         nucleus_backend = self.gui.getNucleusBackend()
         nucleus_boxes = nucleus_backend.generate_bboxes(self.__img_np_nucleus)
+        self._log_bbox_generation(time.perf_counter() - bbox_start)
+        center_start = time.perf_counter()
         self.nucleus_centers = self._compute_nucleus_centers_from_boxes(nucleus_boxes)
+        self._log_nucleus_center_computation(time.perf_counter() - center_start)
+        self.__bbox = self._build_editable_bbox_objects(nucleus_boxes)
         self.bbox_generated = True # TODO change to nucleus_center_computed if bbox is unnecessary
         return self.__bbox
         
@@ -695,32 +746,21 @@ class abstract():
         self.__img_pil_thumbnail_select = None
         self.__img_pil_thumbnail_crossout = None
         self.__img_pil_thumbnail_segmented = None
+        self.__img_pil_thumbnail_mask_generated = None
         self.__img_pil_thumbnail_segmentation_selected = None
         self.__img_pil_thumbnail_selected_and_segmented = None
         self.__img_tk_thumbnail_bbox = None
         self.__img_tk_thumbnail_select = None
         self.__img_tk_thumbnail_crossout = None
         self.__img_tk_thumbnail_segmented = None
+        self.__img_tk_thumbnail_mask_generated = None
         self.__img_tk_thumbnail_segmentation_selected = None
         self.__img_tk_thumbnail_selected_and_segmented = None
-        
-        has_nucleus_masks = self.has_nucleus_segments()
-        if self.selected_for_segmentation:
-            if self.segment_generated and has_nucleus_masks:
-                self.thumbnail = "segmentation_selected_and_segmented"  # blue + orange
-                return
-            if has_nucleus_masks:
-                self.thumbnail = "segmentation_selected"  # blue + green
-                return
-            self.thumbnail = "selected"  # green
+
+        if not self.selected:
+            self.thumbnail = "crossout"
             return
-        if self.segment_generated and has_nucleus_masks:
-            self.thumbnail = "segmented"  # blue + orange
-            return
-        if has_nucleus_masks:
-            self.thumbnail = "bbox"  # blue
-            return
-        self.thumbnail = "default"  # no dot
+        self.thumbnail = self._get_mode_thumbnail_state()
 
     def _get_thumbnail_image_for_state(self, state: str):
         """
@@ -743,6 +783,8 @@ class abstract():
             return self.__img_tk_thumbnail_select
         if state == "crossout":
             return self.__img_tk_thumbnail_crossout
+        if state == "mask_generated":
+            return self.__img_tk_thumbnail_mask_generated
         if state == "segmentation_selected":
             return self.__img_tk_thumbnail_segmentation_selected
         if state == "segmented":
@@ -772,6 +814,8 @@ class abstract():
             self._draw_thumbnail_dot(drawer, (5, 5, 15, 15), (0, 255, 0))
         elif state == "crossout":
             self._draw_thumbnail_crossout(drawer)
+        elif state == "mask_generated":
+            self._draw_thumbnail_dot(drawer, (49, 20, 59, 30), (255, 165, 0))
         elif state == "segmentation_selected":
             self._draw_thumbnail_dot(drawer, (5, 5, 15, 15), (0, 255, 0))
             self._draw_thumbnail_dot(drawer, (49, 5, 59, 15), (0, 0, 255))
@@ -796,6 +840,9 @@ class abstract():
         elif state == "crossout":
             self.__img_pil_thumbnail_crossout = thumbnail_pil
             self.__img_tk_thumbnail_crossout = thumbnail_tk
+        elif state == "mask_generated":
+            self.__img_pil_thumbnail_mask_generated = thumbnail_pil
+            self.__img_tk_thumbnail_mask_generated = thumbnail_tk
         elif state == "segmentation_selected":
             self.__img_pil_thumbnail_segmentation_selected = thumbnail_pil
             self.__img_tk_thumbnail_segmentation_selected = thumbnail_tk

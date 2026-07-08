@@ -140,7 +140,8 @@ class SessionManager:
         if backend.device == "cuda":
             logger.info("GPU detected; limiting nucleus work to 1 worker.")
             return 1
-        return max(1, min(os.cpu_count() or 1, total_jobs))
+        logger.info("CPU detected; limiting nucleus work to 2 workers to avoid bbox contention.")
+        return max(1, min(2, total_jobs))
 
     @classmethod
     def _get_cytoplasm_worker_limit(cls, gui, total_jobs: int) -> int:
