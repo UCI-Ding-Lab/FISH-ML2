@@ -91,6 +91,7 @@ class abstract():
         
         # Segmentation masks
         self.__nucleus_segments = []
+        self.__last_nucleus_prompt_signature = None
         self.__current_channel_mask = [] 
         self.__channel_segments = {ch: [] for ch in self.SEGMENT_CHANNELS}
         self.__channel_pairings = {ch: make_empty_pairing_result() for ch in self.SEGMENT_CHANNELS}
@@ -383,6 +384,15 @@ class abstract():
         self.__nucleus_segments = seg_objs if seg_objs is not None else []
         self.update_thumbnail()
 
+    def _get_nucleus_prompt_signature(self) -> tuple:
+        """
+        Return a stable snapshot of the current bbox prompts for cache checks.
+        """
+        signature = []
+        for bbox_values in self.boundingBoxRevised:
+            signature.append(tuple(round(value, 4) for value in bbox_values))
+        return tuple(signature)
+
     def has_nucleus_segments(self) -> bool:
         """
         Return True when this frame already has DAPI nucleus masks.
@@ -393,6 +403,9 @@ class abstract():
         """
         Run DAPI nucleus segmentation once and store the resulting masks.
         """
+        prompt_signature = self._get_nucleus_prompt_signature()
+        if self.has_nucleus_segments() and prompt_signature == self.__last_nucleus_prompt_signature:
+            return self.get_nucleus_segments()
         nucleus_segments = run_nucleus_segmentation(
             self.__img_np_nucleus,
             self.gui,
@@ -400,6 +413,7 @@ class abstract():
             bbox_list=self.boundingBoxRevised,
         )
         self.set_nucleus_segments(nucleus_segments)
+        self.__last_nucleus_prompt_signature = prompt_signature
         return self.get_nucleus_segments()
 
     def _is_dapi_channel(self, channel) -> bool:

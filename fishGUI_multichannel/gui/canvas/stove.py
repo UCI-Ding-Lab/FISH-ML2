@@ -21,7 +21,7 @@ class stove():
         self.gui = gui
         self.pit = tkinter.Frame(self.gui.getLowerFrame().getFrameA(), background="black") # main frame for the canvas
         self.sep = tkinter.Frame(self.gui.getLowerFrame().getFrameA(), width=1, bd=0, relief=tkinter.SUNKEN, bg="black") # separator
-        self.status_strip = tkinter.Frame(self.pit, background="#E5E7EB", height=28)
+        self.status_strip = tkinter.Frame(self.pit, background="#E5E7EB", height=34)
         self.status_strip.pack_propagate(False)
         self.mode_banner = tkinter.Label(
             self.status_strip,
@@ -76,7 +76,7 @@ class stove():
         self.canvas.get_tk_widget().pack(side=tkinter.TOP, fill=tkinter.BOTH, expand=True)
         self.toolbar.pack(side=tkinter.BOTTOM, fill=tkinter.BOTH)
         self.status_strip.pack(side=tkinter.BOTTOM, fill=tkinter.X)
-        self.mode_banner.pack()
+        self.mode_banner.place(relx=0.5, rely=0.5, anchor="center", relwidth=0.5)
 
     def set_mode_banner(self, text: str, bg: str, fg: str):
         """Update the viewer strip banner text and colors."""

@@ -90,7 +90,7 @@ class funcButton:
         )
         self.DISPLAY_MASKS = tkinter.Checkbutton(
             self.container,
-            text="Edit Masks",
+            text="Display/Edit",
             height=2,
             variable=self.toggle["DISPLAY_MASKS"],
             onvalue=1,
@@ -306,13 +306,15 @@ class funcButton:
             self._enter_nucleus_prompt_mode(focused)
 
     def _run_nucleus_segmentation(self, focused):
-        """Run one nucleus segmentation job for the focused sample."""
+        """Run nucleus segmentation for every loaded frame and refresh the focused view."""
         self.gui.indicateWait("Nucleus segmentation")
 
         def job():
             try:
-                focused.segment_nucleus()
+                for frame in SessionManager.getPool():
+                    frame.segment_nucleus()
                 self.gui.getRoot().after(0, lambda: self.gui.getStove().cook(focused))
+                self.gui.getRoot().after(0, self.gui._refresh_workflow_thumbnails)
             except Exception as error:
                 self.gui.getRoot().after(
                     0,

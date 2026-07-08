@@ -8,9 +8,9 @@ from ..utils.image_preprocessing import compute_contrast
 logger = logging.getLogger('fishcore')
 
 
-def _masks_to_segments(masks: np.ndarray, gui) -> list[segment]:
+def _label_mask_to_segments(masks: np.ndarray, gui) -> list[segment]:
     """
-    Converts a mask array into a list of segment object defined in gui/canvas/segment.py
+    Convert one labeled 2D mask image into segment objects.
     """
     seg_objs = []
     for mask_id in np.unique(masks):
@@ -18,6 +18,21 @@ def _masks_to_segments(masks: np.ndarray, gui) -> list[segment]:
             continue
         mask = (masks == mask_id).astype(np.uint8)  # convert boolean array to a binary array (ensure compatibility with image processing libraries)
         seg_objs.append(segment(gui, mask))
+    return seg_objs
+
+
+def _mask_stack_to_segments(mask_stack: np.ndarray, gui) -> list[segment]:
+    """
+    Convert one stack of 2D binary masks into segment objects.
+    """
+    seg_objs = []
+    for mask in mask_stack:
+        squeezed_mask = np.squeeze(mask).astype(np.uint8)
+        if squeezed_mask.ndim != 2:
+            continue
+        if not np.any(squeezed_mask):
+            continue
+        seg_objs.append(segment(gui, squeezed_mask))
     return seg_objs
 
 
@@ -44,7 +59,12 @@ def _segment_mask_array(mask_output, gui) -> list[segment]:
         masks = mask_output[0]
     else:
         masks = mask_output
-    return _masks_to_segments(masks, gui)
+    masks = np.asarray(masks)
+    if masks.ndim == 2:
+        return _label_mask_to_segments(masks, gui)
+    if masks.ndim == 3:
+        return _mask_stack_to_segments(masks, gui)
+    return []
 
 
 def run_nucleus_segmentation(nucleus_img: np.ndarray, gui, sample_id, bbox_list=None) -> list[segment]:
