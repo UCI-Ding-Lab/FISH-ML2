@@ -180,8 +180,7 @@ class stove():
 
                         b = box.getBuffer()
                         if self.old_center is None:
-                            self.old_center = b.center
-                        b.removeCenter(self.gui, self.old_center)
+                            self.old_center = b.rect.get_center()
 
                         return
                 target = self.getLoaded().findBoxFromPoint(event.xdata, event.ydata) 

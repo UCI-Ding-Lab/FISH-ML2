@@ -27,7 +27,8 @@ class GdinoSamBackend:
     def predict_nucleus(self, nucleus_img, bbox_list=None):
         """Segment nuclei using SAM with bbox prompts when they exist."""
         prompt_boxes = bbox_list if bbox_list else None
-        return self._core.AppIntPREDICTwrapper(nucleus_img, prompt_boxes)
+        predictor = self._core.sam_nucleus_predictor
+        return predictor.AppIntPREDICTwrapper(nucleus_img, prompt_boxes)
 
     def predict_cytoplasm(self, model_input):
         """Legacy gdino and SAM backend does not support current cytoplasm segmentation flow."""
