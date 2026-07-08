@@ -160,10 +160,16 @@ class SessionManager:
             return
 
         def job():
+            start = time.perf_counter()
             max_workers = cls._get_nucleus_worker_limit(gui, len(abstracts))
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 for abs_obj in abstracts:
                     executor.submit(cls._generate_one_bbox, gui, abs_obj)
+            logger.info(
+                "Prepared nucleus bbox and centers for %s frames in %.2f seconds",
+                len(abstracts),
+                time.perf_counter() - start,
+            )
 
         threading.Thread(target=job, daemon=True).start()
 
