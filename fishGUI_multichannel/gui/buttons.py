@@ -407,8 +407,7 @@ class funcButton:
         if not focused.available_channels:
             self.gui.popBox("w", "No Cytoplasm Channel", "This frame has no cytoplasm channel.")
             return False
-        if focused.selected_channel == "DAPI":
-            focused.selected_channel = focused.available_channels[0]
+        focused.selected_channel = focused.available_channels[0]
         return True
 
     def _hide_focused_masks_before_mode_switch(self, focused):
