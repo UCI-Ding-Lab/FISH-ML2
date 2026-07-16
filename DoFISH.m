@@ -298,17 +298,24 @@ ParseArguments(nargin)
 
     % find H threshold
     function [H_thres, f, X, Y] = estimate_H_thres(channel)
+        if is_dapi_channel(FISH{channel,1}.channel)
+            H_thres = 10;
+            f = [];
+            X = [];
+            Y = [];
+            return
+        end
         all_maxH  = [];
         for cframe=1:min(length(Tracked),10)
             for num_cell = 1:length(Tracked{1,cframe}.cells)
                 if length(all_maxH)<1000
                     if isfield(Tracked{1,cframe}.cells{num_cell}, 'pos')
+                        cell_mask = get_cell_mask(Tracked{1,cframe}.cells{num_cell}, channel);
                         pos_x = Tracked{1,cframe}.cells{num_cell}.pos(1);
                         pos_y = Tracked{1,cframe}.cells{num_cell}.pos(2);
                         size_x = Tracked{1,cframe}.cells{num_cell}.size(1);
                         size_y = Tracked{1,cframe}.cells{num_cell}.size(2);
                         im_temp = AllImg{channel,cframe};
-                        cell_mask = Tracked{1,cframe}.cells{num_cell}.mask;
                         cell_image = cell_mask.*im_temp(pos_x:pos_x+size_x-1, pos_y:pos_y+size_y-1);
                         [FISH{channel, cframe}.cells{num_cell}.mask_H, FISH{channel, cframe}.cells{num_cell}.bg] = dot_mask(cell_image);
                     end
@@ -328,6 +335,13 @@ ParseArguments(nargin)
             [N, edges] = histcounts(all_maxH, 'BinWidth', 1);
             Y = N;
             X = edges(1:end-1) + (edges(2)-edges(1))/2;
+            if length(X)<3 || nnz(Y)>0 && nnz(Y)<3
+                H_thres = 10;
+                f = [];
+                X = [];
+                Y = [];
+                return
+            end
             options = fitoptions('gauss1');
             options.Lower = [0 1 0];
             options.Upper = [Inf 100 Inf];
@@ -348,7 +362,7 @@ ParseArguments(nargin)
                     size_x = Tracked{frame}.cells{num_cell}.size(1);
                     size_y = Tracked{frame}.cells{num_cell}.size(2);
                     im_temp = AllImg{num,frame};
-                    cell_mask = Tracked{frame}.cells{num_cell}.mask;
+                    cell_mask = get_cell_mask(Tracked{frame}.cells{num_cell}, num);
                     cell_image = cell_mask.*im_temp(pos_x:pos_x+size_x-1, pos_y:pos_y+size_y-1);
                     [FISH{num, frame}.cells{num_cell}.mask_H, FISH{num, frame}.cells{num_cell}.bg] = dot_mask(cell_image);
                     FISH{num, frame}.cells{num_cell}.dots = identify_dots(cell_image, FISH{num, frame}.cells{num_cell}.mask_H,...
@@ -364,7 +378,7 @@ ParseArguments(nargin)
                 size_x = Tracked{frame}.cells{selectcell}.size(1);
                 size_y = Tracked{frame}.cells{selectcell}.size(2);
                 im_temp = AllImg{num,frame};
-                cell_mask = Tracked{frame}.cells{selectcell}.mask;
+                cell_mask = get_cell_mask(Tracked{frame}.cells{selectcell}, num);
                 cell_image = cell_mask.*im_temp(pos_x:pos_x+size_x-1, pos_y:pos_y+size_y-1);
                 [FISH{num, frame}.cells{selectcell}.mask_H, FISH{num, frame}.cells{selectcell}.bg] = dot_mask(cell_image);
                 FISH{num, frame}.cells{selectcell}.dots = identify_dots(cell_image, FISH{num, frame}.cells{selectcell}.mask_H,...
