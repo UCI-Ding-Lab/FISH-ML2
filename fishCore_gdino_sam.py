@@ -34,13 +34,32 @@ class ColoredFormatter(logging.Formatter):
         record.msg = f"{log_color}{record.msg}{reset_color}"
         return super().format(record)
 
+
+def _build_console_handler() -> logging.StreamHandler:
+    """Create one console handler for the shared fishcore logger."""
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    formatter = ColoredFormatter("[%(asctime)s][%(levelname)s] %(message)s")
+    console_handler.setFormatter(formatter)
+    return console_handler
+
+
+def _has_fishcore_console_handler(logger: logging.Logger) -> bool:
+    """Return True when the shared fishcore console handler already exists."""
+    for handler in logger.handlers:
+        if isinstance(handler, logging.StreamHandler):
+            return True
+    return False
+
 class Fish():
-    def __init__(self,config: pathlib.Path) -> None:
+    def __init__(self, config: pathlib.Path, backend_role: str = "backend") -> None:
+        """Create one GroundingDINO and SAM core for a specific segmentation role."""
+        self.backend_role = backend_role
         self.setup__config(config)
         self.setup__logger()
         self.setup__asset()
         self.setup__ai()
-        self.finetune = self.Finetune(self)
+        self.sam_nucleus_predictor = self.SamNucleusPredictor(self)
     
     def setup__config(self, config):
         self.config = configparser.ConfigParser()
@@ -48,15 +67,15 @@ class Fish():
     def setup__logger(self):
         self.logger = logging.getLogger('fishcore')
         self.logger.setLevel(logging.INFO)
-        console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.INFO)
-        formatter = ColoredFormatter("[%(asctime)s][%(levelname)s] %(message)s")
-        console_handler.setFormatter(formatter)
-        self.logger.addHandler(console_handler)
+        if not _has_fishcore_console_handler(self.logger):
+            self.logger.addHandler(_build_console_handler())
         loggers = [logging.getLogger(name) for name in logging.root.manager.loggerDict]
         for logger in loggers:
             if "transformers" in logger.name.lower():
                 logger.setLevel(logging.ERROR)
+    def _role_text(self) -> str:
+        """Return a readable role label for startup log messages."""
+        return self.backend_role.replace("_", " ").title()
     def setup__asset(self):
         self.asset_folder_path = pathlib.Path(self.config["general"]["asset_folder_path"])
         self.supported_version = self.config["general"]["supported_version"].split(",")
@@ -64,12 +83,14 @@ class Fish():
         self.model_path = None
     def setup__ai(self):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.logger.info("%s backend selected device: %s", self._role_text(), self.device)
         self.model = None
         self.model_config = SamConfig.from_pretrained("facebook/sam-vit-base")
         self.processor = SamProcessor.from_pretrained("facebook/sam-vit-huge")
         self.gdino_config = pathlib.Path(groundingdino.__path__[0]) / self.config["dino"]["config"]
         self.gdino_weights = pathlib.Path(groundingdino.__path__[0]) / self.config["dino"]["weights"]
         self.gdino_model = dino.load_model(self.gdino_config, self.gdino_weights)
+        self.logger.info("%s GroundingDINO and SAM assets loaded", self._role_text())
 
     
     def set_model_version(self,v):
@@ -249,7 +270,7 @@ class Fish():
     def AppIntDINOwrapperB(self, img: np.ndarray, input_points: np.ndarray) -> list[list]:
         return Fish.dino_bbox_big(self.gdino_model, img, input_points)
  
-    class Finetune():
+    class SamNucleusPredictor():
         def __init__(self, fish):
             self.fish: Fish = fish
 
@@ -268,7 +289,7 @@ class Fish():
             else:
                 raw = {"bright_points": "OF", "clusters": "OF", "bboxes": bbox}
             
-            img = Fish.helper__hdr2Rgb(img, int(self.fish.config["predict"]["dynamic_range"]))
+            img = Fish.helper__hdr2RgbNorm(img, 1)
             
             masks = None
             inputs = self.fish.processor(img,
