@@ -355,6 +355,7 @@ class funcButton:
         self.gui.set_nucleus_backend_mode(backend_mode)
         self.gui.setWorkflowMode(self.gui.getNucleusWorkflowMode())
         self._switch_all_frames_to_dapi()
+        self.gui.getSeasoning().update_channel_selector_for_image(focused)
         self.refresh_toolbar()
         if backend_mode == "gdino_sam":
             self._show_nucleus_centers(focused)
@@ -444,6 +445,7 @@ class funcButton:
             self._exit_nucleus_prompt_mode()
             self.gui.setWorkflowMode("cytoplasm")
             self._switch_all_frames_to_first_cytoplasm_channel()
+            self.gui.getSeasoning().update_channel_selector_for_image(focused)
             self.refresh_toolbar()
             self.gui.getStove().cook(focused)
             return
