@@ -184,7 +184,14 @@ class funcButton:
         self.SEGMENT_NUCLEUS.config(text="Segment Nucleus")
         self.SEGMENT.config(text="Segment Cytoplasm")
         self._pack_toolbar_buttons(
-            [self.IMPORT, self.SELECT, self.SEGMENT_NUCLEUS, self.SEGMENT, self.EXPORT]
+            [
+                self.IMPORT,
+                self.SELECT,
+                self.SEGMENT_NUCLEUS,
+                self.SEGMENT,
+                self.DISPLAY_MASKS,
+                self.EXPORT,
+            ]
         )
 
     def _pack_nucleus_gdino_toolbar(self):

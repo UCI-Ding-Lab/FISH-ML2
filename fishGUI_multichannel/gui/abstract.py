@@ -411,8 +411,13 @@ class abstract():
         Run DAPI nucleus segmentation once and store the resulting masks.
         """
         prompt_signature = self._get_nucleus_prompt_signature()
-        if self.has_nucleus_segments() and prompt_signature == self.__last_nucleus_prompt_signature:
-            return self.get_nucleus_segments()
+        if self.has_nucleus_segments():
+            use_stored_masks = self.gui.ask_use_stored_masks(
+                "Stored Nucleus Masks",
+                "This image already has stored nucleus masks. Use the stored masks instead of resegmenting?",
+            )
+            if use_stored_masks:
+                return self.get_nucleus_segments()
         nucleus_segments = run_nucleus_segmentation(
             self._get_nucleus_segmentation_input(),
             self.gui,
@@ -482,6 +487,13 @@ class abstract():
             if self.has_nucleus_segments():
                 return self.get_nucleus_segments()
             return self.segment_nucleus()
+        if self.get_segments(target_channel):
+            use_stored_masks = self.gui.ask_use_stored_masks(
+                "Stored Cytoplasm Masks",
+                f"Channel {target_channel} already has stored masks. Use the stored masks instead of resegmenting?",
+            )
+            if use_stored_masks:
+                return self.get_segments(target_channel)
         if not self.bbox_generated:
             self.gui.popBox(
                 "w",

@@ -75,7 +75,7 @@ class SessionManager:
                 logger.debug(f"Object {abstract_object} is not an instance of abstract. Skipping.")
                 continue
             if abstract_object.selected:
-                abstract_object.thumbnail = "default"
+                abstract_object.update_thumbnail()
                 new_pool.append(abstract_object)
             else:
                 try:

@@ -261,6 +261,10 @@ class FishGUI(object):
         else:
             messagebox.showerror(title, msg, parent=self.__root)
 
+    def ask_use_stored_masks(self, title: str, msg: str) -> bool:
+        """Ask whether the user wants to keep the stored masks instead of resegmenting."""
+        return messagebox.askyesno(title, msg, parent=self.__root)
+
 def main():
     """Start the multichannel GUI application."""
     root = tk.Tk()
