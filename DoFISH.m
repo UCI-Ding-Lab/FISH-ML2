@@ -14,6 +14,13 @@ type6 = 'channel 2 only';
 ParseArguments(nargin)
 
     function ParseArguments(pnumin)
+        function dirname = normalize_dirname(dirname_value)
+            dirname = dirname_value;
+            if iscell(dirname)
+                dirname = dirname{1};
+            end
+        end
+
         if pnumin==0 % Zero input, i.e. no "FISH", no "Tracked" 
             % create empty "Tracked" for next steps
             
@@ -30,7 +37,7 @@ ParseArguments(nargin)
                     Tracked{i}.dirname=[directory filesep];
                 end
             end
-            cd(Tracked{1}.dirname);
+            cd(normalize_dirname(Tracked{1}.dirname));
             
             % choose which channel to load
             f=[dir('*TIF'),dir('*tif')];
@@ -81,7 +88,7 @@ ParseArguments(nargin)
                     Tracked{i}.dirname=[directory filesep];
                 end
             end
-            cd(Tracked{1}.dirname);
+            cd(normalize_dirname(Tracked{1}.dirname));
             
             % choose which channel to load
             f=[dir('*TIF'),dir('*tif')];
@@ -116,7 +123,7 @@ ParseArguments(nargin)
         elseif iscell(Tracked) && iscell(FISH)  % load both Tracked and FISH
             %open the images
             olddir=pwd;
-            cd(Tracked{1}.dirname);
+            cd(normalize_dirname(Tracked{1}.dirname));
             
             % load all channels
             [nch, ~] = size(FISH); % 
