@@ -308,7 +308,7 @@ ParseArguments(nargin)
                         size_x = Tracked{1,cframe}.cells{num_cell}.size(1);
                         size_y = Tracked{1,cframe}.cells{num_cell}.size(2);
                         im_temp = AllImg{channel,cframe};
-                        cell_mask = get_cell_mask(Tracked{1,cframe}.cells{num_cell}, channel);
+                        cell_mask = Tracked{1,cframe}.cells{num_cell}.mask;
                         cell_image = cell_mask.*im_temp(pos_x:pos_x+size_x-1, pos_y:pos_y+size_y-1);
                         [FISH{channel, cframe}.cells{num_cell}.mask_H, FISH{channel, cframe}.cells{num_cell}.bg] = dot_mask(cell_image);
                     end
@@ -348,7 +348,7 @@ ParseArguments(nargin)
                     size_x = Tracked{frame}.cells{num_cell}.size(1);
                     size_y = Tracked{frame}.cells{num_cell}.size(2);
                     im_temp = AllImg{num,frame};
-                    cell_mask = get_cell_mask(Tracked{frame}.cells{num_cell}, num);
+                    cell_mask = Tracked{frame}.cells{num_cell}.mask;
                     cell_image = cell_mask.*im_temp(pos_x:pos_x+size_x-1, pos_y:pos_y+size_y-1);
                     [FISH{num, frame}.cells{num_cell}.mask_H, FISH{num, frame}.cells{num_cell}.bg] = dot_mask(cell_image);
                     FISH{num, frame}.cells{num_cell}.dots = identify_dots(cell_image, FISH{num, frame}.cells{num_cell}.mask_H,...
@@ -364,7 +364,7 @@ ParseArguments(nargin)
                 size_x = Tracked{frame}.cells{selectcell}.size(1);
                 size_y = Tracked{frame}.cells{selectcell}.size(2);
                 im_temp = AllImg{num,frame};
-                cell_mask = get_cell_mask(Tracked{frame}.cells{selectcell}, num);
+                cell_mask = Tracked{frame}.cells{selectcell}.mask;
                 cell_image = cell_mask.*im_temp(pos_x:pos_x+size_x-1, pos_y:pos_y+size_y-1);
                 [FISH{num, frame}.cells{selectcell}.mask_H, FISH{num, frame}.cells{selectcell}.bg] = dot_mask(cell_image);
                 FISH{num, frame}.cells{selectcell}.dots = identify_dots(cell_image, FISH{num, frame}.cells{selectcell}.mask_H,...
