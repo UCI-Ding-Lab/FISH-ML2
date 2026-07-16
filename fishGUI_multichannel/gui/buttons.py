@@ -3,6 +3,7 @@
 import logging
 import pathlib
 import threading
+import time
 import tkinter
 import tkinter as tk
 from tkinter import filedialog
@@ -354,9 +355,17 @@ class funcButton:
         self.gui.indicateWait("Nucleus segmentation")
 
         def job():
+            total_start = time.perf_counter()
             try:
-                for frame in SessionManager.getPool():
+                frame_pool = SessionManager.getPool()
+                for frame in frame_pool:
                     frame.segment_nucleus()
+                total_seconds = time.perf_counter() - total_start
+                logger.info(
+                    "Completed nucleus segmentation for %s frames in %.2f seconds",
+                    len(frame_pool),
+                    total_seconds,
+                )
                 self.gui.getRoot().after(0, lambda: self.gui.getStove().cook(focused))
                 self.gui.getRoot().after(0, self.gui._refresh_workflow_thumbnails)
             except Exception as error:
