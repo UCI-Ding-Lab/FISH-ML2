@@ -335,6 +335,13 @@ class funcButton:
         for frame in SessionManager.getPool():
             frame.selected_channel = "DAPI"
 
+    def _switch_all_frames_to_first_cytoplasm_channel(self):
+        """Switch every loaded frame to its first cytoplasm channel for cytoplasm workflow."""
+        for frame in SessionManager.getPool():
+            if not frame.available_channels:
+                continue
+            frame.selected_channel = frame.available_channels[0]
+
     def _enter_nucleus_mode(self, focused):
         """Switch the UI into the nucleus workflow mode for the chosen backend."""
         backend_mode = self.gui.prompt_nucleus_backend_mode()
@@ -429,6 +436,7 @@ class funcButton:
                 return
             self._exit_nucleus_prompt_mode()
             self.gui.setWorkflowMode("cytoplasm")
+            self._switch_all_frames_to_first_cytoplasm_channel()
             self.refresh_toolbar()
             self.gui.getStove().cook(focused)
             return
