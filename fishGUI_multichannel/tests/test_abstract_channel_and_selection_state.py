@@ -86,6 +86,20 @@ def test_selected_for_segmentation_property_updates_the_segmentation_selection_s
     assert abs_obj.selected_for_segmentation is False
 
 
+def test_on_multi_toggle_uses_plain_click_when_cytoplasm_frame_selection_mode_is_on(bare_abstract_factory):
+    """Toggle cytoplasm frame selection with a normal click when selection mode is active."""
+    abs_obj = bare_abstract_factory()
+    abs_obj._abstract__bbox_generated = True
+    abs_obj.gui.getFuncButton.return_value.frameSegButtonPressed.return_value = True
+    event = MagicMock()
+
+    result = abs_obj.on_multi_toggle(event)
+
+    assert abs_obj.selected_for_segmentation is True
+    abs_obj.update_thumbnail.assert_called_once_with()
+    assert result == "break"
+
+
 def test_selected_channel_property_switches_the_current_channel_mask(bare_abstract_factory):
     abs_obj = bare_abstract_factory()
     abs_obj.set_segments("647", [1])

@@ -44,6 +44,12 @@ class abstract():
     """
 
     SEGMENT_CHANNELS = ("647", "488", "555", "594", "514")
+    CENTER_COMPUTED_DOT = (49, 5, 59, 15)
+    NUCLEUS_SEGMENTED_DOT = (49, 20, 59, 30)
+    CYTOPLASM_SEGMENTED_DOT = (49, 35, 59, 45)
+    CENTER_COMPUTED_COLOR = (139, 92, 246)
+    NUCLEUS_SEGMENTED_COLOR = (37, 99, 235)
+    CYTOPLASM_SEGMENTED_COLOR = (234, 88, 12)
     
     def __init__(
         self,
@@ -60,14 +66,6 @@ class abstract():
         self.gui = gui
 
         # Thumbnail states
-        self.__img_pil_thumbnail_bbox = None # image with bbox overlay - blue dot -- NOTE cellpose-sam version may not need bbox, but this overlay can be used to signifiy that nucleus center was computed
-        self.__img_pil_thumbnail_select = None # image with selection overlay - green dot
-        self.__img_pil_thumbnail_crossout = None  # image with crossout overlay - red X
-        self.__img_pil_thumbnail_segmented = None # image with segmentation overlay - orange dot
-        self.__img_pil_thumbnail_mask_generated = None # image with orange dot only
-        self.__img_pil_thumbnail_segmentation_selected = None   # image with selection and bbox overlay -- green and blue dot -- TODO : ensure that user cannot select a frame without bbox 
-        self.__img_pil_thumbnail_selected_and_segmented = None # image that was selected and segmentation is complete - blue and orange dot
-
         self.__img_tk_thumbnail_bbox = None 
         self.__img_tk_thumbnail_select = None
         self.__img_tk_thumbnail_crossout = None
@@ -101,7 +99,7 @@ class abstract():
 
         # --- MAIN INITIALIZATION LOGIC ---
         # Load images
-        self.__img_np_nucleus = self._load_nucleus(nucleus_path) 
+        self.__img_np_nucleus_native, self.__img_np_nucleus_normalized = self._load_nucleus_images(nucleus_path) 
         self.__img_np_647, self.__img_np_488,  self.__img_np_555, self.__img_np_594, self.__img_np_514 = self._load_cytoplasms(cyto_paths)
 
         # Get available channels and set default channel
@@ -121,20 +119,17 @@ class abstract():
         SessionManager.addToPool(self)
 
     # --- Helper for Initialization ---
-    def _load_nucleus(self, nucleus_path: pathlib.Path) -> np.ndarray:
+    def _load_nucleus_images(self, nucleus_path: pathlib.Path) -> tuple[np.ndarray, np.ndarray]:
         """
-        Loads nucleus image from imported path. If the image hasn't been
-        z-projected, it will apply manual z-projection; else returns 
-        imported image in grayscale. np.squeeze() removes any dimensions of size 1
-        while normalize_to_unit8 scales the image array to 0 and 255. 
-
-        Returns:
-        - gray-scale image to ensure compatibility with groundingdino and SAM
+        Load one native nucleus image and one normalized copy for display.
         """
         nucleus_array = tifffile.imread(nucleus_path)
         if nucleus_array.ndim == 3 and nucleus_array.shape[0] > 1:
-            return preprocess_nucleus_stack(nucleus_array)
-        return normalize_to_uint8(np.squeeze(nucleus_array)) # already z-projected
+            nucleus_native_img = preprocess_nucleus_stack(nucleus_array)
+            return nucleus_native_img, nucleus_native_img
+        nucleus_native_img = np.squeeze(nucleus_array)
+        nucleus_normalized_img = normalize_to_uint8(nucleus_native_img)
+        return nucleus_native_img, nucleus_normalized_img
     
 
     def _load_cytoplasms(self, cyto_paths: list[pathlib.Path]) -> tuple[np.ndarray, np.ndarray]:
@@ -320,25 +315,31 @@ class abstract():
         return mode in ("nucleus_gdino", "nucleus_cellpose")
 
     def _shows_bbox_indicator(self) -> bool:
-        """Return True when the current mode should show the blue bbox dot."""
+        """Return True when the computed-center status should be shown."""
         return self.bbox_generated
 
     def _shows_orange_mask_indicator(self) -> bool:
-        """Return True when the current mode should show the orange mask dot."""
+        """Return True when one segmentation-complete status should be shown."""
         if self._is_nucleus_workflow_mode():
             return self.has_nucleus_segments()
         return self.has_all_channel_segments()
 
+    def _has_any_right_status_indicator(self) -> bool:
+        """Return True when one right-side status dot should be visible."""
+        return (
+            self.bbox_generated
+            or self.has_nucleus_segments()
+            or self.has_all_channel_segments()
+        )
+
     def _get_mode_thumbnail_state(self) -> str:
         """Return the thumbnail state that matches the current mode indicators."""
-        has_blue = self._shows_bbox_indicator()
-        has_orange = self._shows_orange_mask_indicator()
-        if has_blue and has_orange:
-            return "segmented"
-        if has_blue:
+        if self.selected_for_segmentation and self._has_any_right_status_indicator():
+            return "segmentation_selected"
+        if self.selected_for_segmentation:
+            return "selected"
+        if self._has_any_right_status_indicator():
             return "bbox"
-        if has_orange:
-            return "mask_generated"
         return "default"
 
     @property
@@ -351,7 +352,7 @@ class abstract():
         total_start = time.perf_counter()
         bbox_start = time.perf_counter()
         nucleus_backend = self.gui.getNucleusBackend()
-        nucleus_boxes = nucleus_backend.generate_bboxes(self.__img_np_nucleus)
+        nucleus_boxes = nucleus_backend.generate_bboxes(self.__img_np_nucleus_native)
         self._log_bbox_generation(time.perf_counter() - bbox_start)
         self.nucleus_centers = self._compute_nucleus_centers_from_boxes(nucleus_boxes)
         self.__bbox = self._build_editable_bbox_objects(nucleus_boxes)
@@ -399,6 +400,12 @@ class abstract():
         """
         return bool(self.__nucleus_segments)
 
+    def _get_nucleus_segmentation_input(self) -> np.ndarray:
+        """
+        Return the nucleus image that best matches the active backend.
+        """
+        return self.__img_np_nucleus_native
+
     def segment_nucleus(self) -> list[segment]:
         """
         Run DAPI nucleus segmentation once and store the resulting masks.
@@ -407,7 +414,7 @@ class abstract():
         if self.has_nucleus_segments() and prompt_signature == self.__last_nucleus_prompt_signature:
             return self.get_nucleus_segments()
         nucleus_segments = run_nucleus_segmentation(
-            self.__img_np_nucleus,
+            self._get_nucleus_segmentation_input(),
             self.gui,
             self.sample_id,
             bbox_list=self.boundingBoxRevised,
@@ -483,7 +490,7 @@ class abstract():
             )
             return self.get_segments(target_channel)
         
-        nucleus_img = self.__img_np_nucleus
+        nucleus_img = self.__img_np_nucleus_native
         cyto_channels = {
             "647": self.__img_np_647,
             "488": self.__img_np_488,
@@ -530,7 +537,7 @@ class abstract():
             elif ch == "514" and self.__img_np_514 is not None:
                 base_img = self.__img_np_514
             else:
-                base_img = self.__img_np_nucleus
+                base_img = self.__img_np_nucleus_normalized
             self.__channel_rgb_cache[ch] = grayscale_to_rgb(base_img)
         return self.__channel_rgb_cache[ch]
 
@@ -539,7 +546,7 @@ class abstract():
         Return the RGB image used when the requested display channel is active.
         """
         if channel == "DAPI":
-            return grayscale_to_rgb(self.__img_np_nucleus)
+            return grayscale_to_rgb(self.__img_np_nucleus_normalized)
         return self._get_rgb_for_channel(channel)
 
     def getImgNumpyRGBForChannel(self, channel):
@@ -713,11 +720,10 @@ class abstract():
     
     def on_multi_toggle(self, event):
         """
-        Specifically for multi-selection (Control-click), allowing users to select/deselect 
-        multiple images for segmentation without changing focus.
+        Toggle one frame for cytoplasm segmentation without changing focus.
 
         Args:
-        - event : control+click
+        - event : thumbnail click while cytoplasm frame-selection mode is on
         """
         if self.gui.getFuncButton().frameSegButtonPressed():
             if not self.bbox_generated:
@@ -727,10 +733,9 @@ class abstract():
                     "Prepare nucleus prompts before selecting frames for cytoplasm segmentation.",
                 )
                 return
-            # Only toggle if Control key (0x0004) is pressed
-            if event is not None and (event.state & 0x0004):
-                self.__selected_for_segmentation = not self.__selected_for_segmentation
-                self.update_thumbnail()
+            self.__selected_for_segmentation = not self.__selected_for_segmentation
+            self.update_thumbnail()
+            return "break"
 
 
     
@@ -760,13 +765,6 @@ class abstract():
         self.__img_tk_thumbnail = ImageTk.PhotoImage(self.__img_pil_thumbnail)
 
         # Clear cached overlays so they are rebuilt for the new channel
-        self.__img_pil_thumbnail_bbox = None
-        self.__img_pil_thumbnail_select = None
-        self.__img_pil_thumbnail_crossout = None
-        self.__img_pil_thumbnail_segmented = None
-        self.__img_pil_thumbnail_mask_generated = None
-        self.__img_pil_thumbnail_segmentation_selected = None
-        self.__img_pil_thumbnail_selected_and_segmented = None
         self.__img_tk_thumbnail_bbox = None
         self.__img_tk_thumbnail_select = None
         self.__img_tk_thumbnail_crossout = None
@@ -827,48 +825,60 @@ class abstract():
         thumbnail_pil = self.__img_pil_thumbnail.copy()
         drawer = ImageDraw.Draw(thumbnail_pil)
         if state == "bbox":
-            self._draw_thumbnail_dot(drawer, (49, 5, 59, 15), (0, 0, 255))
+            self._draw_right_status_dots(drawer)
         elif state == "selected":
             self._draw_thumbnail_dot(drawer, (5, 5, 15, 15), (0, 255, 0))
         elif state == "crossout":
             self._draw_thumbnail_crossout(drawer)
         elif state == "mask_generated":
-            self._draw_thumbnail_dot(drawer, (49, 20, 59, 30), (255, 165, 0))
+            self._draw_right_status_dots(drawer)
         elif state == "segmentation_selected":
             self._draw_thumbnail_dot(drawer, (5, 5, 15, 15), (0, 255, 0))
-            self._draw_thumbnail_dot(drawer, (49, 5, 59, 15), (0, 0, 255))
+            self._draw_right_status_dots(drawer)
         elif state == "segmented":
-            self._draw_thumbnail_dot(drawer, (49, 5, 59, 15), (0, 0, 255))
-            self._draw_thumbnail_dot(drawer, (49, 20, 59, 30), (255, 165, 0))
+            self._draw_right_status_dots(drawer)
         elif state == "segmentation_selected_and_segmented":
-            self._draw_thumbnail_dot(drawer, (49, 5, 59, 15), (0, 0, 255))
-            self._draw_thumbnail_dot(drawer, (49, 20, 59, 30), (255, 165, 0))
+            self._draw_right_status_dots(drawer)
         return thumbnail_pil
+
+    def _draw_right_status_dots(self, drawer) -> None:
+        """Draw the ordered right-side status dots for one thumbnail."""
+        if self.bbox_generated:
+            self._draw_thumbnail_dot(
+                drawer,
+                self.CENTER_COMPUTED_DOT,
+                self.CENTER_COMPUTED_COLOR,
+            )
+        if self.has_nucleus_segments():
+            self._draw_thumbnail_dot(
+                drawer,
+                self.NUCLEUS_SEGMENTED_DOT,
+                self.NUCLEUS_SEGMENTED_COLOR,
+            )
+        if self.has_all_channel_segments():
+            self._draw_thumbnail_dot(
+                drawer,
+                self.CYTOPLASM_SEGMENTED_DOT,
+                self.CYTOPLASM_SEGMENTED_COLOR,
+            )
 
     def _set_cached_thumbnail_image(self, state: str, thumbnail_pil, thumbnail_tk) -> None:
         """
         Store one rendered thumbnail image in the cache for later reuse.
         """
         if state == "bbox":
-            self.__img_pil_thumbnail_bbox = thumbnail_pil
             self.__img_tk_thumbnail_bbox = thumbnail_tk
         elif state == "selected":
-            self.__img_pil_thumbnail_select = thumbnail_pil
             self.__img_tk_thumbnail_select = thumbnail_tk
         elif state == "crossout":
-            self.__img_pil_thumbnail_crossout = thumbnail_pil
             self.__img_tk_thumbnail_crossout = thumbnail_tk
         elif state == "mask_generated":
-            self.__img_pil_thumbnail_mask_generated = thumbnail_pil
             self.__img_tk_thumbnail_mask_generated = thumbnail_tk
         elif state == "segmentation_selected":
-            self.__img_pil_thumbnail_segmentation_selected = thumbnail_pil
             self.__img_tk_thumbnail_segmentation_selected = thumbnail_tk
         elif state == "segmented":
-            self.__img_pil_thumbnail_segmented = thumbnail_pil
             self.__img_tk_thumbnail_segmented = thumbnail_tk
         elif state == "segmentation_selected_and_segmented":
-            self.__img_pil_thumbnail_selected_and_segmented = thumbnail_pil
             self.__img_tk_thumbnail_selected_and_segmented = thumbnail_tk
 
     def _draw_thumbnail_dot(self, drawer, bounds: tuple[int, int, int, int], color: tuple[int, int, int]) -> None:
@@ -897,6 +907,7 @@ class abstract():
         label.bindtags(tuple(tags))
 
         # Main bindings, add="+" so we don’t overwrite each other
+        label.bind("<Button-1>", self.on_multi_toggle, add="+")
         label.bind("<Button-1>", self.on_click, add="+")
         label.bind("<Button-2>", self.on_click, add="+")
         label.bind("<Button-3>", self.on_click, add="+")

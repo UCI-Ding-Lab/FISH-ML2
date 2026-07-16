@@ -73,6 +73,22 @@ def test_segment_selection_call_clears_frame_selection_and_restores_thumbnail_st
     assert plain.thumbnail == "default"
 
 
+def test_segment_selection_call_starts_cytoplasm_frame_selection_when_turning_on():
+    """Shows the cytoplasm frame-picking message when selection mode turns on."""
+    button = _make_button_handler()
+    button.frameSegButtonPressed = MagicMock(return_value=True)
+    button._exit_nucleus_prompt_mode = MagicMock()
+
+    button.SEGMENT_SELECTION_call()
+
+    button._exit_nucleus_prompt_mode.assert_called_once_with()
+    button.gui.popBox.assert_called_once_with(
+        "i",
+        "Select Cytoplasm Frames",
+        "Control-click thumbnails to choose frames for cytoplasm segmentation.",
+    )
+
+
 def test_segment_call_starts_segmentation_for_selected_frames():
     button = _make_button_handler()
     selected_frame = MagicMock(selected_for_segmentation=True)
@@ -82,6 +98,36 @@ def test_segment_call_starts_segmentation_for_selected_frames():
         button.SEGMENT_call()
 
     mock_segment_selected.assert_called_once_with(button.gui)
+
+
+def test_run_cytoplasm_segmentation_uses_selected_frames_when_available():
+    """Uses batch segmentation when the user picked cytoplasm frames first."""
+    button = _make_button_handler()
+    focused = MagicMock()
+    button._prepare_cytoplasm_source_channel = MagicMock(return_value=True)
+    button._run_selected_cytoplasm_segmentation = MagicMock(return_value=True)
+
+    with patch.object(SessionManager, "getBuffer", return_value=focused):
+        button._run_cytoplasm_segmentation()
+
+    button._prepare_cytoplasm_source_channel.assert_called_once_with(focused)
+    button._run_selected_cytoplasm_segmentation.assert_called_once_with()
+    button.gui.getStove.return_value.cook.assert_not_called()
+
+
+def test_run_cytoplasm_segmentation_falls_back_to_focused_frame_when_none_selected():
+    """Uses the focused frame when no cytoplasm frame selection exists."""
+    button = _make_button_handler()
+    focused = MagicMock()
+    button._prepare_cytoplasm_source_channel = MagicMock(return_value=True)
+    button._run_selected_cytoplasm_segmentation = MagicMock(return_value=False)
+
+    with patch.object(SessionManager, "getBuffer", return_value=focused):
+        button._run_cytoplasm_segmentation()
+
+    button._prepare_cytoplasm_source_channel.assert_called_once_with(focused)
+    button._run_selected_cytoplasm_segmentation.assert_called_once_with()
+    button.gui.getStove.return_value.cook.assert_called_once_with(focused)
 
 
 def test_display_masks_call_shows_masks_for_the_focused_frame_when_enabled():

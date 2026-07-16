@@ -29,6 +29,7 @@ class FishGUI(object):
         self.__cytoplasm_backend = self._build_cytoplasm_backend(self.__config_path)
 
         self.__lf = lf(self)
+        self.__mode_banner = self._build_mode_banner()
         self.__tifSequence = tifSequence(self)
         self.__funcButton = funcButton(self)
         self.__seasoning = seasoning(self)
@@ -91,13 +92,30 @@ class FishGUI(object):
         """Build the fixed backend used for cytoplasm segmentation."""
         return build_backend(self.__cytoplasm_backend_mode, config_path, "cytoplasm")
 
+    def _build_mode_banner(self) -> tk.Label:
+        """Create the small workflow banner that sits in its own stable row."""
+        banner = tk.Label(
+            self.__lf.getFrameB(),
+            text="Main Mode",
+            height=1,
+            anchor="center",
+            justify="center",
+            font=("TkDefaultFont", 8, "bold"),
+            padx=10,
+            pady=2,
+            borderwidth=1,
+            relief=tk.SOLID,
+        )
+        banner.pack(fill=tk.X)
+        return banner
+
     def _get_mode_banner_style(self, mode: str) -> tuple[str, str, str]:
         """Return the text and colors used by the centered workflow banner."""
         styles = {
-            "neutral": ("Main Mode", "#6B7280", "white"),
-            "nucleus_gdino": ("Nucleus Mode - GroundingDINO + SAM", "#2563EB", "white"),
-            "nucleus_cellpose": ("Nucleus Mode - Cellpose-SAM", "#16A34A", "white"),
-            "cytoplasm": ("Cytoplasm Segmentation Mode", "#EA580C", "white"),
+            "neutral": ("Main Mode", "#8B5CF6", "white"),
+            "nucleus_gdino": ("Nucleus Mode", "#2563EB", "white"),
+            "nucleus_cellpose": ("Nucleus Mode", "#2563EB", "white"),
+            "cytoplasm": ("Cytoplasm Mode", "#EA580C", "white"),
         }
         return styles.get(mode, styles["neutral"])
 
@@ -220,6 +238,7 @@ class FishGUI(object):
     def updateModeBanner(self):
         """Refresh the centered banner so it matches the current workflow mode."""
         text, bg, fg = self._get_mode_banner_style(self.getWorkflowMode())
+        self.__mode_banner.config(text=text, bg=bg, fg=fg)
         self.__stove.set_mode_banner(text, bg, fg)
 
     def _refresh_workflow_thumbnails(self):

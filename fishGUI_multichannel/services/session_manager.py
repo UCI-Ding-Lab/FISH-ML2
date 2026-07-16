@@ -291,6 +291,7 @@ class SessionManager:
                     future.result()
             cls._export_segmentation_timing_csv()
             gui.getFuncButton().toggle["SEGMENTATION_SELECTION"].set(0)
+            gui.getRoot().after(0, lambda: gui.getFuncButton()._set_cytoplasm_segment_running(False))
 
         threading.Thread(target=monitor_threads, daemon=True).start()
 
@@ -323,7 +324,7 @@ class SessionManager:
     
     @classmethod
     def _ui_show_segmented(cls, a, gui):
-        a.thumbnail = "segmented" # blue and orange
+        a.thumbnail = "segmented" # refresh thumbnail so the right-side status stack is rebuilt
         a.selected_for_segmentation = False
         if a is cls.getBuffer() and gui.getFuncButton().displayMaskButtonPressed():
             a.drawSegmentation = True

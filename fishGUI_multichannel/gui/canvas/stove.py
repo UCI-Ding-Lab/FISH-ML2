@@ -21,18 +21,6 @@ class stove():
         self.gui = gui
         self.pit = tkinter.Frame(self.gui.getLowerFrame().getFrameA(), background="black") # main frame for the canvas
         self.sep = tkinter.Frame(self.gui.getLowerFrame().getFrameA(), width=1, bd=0, relief=tkinter.SUNKEN, bg="black") # separator
-        self.status_strip = tkinter.Frame(self.pit, background="#E5E7EB", height=34)
-        self.status_strip.pack_propagate(False)
-        self.mode_banner = tkinter.Label(
-            self.status_strip,
-            text="Main Mode",
-            height=1,
-            anchor="center",
-            justify="center",
-            font=("TkDefaultFont", 9, "bold"),
-            padx=18,
-            pady=2,
-        )
         
         self.ax_img = None
         self.figure = Figure(figsize=(3,3), dpi=200)
@@ -74,14 +62,11 @@ class stove():
         self.pit.pack(side=tkinter.LEFT, fill=tkinter.BOTH, expand=True)
         self.sep.pack(side=tkinter.LEFT, fill=tkinter.Y)
         self.canvas.get_tk_widget().pack(side=tkinter.TOP, fill=tkinter.BOTH, expand=True)
-        self.toolbar.pack(side=tkinter.BOTTOM, fill=tkinter.BOTH)
-        self.status_strip.pack(side=tkinter.BOTTOM, fill=tkinter.X)
-        self.mode_banner.place(relx=0.5, rely=0.5, anchor="center", relwidth=0.5)
+        self.toolbar.pack(side=tkinter.BOTTOM, fill=tkinter.X)
 
     def set_mode_banner(self, text: str, bg: str, fg: str):
-        """Update the viewer strip banner text and colors."""
-        self.status_strip.config(background=bg)
-        self.mode_banner.config(text=text, bg=bg, fg=fg)
+        """Keep a simple hook for mode updates without drawing a second banner."""
+        return None
 
     def _refresh_nucleus_centers(self, abs):
         old_patches = getattr(abs, "_nuc_center_patches", []) or []
@@ -95,7 +80,7 @@ class stove():
         patches = []
         for cx, cy in centers:
             try:
-                cpatch = Circle((cx, cy), radius=5, color='lime', fill=True)
+                cpatch = Circle((cx, cy), radius=5, color="lime", fill=True)
                 self.subplot.add_patch(cpatch)
                 patches.append(cpatch)
             except Exception:

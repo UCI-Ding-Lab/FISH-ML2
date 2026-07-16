@@ -21,8 +21,18 @@ class funcButton:
         """Creates the workflow buttons and stores the shared GUI object."""
         self.gui = gui
         self.container = gui.getLowerFrame().getFrameC()
+        self.mode_header = self._build_mode_header()
+        self.mode_label = self._build_mode_label()
         self.toggle = self._build_toggle_state()
         self._build_buttons()
+
+    def _build_mode_header(self):
+        """Creates the top area that will hold the workflow mode label."""
+        return tkinter.Frame(self.container)
+
+    def _build_mode_label(self):
+        """Creates the text label that will show the current workflow mode."""
+        return tkinter.Label(self.mode_header, text="Main Mode", fg="grey")
 
     def _build_toggle_state(self):
         """Creates the Tk state values used by the checkbutton controls."""
@@ -83,7 +93,7 @@ class funcButton:
         )
         self.SEGMENT = tkinter.Button(
             self.container,
-            text="Segment Cytoplasm",
+            text="Segment All Channels for Selected Frames",
             height=2,
             relief=tkinter.RAISED,
             command=self.SEGMENT_call,
@@ -100,7 +110,7 @@ class funcButton:
         )
         self.APPLY_CHANNEL_MASK = tkinter.Button(
             self.container,
-            text="Copy Channel Mask",
+            text="Copy Best Channel Mask to All Frames",
             height=2,
             relief=tkinter.RAISED,
             command=self.APPLY_CHANNEL_MASK_call,
@@ -117,7 +127,7 @@ class funcButton:
         )
         self.DONE = tkinter.Button(
             self.container,
-            text="Done",
+            text="<- Back to Main Mode",
             height=2,
             relief=tkinter.RAISED,
             command=self.DONE_call,
@@ -188,8 +198,16 @@ class funcButton:
 
     def _pack_cytoplasm_toolbar(self):
         """Show the cytoplasm toolbar for segmentation and mask copying."""
-        self.SEGMENT.config(text="Segment")
-        self._pack_toolbar_buttons([self.SEGMENT, self.DISPLAY_MASKS, self.APPLY_CHANNEL_MASK, self.DONE])
+        self.SEGMENT.config(text="Segment All Channels for Selected Frames")
+        self._pack_toolbar_buttons(
+            [
+                self.SEGMENTATION_SELECTION,
+                self.SEGMENT,
+                self.DISPLAY_MASKS,
+                self.APPLY_CHANNEL_MASK,
+                self.DONE,
+            ]
+        )
 
     def selectButtonPressed(self) -> bool:
         """Returns True when frame-selection mode is on."""
@@ -216,6 +234,12 @@ class funcButton:
         relief = tkinter.SUNKEN if running else tkinter.RAISED
         state = tkinter.DISABLED if running else tkinter.NORMAL
         self.SEGMENT_NUCLEUS.config(relief=relief, state=state)
+
+    def _set_cytoplasm_segment_running(self, running: bool) -> None:
+        """Show whether the cytoplasm segment batch is still running."""
+        relief = tkinter.SUNKEN if running else tkinter.RAISED
+        state = tkinter.DISABLED if running else tkinter.NORMAL
+        self.SEGMENT.config(relief=relief, state=state)
 
     def _warn_conflicting_nucleus_action(self, current_action: str, requested_action: str) -> bool:
         """Warn when one nucleus workflow action is already active."""
@@ -317,9 +341,12 @@ class funcButton:
         self.gui.setWorkflowMode(self.gui.getNucleusWorkflowMode())
         self._switch_all_frames_to_dapi()
         self.refresh_toolbar()
-        self._show_nucleus_centers(focused)
         if backend_mode == "gdino_sam":
+            self._show_nucleus_centers(focused)
             self._enter_nucleus_prompt_mode(focused)
+            return
+        focused.drawBbox = False
+        self.gui.getStove().cook(focused)
 
     def _run_nucleus_segmentation(self, focused):
         """Run nucleus segmentation for every loaded frame and refresh the focused view."""
@@ -346,25 +373,25 @@ class funcButton:
     def SEGMENT_SELECTION_call(self):
         """Toggles which frames will be used by the Segment action."""
         if self.frameSegButtonPressed():
+            self._start_cytoplasm_frame_selection()
             return
-        for abs_obj in SessionManager.getPool():
-            abs_obj.selected_for_segmentation = False
-            self._restore_thumbnail_state(abs_obj)
+        self._stop_cytoplasm_frame_selection()
 
-    def _toggle_cytoplasm_frame_selection(self):
-        """Start or stop thumbnail selection for the cytoplasm workflow."""
-        if self.frameSegButtonPressed():
-            self.toggle["SEGMENTATION_SELECTION"].set(0)
-            self.SEGMENT_SELECTION_call()
-            self.gui.popBox("i", "Select Cytoplasm Frames", "Stopped selecting cytoplasm frames.")
-            return
+    def _start_cytoplasm_frame_selection(self):
+        """Turn on thumbnail picking for cytoplasm segmentation."""
         self._exit_nucleus_prompt_mode()
-        self.toggle["SEGMENTATION_SELECTION"].set(1)
         self.gui.popBox(
             "i",
             "Select Cytoplasm Frames",
-            "Control-click thumbnails to choose frames for cytoplasm segmentation.",
+            "Click thumbnails to choose frames for cytoplasm segmentation.",
         )
+
+    def _stop_cytoplasm_frame_selection(self):
+        """Turn off thumbnail picking and clear chosen cytoplasm frames."""
+        for abs_obj in SessionManager.getPool():
+            abs_obj.selected_for_segmentation = False
+            self._restore_thumbnail_state(abs_obj)
+        self.gui.popBox("i", "Select Cytoplasm Frames", "Stopped selecting cytoplasm frames.")
 
     def _prepare_cytoplasm_source_channel(self, focused):
         """Switch the focused frame to one cytoplasm channel before cytoplasm mode starts."""
@@ -375,6 +402,13 @@ class funcButton:
             focused.selected_channel = focused.available_channels[0]
         return True
 
+    def _hide_focused_masks_before_mode_switch(self, focused):
+        """Hide the visible masks and clear the display toggle before changing workflow modes."""
+        if focused is None:
+            return
+        focused.drawSegmentation = False
+        self.toggle["DISPLAY_MASKS"].set(0)
+
     def SEGMENT_call(self):
         """Enter cytoplasm mode or run the active cytoplasm segmentation action."""
         focused = SessionManager.getBuffer()
@@ -382,6 +416,7 @@ class funcButton:
             self.gui.popBox("w", "No Image Selected", "Please select an image first")
             return
         if self.gui.getWorkflowMode() == "neutral":
+            self._hide_focused_masks_before_mode_switch(focused)
             if not self._prepare_cytoplasm_source_channel(focused):
                 return
             self._exit_nucleus_prompt_mode()
@@ -399,8 +434,20 @@ class funcButton:
             return
         if not self._prepare_cytoplasm_source_channel(focused):
             return
+        if self._run_selected_cytoplasm_segmentation():
+            return
         _ = focused.segment
         self.gui.getStove().cook(focused)
+
+    def _run_selected_cytoplasm_segmentation(self):
+        """Run cytoplasm segmentation for the frames chosen in selection mode."""
+        selected_frames = self._get_selected_frames_for_segmentation()
+        if not selected_frames:
+            return False
+        self._set_cytoplasm_segment_running(True)
+        self.toggle["SEGMENTATION_SELECTION"].set(0)
+        SessionManager.segment_selected(self.gui)
+        return True
 
     def SEGMENT_NUCLEUS_call(self):
         """Enter nucleus mode or run the active nucleus segmentation action."""
@@ -502,9 +549,10 @@ class funcButton:
 
     def _reset_modes_before_copy(self):
         """Turns off other view modes before mask-copy workflow starts."""
+        focused = SessionManager.getBuffer()
+        self._hide_focused_masks_before_mode_switch(focused)
         self._exit_nucleus_prompt_mode()
         self.toggle["SEGMENTATION_SELECTION"].set(0)
-        self.toggle["DISPLAY_MASKS"].set(0)
 
 
 def start_apply_channel_mask(buttons, selected_channel, frames):
@@ -528,7 +576,7 @@ def start_apply_channel_mask(buttons, selected_channel, frames):
         buttons.APPLY_CHANNEL_MASK.config(
             state="normal",
             relief=tk.RAISED,
-            text="Copy Channel Mask",
+            text="Copy Best Channel Mask to All Frames",
         )
 
     SessionManager.apply_channel_mask_to_frames(

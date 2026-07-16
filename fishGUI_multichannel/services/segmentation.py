@@ -77,9 +77,16 @@ def run_nucleus_segmentation(nucleus_img: np.ndarray, gui, sample_id, bbox_list=
         return []
 
     nucleus_backend = gui.getNucleusBackend()
+    start = time.perf_counter()
     try:
         mask_output = nucleus_backend.predict_nucleus(nucleus_img, bbox_list)
-        return _segment_mask_array(mask_output, gui)
+        segs = _segment_mask_array(mask_output, gui)
+        logger.info(
+            "Completed nucleus segmentation for sample %s in %.2f seconds",
+            sample_id,
+            time.perf_counter() - start,
+        )
+        return segs
     except Exception as error:
         logger.exception("Nucleus predict failed: %s", error)
         return []
