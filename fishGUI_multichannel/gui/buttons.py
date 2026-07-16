@@ -527,18 +527,27 @@ class funcButton:
         callback = lambda channel: on_channel_selected(self, channel)
         ChannelSelectPopup(self.gui.getRoot(), channels, callback)
 
+    def _reset_main_mode_toggles_before_export(self):
+        """Turn off active Main Mode toggles before export starts."""
+        focused = SessionManager.getBuffer()
+        if focused is not None:
+            focused.drawSegmentation = False
+        self.toggle["DISPLAY_MASKS"].set(0)
+        if self.selectButtonPressed():
+            self.toggle["SELECT"].set(0)
+            SessionManager.removeUnselected()
+            self.gui.getTifSequence().resetPosition()
+            for abs_obj in SessionManager.getPool():
+                self._restore_thumbnail_state(abs_obj)
+            SessionManager.sendFirst()
+
     def EXPORT_call(self):
         """Exports the current session after editing modes are turned off."""
         if not self.gui.getStove().isLoaded():
             tkinter.messagebox.showwarning("Image Not Loaded", "Please select an image first")
             self.toggle["EXPORT"].set(0)
             return
-        if self.bboxButtonPressed():
-            self._exit_nucleus_prompt_mode()
-        if self.displayMaskButtonPressed():
-            tkinter.messagebox.showwarning("Edit Masks", "Please turn off Edit Masks before exporting")
-            self.toggle["EXPORT"].set(0)
-            return
+        self._reset_main_mode_toggles_before_export()
         self.gui.indicateWait("Dataset conversion")
 
         def job():
