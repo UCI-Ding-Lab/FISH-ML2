@@ -564,13 +564,7 @@ class funcButton:
 
     def _restore_thumbnail_state(self, abs_obj):
         """Restores one frame thumbnail after a temporary selection state ends."""
-        if abs_obj.segment_generated:
-            abs_obj.thumbnail = "segmented"
-            return
-        if abs_obj.has_nucleus_segments():
-            abs_obj.thumbnail = "bbox"
-            return
-        abs_obj.thumbnail = "default"
+        abs_obj.update_thumbnail()
 
     def _reset_modes_before_copy(self):
         """Turns off other view modes before mask-copy workflow starts."""
