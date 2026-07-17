@@ -250,6 +250,7 @@ class seasoning():
     
     def update_channel_selector_for_image(self, abs_obj):
         """Syncs the channel dropdown to the newly focused frame."""
+        self.update_channel_menu(abs_obj.available_channels)
         self.channel_var.set(abs_obj.selected_channel)
 
     def update_channel_menu(self, channels: list[str]):

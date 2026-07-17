@@ -1,15 +1,15 @@
 import pathlib
-import re
 
+from ..utils.sample_channels import parse_sample_id_and_channel
 from .pairing import segment_to_mask
 
 
 def extract_export_channel(path: pathlib.Path) -> str | None:
     """
-    Read the cytoplasm channel number from one image filename.
+    Read the cytoplasm channel name from one image filename.
     """
-    match = re.search(r"(647|488|555|594|514)", path.stem.lower())
-    return match.group(1) if match else None
+    _, channel = parse_sample_id_and_channel(path)
+    return channel
 
 
 def build_paired_export_data(abs_obj, channel: str) -> tuple[list, list, list]:

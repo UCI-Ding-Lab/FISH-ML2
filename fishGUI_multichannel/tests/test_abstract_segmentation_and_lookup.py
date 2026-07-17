@@ -5,12 +5,6 @@ from unittest.mock import MagicMock, patch
 def test_segment_channel_stores_results_only_for_the_requested_channel(bare_abstract_factory):
     abs_obj = bare_abstract_factory()
     abs_obj._abstract__bbox_generated = True
-    abs_obj._abstract__img_np_nucleus = np.zeros((10, 10))
-    abs_obj._abstract__img_np_647 = np.zeros((10, 10))
-    abs_obj._abstract__img_np_488 = np.zeros((10, 10))
-    abs_obj._abstract__img_np_555 = None
-    abs_obj._abstract__img_np_594 = None
-    abs_obj._abstract__img_np_514 = None
 
     with patch("fishGUI_multichannel.gui.abstract.run_cytoplasm_segmentation", return_value={"488": [99]}) as mock_segment:
         result = abs_obj.segment_channel("488")
@@ -18,12 +12,16 @@ def test_segment_channel_stores_results_only_for_the_requested_channel(bare_abst
     assert result == [99]
     assert abs_obj.get_segments("488") == [99]
     assert abs_obj.get_segments("647") == []
-    mock_segment.assert_called_once()
+    mock_segment.assert_called_once_with(
+        abs_obj._abstract__img_np_nucleus_native,
+        abs_obj._abstract__img_np_cyto,
+        abs_obj.gui,
+        "488",
+    )
 
 
 def test_segment_nucleus_stores_dapi_masks_separately(bare_abstract_factory):
     abs_obj = bare_abstract_factory()
-    abs_obj._abstract__img_np_nucleus = np.zeros((10, 10))
 
     with patch("fishGUI_multichannel.gui.abstract.run_nucleus_segmentation", return_value=[11, 12]) as mock_segment:
         result = abs_obj.segment_nucleus()
@@ -32,7 +30,7 @@ def test_segment_nucleus_stores_dapi_masks_separately(bare_abstract_factory):
     assert abs_obj.get_nucleus_segments() == [11, 12]
     assert abs_obj.get_segments("647") == []
     mock_segment.assert_called_once_with(
-        abs_obj._abstract__img_np_nucleus,
+        abs_obj._abstract__img_np_nucleus_native,
         abs_obj.gui,
         abs_obj.sample_id,
         bbox_list=[],
@@ -52,7 +50,6 @@ def test_segment_channel_uses_nucleus_segmentation_when_dapi_is_selected(bare_ab
 
 def test_bbox_computes_nucleus_centers_once_from_the_nucleus_backend(bare_abstract_factory):
     abs_obj = bare_abstract_factory()
-    abs_obj._abstract__img_np_nucleus = np.zeros((10, 10))
     abs_obj.gui.getNucleusBackend.return_value.generate_bboxes.return_value = [(0, 0, 4, 6)]
 
     result = abs_obj.bbox

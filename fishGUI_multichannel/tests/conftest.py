@@ -35,10 +35,13 @@ def workspace_temp_dir():
 @pytest.fixture
 def dummy_image_paths(workspace_temp_dir):
     """Build example image paths that look like imported microscopy files."""
-    nucleus = workspace_temp_dir / "nucleus.tif"
-    cyto1 = workspace_temp_dir / "cyto_647.tif"
-    cyto2 = workspace_temp_dir / "cyto_488.tif"
-    return nucleus, [cyto1, cyto2]
+    nucleus = workspace_temp_dir / "img_s001_wDAPI_s001.tif"
+    cyto1 = workspace_temp_dir / "img_s001_w647_s001.tif"
+    cyto2 = workspace_temp_dir / "img_s001_w488_s001.tif"
+    cyto_paths = [cyto1, cyto2]
+    cyto_channels = ["647", "488"]
+    channels = {"DAPI": nucleus, "647": cyto1, "488": cyto2}
+    return nucleus, cyto_paths, cyto_channels, channels
 
 
 @pytest.fixture
@@ -47,11 +50,21 @@ def bare_abstract_factory():
         abs_obj = abstract.__new__(abstract)
         abs_obj.sample_id = "sample-001"
         abs_obj._abstract__current_channel = "647"
+        abs_obj._abstract__cyto_channels = ["647", "488"]
+        abs_obj._abstract__channels_and_paths = {}
         abs_obj._abstract__nucleus_segments = []
         abs_obj._abstract__current_channel_mask = []
-        abs_obj._abstract__channel_segments = {ch: [] for ch in abstract.SEGMENT_CHANNELS}
-        abs_obj._abstract__channel_pairings = {ch: make_empty_pairing_result() for ch in abstract.SEGMENT_CHANNELS}
-        abs_obj._abstract__img_np_nucleus = np.zeros((10, 10), dtype=np.uint8)
+        abs_obj._abstract__channel_segments = {"647": [], "488": []}
+        abs_obj._abstract__channel_pairings = {
+            "647": make_empty_pairing_result(),
+            "488": make_empty_pairing_result(),
+        }
+        abs_obj._abstract__img_np_nucleus_native = np.zeros((10, 10), dtype=np.uint8)
+        abs_obj._abstract__img_np_nucleus_normalized = np.zeros((10, 10), dtype=np.uint8)
+        abs_obj._abstract__img_np_cyto = {
+            "647": np.zeros((10, 10), dtype=np.uint8),
+            "488": np.zeros((10, 10), dtype=np.uint8),
+        }
         abs_obj._abstract__segment_generated = False
         abs_obj._abstract__bbox = []
         abs_obj._abstract__bbox_generated = False
@@ -69,11 +82,13 @@ def bare_abstract_factory():
         abs_obj._abstract__img_pil_thumbnail = MagicMock()
         abs_obj._abstract__img_pil_thumbnail_bbox = MagicMock()
         abs_obj._abstract__label = MagicMock()
+        abs_obj._finalized_mask = None
         abs_obj.getLabel = MagicMock(return_value=abs_obj._abstract__label)
         abs_obj.update_thumbnail = MagicMock()
         abs_obj.gui = MagicMock()
         abs_obj.gui.getFuncButton.return_value.selectButtonPressed.return_value = False
         abs_obj._get_rgb_for_channel = MagicMock(return_value=np.zeros((10, 10, 3), dtype=np.uint8))
+        abs_obj._get_rgb_for_display_channel = MagicMock(return_value=np.zeros((10, 10, 3), dtype=np.uint8))
         return abs_obj
 
     return make_bare_abstract

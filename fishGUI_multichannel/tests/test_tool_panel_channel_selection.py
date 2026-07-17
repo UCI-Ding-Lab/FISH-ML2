@@ -50,11 +50,12 @@ def test_on_channel_change_returns_early_when_no_image_is_loaded():
 
 def test_update_channel_selector_for_image_syncs_the_current_channel():
     panel = _make_bare_tool_panel()
-    abs_obj = MagicMock(selected_channel="555")
+    abs_obj = MagicMock(selected_channel="555", available_channels=["555"])
 
     panel.update_channel_selector_for_image(abs_obj)
 
-    panel.channel_var.set.assert_called_once_with("555")
+    panel.channel_var.set.assert_any_call("555")
+    assert panel.channel_var.set.call_args_list[-1] == (("555",), {})
 
 
 def test_update_channel_menu_rebuilds_options_and_keeps_valid_selection():

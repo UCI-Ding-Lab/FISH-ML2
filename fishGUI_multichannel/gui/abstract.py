@@ -56,6 +56,8 @@ class abstract():
         sample_id, 
         nucleus_path: pathlib.Path,
         cyto_paths: list[pathlib.Path],
+        cyto_channels: list[str],
+        channels: dict[str, pathlib.Path],
         gallery_frame,
         gui
     ):
@@ -63,6 +65,8 @@ class abstract():
         self.sample_id = sample_id 
         self.__nucleus_path = nucleus_path
         self.__cyto_paths = cyto_paths
+        self.__cyto_channels = list(cyto_channels)
+        self.__channels_and_paths = dict(channels)
         self.gui = gui
 
         # Thumbnail states
@@ -91,16 +95,22 @@ class abstract():
         self.__nucleus_segments = []
         self.__last_nucleus_prompt_signature = None
         self.__current_channel_mask = [] 
-        self.__channel_segments = {ch: [] for ch in self.SEGMENT_CHANNELS}
-        self.__channel_pairings = {ch: make_empty_pairing_result() for ch in self.SEGMENT_CHANNELS}
+        self.__channel_segments = {ch: [] for ch in self.__cyto_channels}
+        self.__channel_pairings = {ch: make_empty_pairing_result() for ch in self.__cyto_channels}
         self.__segment_generated: bool = False
         self.__drawSeg: bool = False
         self.__channel_rgb_cache = {}
+        self._finalized_mask = None
 
         # --- MAIN INITIALIZATION LOGIC ---
         # Load images
         self.__img_np_nucleus_native, self.__img_np_nucleus_normalized = self._load_nucleus_images(nucleus_path) 
-        self.__img_np_647, self.__img_np_488,  self.__img_np_555, self.__img_np_594, self.__img_np_514 = self._load_cytoplasms(cyto_paths)
+        self.__img_np_cyto = self._load_cytoplasms(self.__channels_and_paths)
+        self.__img_np_647 = self.__img_np_cyto.get("647")
+        self.__img_np_488 = self.__img_np_cyto.get("488")
+        self.__img_np_555 = self.__img_np_cyto.get("555")
+        self.__img_np_594 = self.__img_np_cyto.get("594")
+        self.__img_np_514 = self.__img_np_cyto.get("514")
 
         # Get available channels and set default channel
         self.available_channels = self._get_available_channels()
@@ -132,59 +142,35 @@ class abstract():
         return nucleus_native_img, nucleus_normalized_img
     
 
-    def _load_cytoplasms(self, cyto_paths: list[pathlib.Path]) -> tuple[np.ndarray, np.ndarray]:
+    def _load_cytoplasms(self, channels: dict[str, pathlib.Path]) -> dict[str, np.ndarray]:
         """
-        Returns the preprocessed image (normalized grayscale) for both 647 and 488
-        If either channel does not exist, it returns None
+        Load and preprocess every cytoplasm channel for this sample.
+        """
+        channel_images = self._load_cytoplasm_channel_images(channels)
+        return preprocess_cytoplasm_channels(channel_images)
 
-        Returns:
-        - gray-scale image to ensure compatibility with groundingdino and SAM
-        """
+    def _load_cytoplasm_channel_images(self, channels: dict[str, pathlib.Path]) -> dict[str, np.ndarray]:
+        """Read each non-DAPI channel image before preprocessing."""
         channel_images = {}
-        for cyto_path in cyto_paths:
-            cyto_array = tifffile.imread(cyto_path)
-            zprojected = (
-                preprocess_cytoplasm_stack(cyto_array, top_n=8)
-                if cyto_array.ndim == 3 and cyto_array.shape[0] > 1
-                else np.squeeze(cyto_array)
-            )
-            stem = cyto_path.stem.lower()
-            if "647" in stem:
-                channel_images["647"] = zprojected
-            elif "488" in stem:
-                channel_images["488"] = zprojected
-            elif "555" in stem:
-                channel_images["555"] = zprojected
-            elif "594" in stem:
-                channel_images["594"] = zprojected
-            elif "514" in stem:
-                channel_images["514"] = zprojected
-            else:
-                logger.warning(f"Unrecognized cytoplasm channel in file {cyto_path.name}")
+        for channel, path in channels.items():
+            if channel == "DAPI":
+                continue
+            channel_images[channel] = self._load_single_cytoplasm_image(path)
+        return channel_images
 
-        processed = preprocess_cytoplasm_channels(channel_images)
-        return (
-            processed.get("647"),
-            processed.get("488"),
-            processed.get("555"),
-            processed.get("594"),
-            processed.get("514"),
-        )
+    def _load_single_cytoplasm_image(self, cyto_path: pathlib.Path) -> np.ndarray:
+        """Read one cytoplasm image and z-project it when needed."""
+        cyto_array = tifffile.imread(cyto_path)
+        if cyto_array.ndim == 3 and cyto_array.shape[0] > 1:
+            return preprocess_cytoplasm_stack(cyto_array, top_n=8)
+        return np.squeeze(cyto_array)
         
         
     def _get_available_channels(self) -> list[str]:
-        channels = []
-        if self.__img_np_647 is not None:
-            channels.append("647")
-        if self.__img_np_488 is not None:
-            channels.append("488")
-        if self.__img_np_555 is not None:
-            channels.append("555")
-        if self.__img_np_594 is not None:
-            channels.append("594")
-        if self.__img_np_514 is not None:
-            channels.append("514")
-        return channels
+        """
+        Return cytoplasm channel names that were parsed during import.
+        """
+        return list(self.__cyto_channels)
 
 
     def _initialize_default_channel(self, channels):
@@ -196,17 +182,9 @@ class abstract():
         Returns the image to use for the thumbnail
         """
         for ch in self.available_channels:
-            if ch == "647" and self.__img_np_647 is not None:
-                return self.__img_np_647
-            elif ch == "488" and self.__img_np_488 is not None:
-                return self.__img_np_488
-            elif ch == "555" and self.__img_np_555 is not None:
-                return self.__img_np_555
-            elif ch == "594" and self.__img_np_594 is not None:
-                return self.__img_np_594
-            elif ch == "514" and self.__img_np_514 is not None:
-                return self.__img_np_514
-        return self.__img_np_nucleus
+            if ch in self.__img_np_cyto:
+                return self.__img_np_cyto[ch]
+        return self.__img_np_nucleus_normalized
 
 
     def _create_pil_and_tkinter_thumbnail(self, img_np_rgb, size=(64, 64)):
@@ -503,14 +481,7 @@ class abstract():
             return self.get_segments(target_channel)
         
         nucleus_img = self.__img_np_nucleus_native
-        cyto_channels = {
-            "647": self.__img_np_647,
-            "488": self.__img_np_488,
-            "555": self.__img_np_555,
-            "594": self.__img_np_594,
-            "514": self.__img_np_514,
-        }
-        seg_dict = run_cytoplasm_segmentation(nucleus_img, cyto_channels, self.gui, target_channel)
+        seg_dict = run_cytoplasm_segmentation(nucleus_img, self.__img_np_cyto, self.gui, target_channel)
         seg_list = seg_dict.get(target_channel, [])
         self.set_segments(target_channel, seg_list)
         return self.get_segments(target_channel)
@@ -538,18 +509,7 @@ class abstract():
 
     def _get_rgb_for_channel(self, ch):
         if ch not in self.__channel_rgb_cache:
-            if ch == "647" and self.__img_np_647 is not None:
-                base_img = self.__img_np_647
-            elif ch == "488" and self.__img_np_488 is not None:
-                base_img = self.__img_np_488
-            elif ch == "555" and self.__img_np_555 is not None:
-                base_img = self.__img_np_555
-            elif ch == "594" and self.__img_np_594 is not None:
-                base_img = self.__img_np_594
-            elif ch == "514" and self.__img_np_514 is not None:
-                base_img = self.__img_np_514
-            else:
-                base_img = self.__img_np_nucleus_normalized
+            base_img = self.__img_np_cyto.get(ch, self.__img_np_nucleus_normalized)
             self.__channel_rgb_cache[ch] = grayscale_to_rgb(base_img)
         return self.__channel_rgb_cache[ch]
 
@@ -676,7 +636,7 @@ class abstract():
     # TODO check where each of these methods are used -- remove from set finalized mask in applychhanelmask py
     @property
     def finalized_mask(self):
-        return getattr(self, "_finalized_mask", None)
+        return self._finalized_mask
     def set_finalized_mask(self, mask_list: list[np.ndarray]) -> None:
         self._finalized_mask = mask_list  
 
@@ -1017,13 +977,31 @@ class abstract():
         """
         return self.__label
     def getNucleusPath(self) -> pathlib.Path:
+        """Return the saved DAPI image path for this frame."""
         return self.__nucleus_path
+
+    def getCytoplasmChannelsAndPaths(self) -> dict[str, pathlib.Path]:
+        """Return cytoplasm channel paths keyed by channel name."""
+        return {
+            ch: self.__channels_and_paths[ch]
+            for ch in self.__cyto_channels
+            if ch in self.__channels_and_paths
+        }
+
+    def getImgNumpyCyto(self) -> dict[str, np.ndarray]:
+        """Return a copy of the loaded cytoplasm images keyed by channel."""
+        return dict(self.__img_np_cyto)
+
     def getCytoplasmPaths(self) -> tuple[pathlib.Path, ...]:
+        """Return the saved cytoplasm image paths for this frame."""
         return tuple(self.__cyto_paths)
     #---Remove when refactoring---
     def noBbox(self) -> bool:
+        """Return True when this frame does not have editable bbox objects."""
         return not len(self.__bbox)
     def noSegment(self) -> bool:
+        """Return True when this frame has no masks on the current channel."""
         return not len(self.__current_channel_mask)
     def getNucleusCenters(self) -> list[tuple]:
+        """Return the computed nucleus center points for this frame."""
         return self.nucleus_centers

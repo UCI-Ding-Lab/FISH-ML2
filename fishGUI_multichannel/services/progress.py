@@ -9,6 +9,7 @@ from .export_pairs import build_paired_export_data, extract_export_channel
 from .matPacker import create
 from .pairing import export_pairing_debug_pdf
 from .session_manager import SessionManager
+from ..utils.sample_channels import channels_from_paths, get_cytoplasm_paths_and_names
 import pathlib
 
 logger = logging.getLogger('fishcore')
@@ -68,10 +69,14 @@ class Progress:
             return nucleus_path, cytoplasm_paths
             
         def create_abstract_object(sample_id, nucleus_path, cyto_paths, bbox_list, seg_dict, nucleus_masks, selected_channel, gui):
+            channels = channels_from_paths(nucleus_path, cyto_paths)
+            cyto_paths, cyto_channels = get_cytoplasm_paths_and_names(channels)
             abstract_object = abstract(
                 sample_id, 
                 nucleus_path=nucleus_path,
                 cyto_paths=cyto_paths,
+                cyto_channels=cyto_channels,
+                channels=channels,
                 gallery_frame=gui.getTifSequence().gallery_frame,
                 gui=gui
             )
@@ -81,7 +86,8 @@ class Progress:
             for channel, mask_list in seg_dict.items():
                 segs = [segment(gui, m) for m in mask_list]
                 abstract_object.set_segments(channel, segs)
-            abstract_object.selected_channel = selected_channel
+            if selected_channel in ["DAPI"] + abstract_object.available_channels:
+                abstract_object.selected_channel = selected_channel
             return abstract_object
 
         # --- Main Logic ---

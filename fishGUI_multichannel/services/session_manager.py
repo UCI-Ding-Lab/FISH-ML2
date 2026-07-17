@@ -230,7 +230,7 @@ class SessionManager:
                 continue 
             if abstract_object.selected:
                 seg_dict = {}
-                for ch in abstract_object.SEGMENT_CHANNELS:
+                for ch in abstract_object.available_channels:
                     seg_dict[ch] = [s._segment__data.T for s in abstract_object.get_segments(ch)]
                 bundled_info_for_save = bundle(
                     abstract_object.sample_id,
@@ -335,7 +335,7 @@ class SessionManager:
         start = time.perf_counter()
 
         original_channel = abs_obj.selected_channel
-        channels_to_segment = [ch for ch in abs_obj.available_channels if ch in abs_obj.SEGMENT_CHANNELS]
+        channels_to_segment = list(abs_obj.available_channels)
         for ch in channels_to_segment:
             abs_obj.segment_channel(ch)
         abs_obj.selected_channel = original_channel

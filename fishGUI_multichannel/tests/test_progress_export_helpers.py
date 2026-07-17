@@ -1,3 +1,4 @@
+import pathlib
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -6,12 +7,21 @@ from fishGUI_multichannel.services.export_pairs import build_paired_export_data,
 
 
 def test_extract_export_channel_reads_a_supported_cytoplasm_channel_from_the_filename():
-    path = MagicMock()
-    path.stem = "sample_647_projection"
+    """Read a documented cytoplasm channel from an export image path."""
+    path = pathlib.Path("img_s001_w647_s001.tif")
 
     channel = extract_export_channel(path)
 
     assert channel == "647"
+
+
+def test_extract_export_channel_reads_an_undocumented_cytoplasm_channel():
+    """Read an imported custom channel from an export image path."""
+    path = pathlib.Path("img_s001_wCUSTOM_s001.tif")
+
+    channel = extract_export_channel(path)
+
+    assert channel == "CUSTOM"
 
 
 def test_build_paired_export_data_returns_only_matched_cytoplasm_and_nucleus_masks():

@@ -24,6 +24,8 @@ def test_add_to_gallery_groups_files_by_sample_and_updates_channel_menu(workspac
     sample2_555 = workspace_temp_dir / "img_s002_w555.tif"
 
     tif_files = [sample1_647, sample2_555, sample1_dapi, sample2_dapi, sample1_488]
+    sample1_channels = {"647": sample1_647, "DAPI": sample1_dapi, "488": sample1_488}
+    sample2_channels = {"555": sample2_555, "DAPI": sample2_dapi}
 
     abstract_1 = MagicMock(available_channels=["647", "488"])
     abstract_2 = MagicMock(available_channels=["555"])
@@ -33,8 +35,24 @@ def test_add_to_gallery_groups_files_by_sample_and_updates_channel_menu(workspac
         sequence.addToGallery(tif_files)
 
     assert mock_abstract.call_args_list == [
-        call("001", sample1_dapi, [sample1_647, sample1_488], sequence.gallery_frame, gui),
-        call("002", sample2_dapi, [sample2_555], sequence.gallery_frame, gui),
+        call(
+            "001",
+            sample1_dapi,
+            [sample1_647, sample1_488],
+            ["647", "488"],
+            sample1_channels,
+            sequence.gallery_frame,
+            gui,
+        ),
+        call(
+            "002",
+            sample2_dapi,
+            [sample2_555],
+            ["555"],
+            sample2_channels,
+            sequence.gallery_frame,
+            gui,
+        ),
     ]
     assert gui.getSeasoning.return_value.update_channel_menu.call_args_list == [
         call(["647", "488"]),
