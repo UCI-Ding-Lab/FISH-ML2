@@ -2,12 +2,15 @@ from matplotlib.backends.backend_tkagg import NavigationToolbar2Tk
 
 class FishToolBar(NavigationToolbar2Tk):
     def __init__(self, canvas, window, gui):
-        super().__init__(canvas, window)
+        """Create the custom toolbar without letting Matplotlib pack it automatically."""
+        super().__init__(canvas, window, pack_toolbar=False)
         self.fishGUI = gui
 
     def resetToolBank(self):
+        """Turn off drawing tools when navigation tools are used."""
         self.fishGUI.getSeasoning().tools_var["brush"].set(0)
         self.fishGUI.getSeasoning().tools_var["eraser"].set(0)
+        self.fishGUI.getSeasoning().tools_var["add_mask"].set(0)
 
     def home(self):
         self.resetToolBank()
