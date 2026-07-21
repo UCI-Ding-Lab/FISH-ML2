@@ -13,7 +13,7 @@ class box():
         self.__rect = Rectangle((min_x, min_y),
                                 max_x - min_x,
                                 max_y - min_y,
-                                linewidth=float(self.gui.getBackEnd().config["info"]["bbox_preview_line_width"]),
+                                linewidth=float(self.gui.getNucleusBackend().config["info"]["bbox_preview_line_width"]),
                                 edgecolor='r',
                                 facecolor='none')
         # self.__center = Circle(center, radius=5, color='lime', fill=True)
@@ -39,10 +39,12 @@ class box():
         return self.__anchors
     @property
     def final(self) -> list:
-        return [self.rect.get_x(),
-                self.rect.get_y(),
-                self.rect.get_x() + self.rect.get_width(),
-                self.rect.get_y() + self.rect.get_height()]
+        """Return bbox corners in stable min/max order for saving."""
+        x0 = self.rect.get_x()
+        y0 = self.rect.get_y()
+        x1 = x0 + self.rect.get_width()
+        y1 = y0 + self.rect.get_height()
+        return [min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1)]
 
     @property
     def selected(self) -> bool:
