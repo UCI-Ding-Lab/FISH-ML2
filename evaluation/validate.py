@@ -1,10 +1,10 @@
-import fishCore
+from core import fishCore
 import pathlib
 import warnings
 from PIL import Image
 import numpy as np
-import train.dataset_prep as dprep
-import train.dataset_proc as dproc
+import training.sam_train.dataset_prep as dprep
+import training.sam_train.dataset_proc as dproc
 
 # Suppress specific warnings
 warnings.filterwarnings("ignore")
