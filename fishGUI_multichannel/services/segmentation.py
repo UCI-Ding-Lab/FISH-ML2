@@ -8,9 +8,9 @@ from ..utils.image_preprocessing import compute_contrast
 logger = logging.getLogger('fishcore')
 
 
-def _masks_to_segments(masks: np.ndarray, gui) -> list[segment]:
+def _label_mask_to_segments(masks: np.ndarray, gui) -> list[segment]:
     """
-    Converts a mask array into a list of segment object defined in gui/canvas/segment.py
+    Convert one labeled 2D mask image into segment objects.
     """
     seg_objs = []
     for mask_id in np.unique(masks):
@@ -18,6 +18,21 @@ def _masks_to_segments(masks: np.ndarray, gui) -> list[segment]:
             continue
         mask = (masks == mask_id).astype(np.uint8)  # convert boolean array to a binary array (ensure compatibility with image processing libraries)
         seg_objs.append(segment(gui, mask))
+    return seg_objs
+
+
+def _mask_stack_to_segments(mask_stack: np.ndarray, gui) -> list[segment]:
+    """
+    Convert one stack of 2D binary masks into segment objects.
+    """
+    seg_objs = []
+    for mask in mask_stack:
+        squeezed_mask = np.squeeze(mask).astype(np.uint8)
+        if squeezed_mask.ndim != 2:
+            continue
+        if not np.any(squeezed_mask):
+            continue
+        seg_objs.append(segment(gui, squeezed_mask))
     return seg_objs
 
 
@@ -36,19 +51,44 @@ def _prepare_segmentation_input(nucleus_img, cyto1, cyto2):
     return np.stack([nucleus_img, cyto1, cyto2], axis=-1).astype(np.float32, copy=False)
 
 
-def _segment_channel(fish_model, img, gui):
+def _segment_mask_array(mask_output, gui) -> list[segment]:
     """
-    Run the model and convert masks to segment objects.
+    Convert one backend mask output into segment objects.
     """
+    if isinstance(mask_output, tuple):
+        masks = mask_output[0]
+    else:
+        masks = mask_output
+    masks = np.asarray(masks)
+    if masks.ndim == 2:
+        return _label_mask_to_segments(masks, gui)
+    if masks.ndim == 3:
+        return _mask_stack_to_segments(masks, gui)
+    return []
+
+
+def run_nucleus_segmentation(nucleus_img: np.ndarray, gui, sample_id, bbox_list=None) -> list[segment]:
+    """
+    Segment nuclei with the selected nucleus backend and return segment objects.
+    """
+    logger.info("Starting nucleus segmentation for sample %s ...", sample_id)
+    if nucleus_img is None:
+        logger.warning("Nucleus segmentation aborted for sample %s: missing DAPI image", sample_id)
+        return []
+
+    nucleus_backend = gui.getNucleusBackend()
+    start = time.perf_counter()
     try:
-        masks, flows = fish_model.predict(img)  # defined in fishCore.py
-        return _masks_to_segments(masks, gui)   # convert each mask numpy array to segment object (defined in gui/canvas/segment.py)
-    except Exception as e:
-        logger.exception(f"Predict failed: {e}")
+        mask_output = nucleus_backend.predict_nucleus(nucleus_img, bbox_list)
+        segs = _segment_mask_array(mask_output, gui)
+        logger.info("Completed nucleus segmentation for sample %s in %.2f seconds", sample_id, time.perf_counter() - start,)
+        return segs
+    except Exception as error:
+        logger.exception("Nucleus predict failed: %s", error)
         return []
 
 
-def run_cellpose_sam_segmentation(
+def run_cytoplasm_segmentation(
     nucleus_img: np.ndarray,
     cyto_channels: dict,
     gui,
@@ -60,7 +100,7 @@ def run_cellpose_sam_segmentation(
     """
     logger.info(f"Starting segmentation (Cellpose-SAM predict) for channel {selected_channel} ...")
 
-    fish_model = gui.getBackEnd()
+    cytoplasm_backend = gui.getCytoplasmBackend()
     results = {k: [] for k in cyto_channels}
     if not cyto_channels or nucleus_img is None:
         logger.warning("Segmentation aborted: missing nucleus or cytoplasm channel")
@@ -75,8 +115,11 @@ def run_cellpose_sam_segmentation(
         cyto2 = np.zeros_like(cyto1)
 
     img = _prepare_segmentation_input(nucleus_img, cyto1, cyto2)
-    seg_objs = _segment_channel(fish_model, img, gui)
-    results[selected_channel] = seg_objs
+    try:
+        mask_output = cytoplasm_backend.predict_cytoplasm(img)
+        results[selected_channel] = _segment_mask_array(mask_output, gui)
+    except Exception as e:
+        logger.exception(f"Cytoplasm predict failed: {e}")
 
     return results
 

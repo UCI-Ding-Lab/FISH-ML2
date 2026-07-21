@@ -1,355 +1,828 @@
-import tkinter
-import pathlib
-from tkinter import filedialog
-import tkinter as tk
-import threading
+"""Defines the main workflow buttons for the FishGUI interface."""
+
 import logging
-from ..services.session_manager import SessionManager
+import pathlib
+import threading
+import time
+import tkinter
+import tkinter as tk
+from tkinter import filedialog
+
 from ..services.progress import Progress
+from ..services.session_manager import SessionManager
 
-logger = logging.getLogger('fishcore')
 
-class funcButton():
+logger = logging.getLogger("fishcore")
+
+
+class funcButton:
+    """Builds the main workflow buttons for the multichannel GUI."""
+
     def __init__(self, gui):
+        """Creates the workflow buttons and stores the shared GUI object."""
         self.gui = gui
-        container = gui.getLowerFrame().getFrameC()
-        self.toggle = {"SELECT": tkinter.IntVar(value=0),
-                       "BBOX": tkinter.IntVar(value=0),
-                       "SEGMENTATION_SELECTION" : tkinter.IntVar(value=0),
-                       "SEGMENT": tkinter.IntVar(value=0),
-                       "APPLY_CHANNEL_MASK" : tkinter.IntVar(value=0),
-                       "EXPORT": tkinter.IntVar(value=0)}
-        self.IMPORT = tkinter.Button(container,
-                                     text="Import",
-                                     height=2,
-                                     relief=tkinter.RAISED,
-                                     command=self.IMPORT_call)
-        self.SELECT = tkinter.Checkbutton(container,
-                                          text="Select",
-                                          height=2,
-                                          variable=self.toggle["SELECT"],
-                                          onvalue=1,
-                                          offvalue=0,
-                                          indicatoron=False,
-                                          command=self.SELECT_call)
-        self.BBOX = tkinter.Checkbutton(container,
-                                        text="BBOX",
-                                        height=2,
-                                        variable=self.toggle["BBOX"],
-                                        onvalue=1,
-                                        offvalue=0,
-                                        indicatoron=False,
-                                        command=self.BBOX_call)
-        self.SEGMENTATION_SELECTION = tkinter.Checkbutton(container,
-                                           text="Segmentation Selection",
-                                           height=2,
-                                           variable=self.toggle["SEGMENTATION_SELECTION"],
-                                           onvalue=1,
-                                           offvalue=0,
-                                           indicatoron=False,
-                                           command=self.SEGMENT_SELECTION_call)
-        self.SEGMENT = tkinter.Checkbutton(container,
-                                           text="Segment",
-                                           height=2,
-                                           variable=self.toggle["SEGMENT"],
-                                           onvalue=1,
-                                           offvalue=0,
-                                           indicatoron=False,
-                                           command=self.SEGMENT_call)
-        self.APPLY_CHANNEL_MASK = tkinter.Button(container,
-                                 text="Apply Channel Mask",
-                                 height=2,
-                                 relief=tkinter.RAISED,
-                                 command=self.APPLY_CHANNEL_MASK_call)
-        self.EXPORT = tkinter.Checkbutton(container,
-                                    text="Export(MATLAB)",
-                                    height=2,
-                                    variable=self.toggle["EXPORT"],
-                                    onvalue=1,
-                                    offvalue=0,
-                                    indicatoron=False,
-                                    command=self.EXPORT_call)
+        self.container = gui.getLowerFrame().getFrameC()
+        self.mode_header = self._build_mode_header()
+        self.mode_label = self._build_mode_label()
+        self.toggle = self._build_toggle_state()
+        self._build_buttons()
+
+    def _build_mode_header(self):
+        """Creates the top area that will hold the workflow mode label."""
+        return tkinter.Frame(self.container)
+
+    def _build_mode_label(self):
+        """Creates the text label that will show the current workflow mode."""
+        return tkinter.Label(self.mode_header, text="Main Mode", fg="grey")
+
+    def _build_toggle_state(self):
+        """Creates the Tk state values used by the checkbutton controls."""
+        return {
+            "SELECT": tkinter.IntVar(value=0),
+            "BBOX": tkinter.IntVar(value=0),
+            "SEGMENTATION_SELECTION": tkinter.IntVar(value=0),
+            "DISPLAY_MASKS": tkinter.IntVar(value=0),
+            "APPLY_CHANNEL_MASK": tkinter.IntVar(value=0),
+            "EXPORT": tkinter.IntVar(value=0),
+        }
+
+    def _build_buttons(self):
+        """Creates every button shown in the main workflow row."""
+        self.IMPORT = tkinter.Button(
+            self.container,
+            text="Import",
+            height=2,
+            relief=tkinter.RAISED,
+            command=self.IMPORT_call,
+        )
+        self.SELECT = tkinter.Checkbutton(
+            self.container,
+            text="Select Frames",
+            height=2,
+            variable=self.toggle["SELECT"],
+            onvalue=1,
+            offvalue=0,
+            indicatoron=False,
+            command=self.SELECT_call,
+        )
+        self.BBOX = tkinter.Checkbutton(
+            self.container,
+            text="BBOX",
+            height=2,
+            variable=self.toggle["BBOX"],
+            onvalue=1,
+            offvalue=0,
+            indicatoron=False,
+            command=self.BBOX_call,
+        )
+        self.SEGMENT_NUCLEUS = tkinter.Button(
+            self.container,
+            text="Segment Nucleus",
+            height=2,
+            relief=tkinter.RAISED,
+            command=self.SEGMENT_NUCLEUS_call,
+        )
+        self.SEGMENTATION_SELECTION = tkinter.Checkbutton(
+            self.container,
+            text="Select Cytoplasm Frames",
+            height=2,
+            variable=self.toggle["SEGMENTATION_SELECTION"],
+            onvalue=1,
+            offvalue=0,
+            indicatoron=False,
+            command=self.SEGMENT_SELECTION_call,
+        )
+        self.SEGMENT = tkinter.Button(
+            self.container,
+            text="Segment All Channels for Selected Frames",
+            height=2,
+            relief=tkinter.RAISED,
+            command=self.SEGMENT_call,
+        )
+        self.DISPLAY_MASKS = tkinter.Checkbutton(
+            self.container,
+            text="Display/Edit",
+            height=2,
+            variable=self.toggle["DISPLAY_MASKS"],
+            onvalue=1,
+            offvalue=0,
+            indicatoron=False,
+            command=self.DISPLAY_MASKS_call,
+        )
+        self.APPLY_CHANNEL_MASK = tkinter.Button(
+            self.container,
+            text="Copy Best Channel Mask to All Frames",
+            height=2,
+            relief=tkinter.RAISED,
+            command=self.APPLY_CHANNEL_MASK_call,
+        )
+        self.EXPORT = tkinter.Checkbutton(
+            self.container,
+            text="Export",
+            height=2,
+            variable=self.toggle["EXPORT"],
+            onvalue=1,
+            offvalue=0,
+            indicatoron=False,
+            command=self.EXPORT_call,
+        )
+        self.DONE = tkinter.Button(
+            self.container,
+            text="<- Back to Main Mode",
+            height=2,
+            relief=tkinter.RAISED,
+            command=self.DONE_call,
+        )
 
     def pack(self):
-        self.IMPORT.pack(side=tkinter.LEFT, expand=True, fill=tkinter.X)
-        self.SELECT.pack(side=tkinter.LEFT, expand=True, fill=tkinter.X)
-        self.BBOX.pack(side=tkinter.LEFT, expand=True, fill=tkinter.X)
-        self.SEGMENTATION_SELECTION.pack(side=tkinter.LEFT, expand=True, fill=tkinter.X)  # Place left of SEGMENT
-        self.SEGMENT.pack(side=tkinter.LEFT, expand=True, fill=tkinter.X)
-        self.APPLY_CHANNEL_MASK.pack(side=tkinter.LEFT, expand=True, fill=tkinter.X)
-        self.EXPORT.pack(side=tkinter.LEFT, expand=True, fill=tkinter.X)
-    
+        """Places the buttons that belong to the current workflow mode."""
+        self.refresh_toolbar()
+
+    def refresh_toolbar(self):
+        """Rebuild the workflow toolbar so it matches the current GUI mode."""
+        self._clear_toolbar()
+        self._render_toolbar_for_mode()
+
+    def _clear_toolbar(self):
+        """Hide every workflow button before packing the current mode layout."""
+        buttons = [
+            self.IMPORT,
+            self.SELECT,
+            self.BBOX,
+            self.SEGMENT_NUCLEUS,
+            self.SEGMENTATION_SELECTION,
+            self.SEGMENT,
+            self.DISPLAY_MASKS,
+            self.APPLY_CHANNEL_MASK,
+            self.EXPORT,
+            self.DONE,
+        ]
+        for button in buttons:
+            button.pack_forget()
+
+    def _render_toolbar_for_mode(self):
+        """Show only the buttons that belong to the active workflow mode."""
+        mode = self.gui.getWorkflowMode()
+        if mode == "neutral":
+            self._pack_neutral_toolbar()
+            return
+        if mode == "nucleus_gdino":
+            self._pack_nucleus_gdino_toolbar()
+            return
+        if mode == "nucleus_cellpose":
+            self._pack_nucleus_cellpose_toolbar()
+            return
+        self._pack_cytoplasm_toolbar()
+
+    def _pack_toolbar_buttons(self, buttons):
+        """Pack one ordered group of workflow buttons into the main row."""
+        for button in buttons:
+            button.pack(side=tkinter.LEFT, expand=True, fill=tkinter.X)
+
+    def _pack_neutral_toolbar(self):
+        """Show the top-level workflow buttons."""
+        self.SEGMENT_NUCLEUS.config(text="Segment Nucleus")
+        self.SEGMENT.config(text="Segment Cytoplasm")
+        self._pack_toolbar_buttons(
+            [
+                self.IMPORT,
+                self.SELECT,
+                self.SEGMENT_NUCLEUS,
+                self.SEGMENT,
+                self.DISPLAY_MASKS,
+                self.EXPORT,
+            ]
+        )
+
+    def _pack_nucleus_gdino_toolbar(self):
+        """Show the nucleus toolbar for GroundingDINO and SAM workflow."""
+        self.SEGMENT_NUCLEUS.config(text="Segment")
+        self._pack_toolbar_buttons([self.BBOX, self.SEGMENT_NUCLEUS, self.DISPLAY_MASKS, self.DONE])
+
+    def _pack_nucleus_cellpose_toolbar(self):
+        """Show the nucleus toolbar for Cellpose-SAM workflow."""
+        self.SEGMENT_NUCLEUS.config(text="Segment")
+        self._pack_toolbar_buttons([self.SEGMENT_NUCLEUS, self.DISPLAY_MASKS, self.DONE])
+
+    def _pack_cytoplasm_toolbar(self):
+        """Show the cytoplasm toolbar for segmentation and mask copying."""
+        self.SEGMENT.config(text="Segment All Channels for Selected Frames")
+        self._pack_toolbar_buttons(
+            [
+                self.SEGMENTATION_SELECTION,
+                self.SEGMENT,
+                self.APPLY_CHANNEL_MASK,
+                self.DISPLAY_MASKS,
+                self.DONE,
+            ]
+        )
+
     def selectButtonPressed(self) -> bool:
+        """Returns True when frame-selection mode is on."""
         return self.toggle["SELECT"].get()
+
     def bboxButtonPressed(self) -> bool:
+        """Returns True when nucleus prompt review mode is active."""
         return self.toggle["BBOX"].get()
+
+    def nucleusPromptModeActive(self) -> bool:
+        """Return True when the temporary gdino nucleus prompt mode is active."""
+        return self.bboxButtonPressed()
+
     def frameSegButtonPressed(self) -> bool:
+        """Returns True when frame-picking-for-segmentation mode is on."""
         return self.toggle["SEGMENTATION_SELECTION"].get()
-    def segButtonPressed(self) -> bool:
-        return self.toggle["SEGMENT"].get()
-    
+
+    def displayMaskButtonPressed(self) -> bool:
+        """Returns True when mask-display mode is on."""
+        return self.toggle["DISPLAY_MASKS"].get()
+
+    def _set_nucleus_segment_running(self, running: bool) -> None:
+        """Show whether the nucleus segment batch is still running."""
+        relief = tkinter.SUNKEN if running else tkinter.RAISED
+        state = tkinter.DISABLED if running else tkinter.NORMAL
+        self.SEGMENT_NUCLEUS.config(relief=relief, state=state)
+
+    def _set_cytoplasm_segment_running(self, running: bool) -> None:
+        """Show whether the cytoplasm segment batch is still running."""
+        relief = tkinter.SUNKEN if running else tkinter.RAISED
+        state = tkinter.DISABLED if running else tkinter.NORMAL
+        self.SEGMENT.config(relief=relief, state=state)
+
+    def _clear_edit_subtools(self) -> None:
+        """Turn off brush, eraser, and one-stroke mask creation."""
+        tools_var = self.gui.getSeasoning().tools_var
+        tools_var["brush"].set(0)
+        tools_var["eraser"].set(0)
+        tools_var["add_mask"].set(0)
+
+    def _turn_off_display_masks(self, focused=None) -> None:
+        """Turn off mask display and clear mask editing tools."""
+        if focused is None:
+            focused = SessionManager.getBuffer()
+        self.toggle["DISPLAY_MASKS"].set(0)
+        self._clear_edit_subtools()
+        if focused is not None:
+            focused.drawSegmentation = False
+
+    def _turn_off_bbox_mode(self, focused=None) -> None:
+        """Turn off nucleus prompt display for the focused frame."""
+        if focused is None:
+            focused = SessionManager.getBuffer()
+        self.toggle["BBOX"].set(0)
+        if focused is not None:
+            focused.drawBbox = False
 
     def IMPORT_call(self):
+        """Imports TIFF files and starts background nucleus-center generation."""
         folder_path = filedialog.askdirectory()
-        logger.debug(f"IMPORT_call → user picked folder: {folder_path!r}")
+        logger.debug("IMPORT_call -> user picked folder: %r", folder_path)
         if not folder_path:
-            logger.debug("IMPORT_call → no folder selected, exiting.")
+            logger.debug("IMPORT_call -> no folder selected, exiting.")
             return
-
         folder = pathlib.Path(folder_path)
         tif_files = [file.resolve() for file in folder.glob("*.tif")]
-        logger.debug(f"IMPORT_call → found {len(tif_files)} .tif files")
-
+        logger.debug("IMPORT_call -> found %s .tif files", len(tif_files))
         try:
-            self.gui.getTifSequence().addToGallery(tif_files) # getTifSequence defined in app.py
-        except Exception as e:
-            logger.exception("IMPORT_call → addToGallery raised exception")
-            self.gui.popBox("e", "Import Error", str(e))
+            self.gui.getTifSequence().addToGallery(tif_files)
+        except Exception as error:
+            logger.exception("IMPORT_call -> addToGallery raised exception")
+            self.gui.popBox("e", "Import Error", str(error))
             return
-        
         SessionManager.setImportDirectory(folder)
-        pool = SessionManager.getPool()
-        logger.debug(f"IMPORT_call → abstract pool size after addToGallery: {len(pool)}")
-        if len(pool) == 0:
+        if not SessionManager.getPool():
             self.gui.popBox("w", "No Image", "No image is available")
             return
-
         SessionManager.generate_bboxes(self.gui)
 
-
     def SELECT_call(self):
+        """Toggles frame-pruning mode for the current gallery pool."""
         if self.selectButtonPressed():
             SessionManager.selectAll()
-        elif not self.selectButtonPressed():
-            SessionManager.removeUnselected()
-            self.gui.getTifSequence().resetPosition()
-            for abs in SessionManager.getPool():
-                abs.thumbnail = "bbox" if abs.bbox_generated else "default"
-            SessionManager.sendFirst()
-
+            return
+        SessionManager.removeUnselected()
+        self.gui.getTifSequence().resetPosition()
+        for abs_obj in SessionManager.getPool():
+            self._restore_thumbnail_state(abs_obj)
+        SessionManager.sendFirst()
 
     def BBOX_call(self):
+        """Shows or hides nucleus-center overlays for the focused frame."""
         if not self.gui.getStove().isLoaded():
             self.gui.popBox("w", "Image Not Loaded", "Please select an image first")
             self.toggle["BBOX"].set(0)
             return
-        
-        abs = SessionManager.getBuffer()
-        if not abs:
+        focused = SessionManager.getBuffer()
+        if focused is None:
             self.gui.popBox("w", "No Image Selected", "Please select an image first")
             self.toggle["BBOX"].set(0)
             return
-            
-        if self.bboxButtonPressed():
-            # Entering BBOX mode
-            if not abs.bbox_generated:
-                self.gui.popBox("w", "Bounding Boxes Not Ready", "Bounding boxes for this image have not been generated yet.")
-                self.toggle["BBOX"].set(0)
-                return
-            abs.drawBbox = True
-        else:
-            # Exiting BBOX mode
-            abs.drawBbox = False
-    
+        if self.bboxButtonPressed() and self.displayMaskButtonPressed():
+            self._turn_off_display_masks(focused)
+        if not self.bboxButtonPressed():
+            focused.drawBbox = False
+            return
+        if not focused.bbox_generated:
+            self.gui.popBox("w", "Centers Not Ready", "Nucleus centers are not ready yet.")
+            self.toggle["BBOX"].set(0)
+            return
+        focused.drawBbox = True
+
+    def _enter_nucleus_prompt_mode(self, focused):
+        """Show editable nucleus prompt boxes for one gdino nucleus run."""
+        self.toggle["BBOX"].set(1)
+        focused.drawBbox = True
+        self.gui.getStove().cook(focused)
+
+    def _exit_nucleus_prompt_mode(self):
+        """Hide nucleus prompt editing and restore the normal button label."""
+        self._turn_off_bbox_mode()
+
+    def _show_nucleus_centers(self, focused):
+        """Show nucleus centers when the user enters nucleus workflow mode."""
+        if not focused.bbox_generated:
+            _ = focused.bbox
+        focused.drawBbox = True
+        self.gui.getStove().cook(focused)
+
+    def _switch_all_frames_to_dapi(self):
+        """Switch every loaded frame to the DAPI channel for nucleus workflow."""
+        for frame in SessionManager.getPool():
+            frame.selected_channel = "DAPI"
+
+    def _switch_all_frames_to_first_cytoplasm_channel(self):
+        """Switch every loaded frame to its first cytoplasm channel for cytoplasm workflow."""
+        for frame in SessionManager.getPool():
+            if not frame.available_channels:
+                continue
+            frame.selected_channel = frame.available_channels[0]
+
+    def _enter_nucleus_mode(self, focused):
+        """Switch the UI into the nucleus workflow mode for the chosen backend."""
+        backend_mode = self.gui.prompt_nucleus_backend_mode()
+        self.gui.set_nucleus_backend_mode(backend_mode)
+        self.gui.setWorkflowMode(self.gui.getNucleusWorkflowMode())
+        self._switch_all_frames_to_dapi()
+        self.gui.getSeasoning().update_channel_selector_for_image(focused)
+        self.refresh_toolbar()
+        if backend_mode == "gdino_sam":
+            self._show_nucleus_centers(focused)
+            self._enter_nucleus_prompt_mode(focused)
+            return
+        focused.drawBbox = False
+        self.gui.getStove().cook(focused)
+
+    def _run_nucleus_segmentation(self, focused):
+        """Run nucleus segmentation for every loaded frame and refresh the focused view."""
+        self._set_nucleus_segment_running(True)
+        self.gui.indicateWait("Nucleus segmentation")
+
+        def job():
+            total_start = time.perf_counter()
+            try:
+                frame_pool = SessionManager.getPool()
+                for frame in frame_pool:
+                    frame.segment_nucleus()
+                total_seconds = time.perf_counter() - total_start
+                logger.info(
+                    "Completed nucleus segmentation for %s frames in %.2f seconds",
+                    len(frame_pool),
+                    total_seconds,
+                )
+                self.gui.getRoot().after(0, lambda: self.gui.getStove().cook(focused))
+                self.gui.getRoot().after(0, self.gui._refresh_workflow_thumbnails)
+            except Exception as error:
+                self.gui.getRoot().after(
+                    0,
+                    lambda: self.gui.popBox("e", "Nucleus Segmentation Error", str(error)),
+                )
+            finally:
+                self.gui.getRoot().after(0, lambda: self._set_nucleus_segment_running(False))
+                self.gui.getRoot().after(0, self.gui.dismissWait)
+
+        threading.Thread(target=job, daemon=True).start()
 
     def SEGMENT_SELECTION_call(self):
-        if self.segButtonPressed():
-            self.toggle["SEGMENT"].set(0)
+        """Toggles which frames will be used by the Segment action."""
         if self.frameSegButtonPressed():
-            pass
-        else:
-            # Deselect all frames for segmentation
-            for abs_obj in SessionManager.getPool():
-                abs_obj.selected_for_segmentation = False
-                if abs_obj.segment_generated:
-                    abs_obj.thumbnail = "segmented"
-                elif abs_obj.bbox_generated:
-                    abs_obj.thumbnail = "bbox"
-                else:
-                    abs_obj.thumbnail = "default"
+            self._start_cytoplasm_frame_selection()
+            return
+        self._stop_cytoplasm_frame_selection()
 
+    def _start_cytoplasm_frame_selection(self):
+        """Turn on thumbnail picking for cytoplasm segmentation."""
+        self._exit_nucleus_prompt_mode()
+        self.gui.popBox(
+            "i",
+            "Select Cytoplasm Frames",
+            "Click thumbnails to choose frames for cytoplasm segmentation.",
+        )
+
+    def _stop_cytoplasm_frame_selection(self):
+        """Turn off thumbnail picking and clear chosen cytoplasm frames."""
+        for abs_obj in SessionManager.getPool():
+            abs_obj.selected_for_segmentation = False
+            self._restore_thumbnail_state(abs_obj)
+        self.gui.popBox("i", "Select Cytoplasm Frames", "Stopped selecting cytoplasm frames.")
+
+    def _prepare_cytoplasm_source_channel(self, focused):
+        """Switch the focused frame to one cytoplasm channel before cytoplasm mode starts."""
+        if not focused.available_channels:
+            self.gui.popBox("w", "No Cytoplasm Channel", "This frame has no cytoplasm channel.")
+            return False
+        focused.selected_channel = focused.available_channels[0]
+        return True
+
+    def _hide_focused_masks_before_mode_switch(self, focused):
+        """Hide the visible masks and clear the display toggle before changing workflow modes."""
+        self._turn_off_display_masks(focused)
 
     def SEGMENT_call(self):
-        selected = [a for a in SessionManager.getPool() if a.selected_for_segmentation]
-        if self.segButtonPressed():
-            if selected:
-                SessionManager.segment_selected(self.gui)
-                for abs in selected:
-                    abs.drawSegmentation = True
-            else:
-                buf = SessionManager.getBuffer()
-                if buf and buf.segment_generated:
-                    buf.drawSegmentation = True
-        else:
-            # Turning OFF: hide segmentation overlays
-            for abs_obj in selected:
-                abs_obj.drawSegmentation = False
-            # Also hide for focused frame if nothing is selected
-            if not selected:
-                buf = SessionManager.getBuffer()
-                if buf and buf.segment_generated:
-                    buf.drawSegmentation = False
+        """Enter cytoplasm mode or run the active cytoplasm segmentation action."""
+        focused = SessionManager.getBuffer()
+        if focused is None:
+            self.gui.popBox("w", "No Image Selected", "Please select an image first")
+            return
+        if self.gui.getWorkflowMode() == "neutral":
+            self._hide_focused_masks_before_mode_switch(focused)
+            if not self._prepare_cytoplasm_source_channel(focused):
+                return
+            self._exit_nucleus_prompt_mode()
+            self.gui.setWorkflowMode("cytoplasm")
+            self._switch_all_frames_to_first_cytoplasm_channel()
+            self.gui.getSeasoning().update_channel_selector_for_image(focused)
+            self.refresh_toolbar()
+            self.gui.getStove().cook(focused)
+            return
+        self._run_cytoplasm_segmentation()
 
+    def _run_cytoplasm_segmentation(self):
+        """Run cytoplasm segmentation for the focused frame and selected source channel."""
+        focused = SessionManager.getBuffer()
+        if focused is None:
+            self.gui.popBox("w", "No Image Selected", "Please select an image first")
+            return
+        if not self._prepare_cytoplasm_source_channel(focused):
+            return
+        if self._run_selected_cytoplasm_segmentation():
+            return
+        _ = focused.segment
+        self.gui.getStove().cook(focused)
+
+    def _run_selected_cytoplasm_segmentation(self):
+        """Run cytoplasm segmentation for the frames chosen in selection mode."""
+        selected_frames = self._get_selected_frames_for_segmentation()
+        if not selected_frames:
+            return False
+        self._set_cytoplasm_segment_running(True)
+        self.toggle["SEGMENTATION_SELECTION"].set(0)
+        SessionManager.segment_selected(self.gui)
+        return True
+
+    def SEGMENT_NUCLEUS_call(self):
+        """Enter nucleus mode or run the active nucleus segmentation action."""
+        focused = SessionManager.getBuffer()
+        if focused is None:
+            self.gui.popBox("w", "No Image Selected", "Please select an image first")
+            return
+        if self.displayMaskButtonPressed():
+            self._turn_off_display_masks(focused)
+        if self.bboxButtonPressed() and self.gui.getWorkflowMode() != "nucleus_gdino":
+            self._turn_off_bbox_mode(focused)
+
+        if self.gui.getWorkflowMode() == "neutral":
+            self._enter_nucleus_mode(focused)
+            return
+
+        if self.gui.getWorkflowMode() == "nucleus_gdino":
+            if self.nucleusPromptModeActive():
+                self._exit_nucleus_prompt_mode()
+            self._run_nucleus_segmentation(focused)
+            return
+
+        self._run_nucleus_segmentation(focused)
+
+    def DISPLAY_MASKS_call(self):
+        """Shows or hides masks for the focused frame without running segmentation."""
+        focused = SessionManager.getBuffer()
+        if focused is None:
+            self.toggle["DISPLAY_MASKS"].set(0)
+            self.gui.popBox("w", "No Image Selected", "Please select an image first")
+            return
+        if self.displayMaskButtonPressed() and self.bboxButtonPressed():
+            self._turn_off_bbox_mode(focused)
+        if self.displayMaskButtonPressed():
+            self._exit_nucleus_prompt_mode()
+            focused.drawSegmentation = True
+            return
+        self._clear_edit_subtools()
+        for abs_obj in SessionManager.getPool():
+            abs_obj.drawSegmentation = False
 
     def APPLY_CHANNEL_MASK_call(self):
-            self.toggle["BBOX"].set(0)
-            self.toggle["SEGMENTATION_SELECTION"].set(0)
-            self.toggle["SEGMENT"].set(0)
-            channels = SessionManager.get_all_available_channels()
-            if not channels:
-                self.gui.popBox("w", "No Channels", "No available channels found in any frame.")
-                return
-            ChannelSelectPopup(self.gui.getRoot(), channels, lambda ch: on_channel_selected(self, ch))
+        """Copies one channel mask to chosen frames and channels."""
+        self._reset_modes_before_copy()
+        channels = get_apply_channel_source_choices()
+        if not channels:
+            self.gui.popBox("w", "No Channels", "No cytoplasm channels found in any frame.")
+            return
+        callback = lambda channel: on_channel_selected(self, channel)
+        ChannelSelectPopup(self.gui.getRoot(), channels, callback)
 
+    def _reset_main_mode_toggles_before_export(self):
+        """Turn off active Main Mode toggles before export starts."""
+        focused = SessionManager.getBuffer()
+        self._turn_off_display_masks(focused)
+        self._turn_off_bbox_mode(focused)
+        if self.selectButtonPressed():
+            self.toggle["SELECT"].set(0)
+            SessionManager.removeUnselected()
+            self.gui.getTifSequence().resetPosition()
+            for abs_obj in SessionManager.getPool():
+                self._restore_thumbnail_state(abs_obj)
+            SessionManager.sendFirst()
 
-# TODO clean below
-            
     def EXPORT_call(self):
-        # TODO - understand why an image has to be loaded for export
+        """Exports the current session after editing modes are turned off."""
         if not self.gui.getStove().isLoaded():
             tkinter.messagebox.showwarning("Image Not Loaded", "Please select an image first")
             self.toggle["EXPORT"].set(0)
             return
-        if self.bboxButtonPressed():
-            tkinter.messagebox.showwarning("BBOX Mode", "Please exit BBOX mode first")
-            self.toggle["EXPORT"].set(0)
-            return
-        if self.segButtonPressed():
-            tkinter.messagebox.showwarning("Segmentation Mode", "Please exit Segmentation mode first")
-            self.toggle["EXPORT"].set(0)
-            return
+        self._reset_main_mode_toggles_before_export()
         self.gui.indicateWait("Dataset conversion")
+
         def job():
+            """Runs export work off the main Tk thread."""
             Progress.export(self.gui)
-            self.gui.getRoot().after(0, self.gui.dismissWait)
+            self.gui.getRoot().after(0, self._finish_export)
+
         threading.Thread(target=job, daemon=True).start()
 
-
-
-# --- Helper for Apply channek mask ---
-def start_apply_channel_mask(self, selected_channel, frames):
-    self.toggle["APPLY_CHANNEL_MASK"].set(1)
-    self.APPLY_CHANNEL_MASK.config(state="disabled", relief=tk.SUNKEN, text=f"Applying… {selected_channel}")
-    self.gui.indicateWait(f"Applying channel {selected_channel} mask…")
-    def on_done():
-        buf2 = SessionManager.getBuffer()
-        if (buf2 and buf2.bbox_generated and
-            (buf2.segment_generated or bool(buf2._get_seg_list_for_channel(buf2.selected_channel)))):
-            self.toggle["SEGMENT"].set(1)
-            buf2.drawSegmentation = True
-        else:
-            self.toggle["SEGMENT"].set(0)
+    def _finish_export(self):
+        """Clear the export button and close the waiting popup."""
+        self.toggle["EXPORT"].set(0)
         self.gui.dismissWait()
-        self.toggle["APPLY_CHANNEL_MASK"].set(0)
-        self.APPLY_CHANNEL_MASK.config(state="normal", relief=tk.RAISED, text="Apply Channel Mask")
+
+    def DONE_call(self):
+        """Return the workflow toolbar to neutral mode and clear edit toggles."""
+        self._reset_modes_before_copy()
+        self.gui.setWorkflowMode("neutral")
+        focused = SessionManager.getBuffer()
+        if focused is not None:
+            focused.drawBbox = False
+        self.refresh_toolbar()
+
+    def _get_selected_frames_for_segmentation(self):
+        """Returns the frames that the user marked for segmentation."""
+        pool = SessionManager.getPool()
+        return [frame for frame in pool if frame.selected_for_segmentation]
+
+    def _restore_thumbnail_state(self, abs_obj):
+        """Restores one frame thumbnail after a temporary selection state ends."""
+        abs_obj.update_thumbnail()
+
+    def _reset_modes_before_copy(self):
+        """Turns off other view modes before mask-copy workflow starts."""
+        focused = SessionManager.getBuffer()
+        self._hide_focused_masks_before_mode_switch(focused)
+        self._exit_nucleus_prompt_mode()
+        self.toggle["SEGMENTATION_SELECTION"].set(0)
+
+
+def start_apply_channel_mask(buttons, selected_channel, frames):
+    """Starts the background mask-copy workflow for the chosen frames."""
+    buttons.toggle["APPLY_CHANNEL_MASK"].set(1)
+    buttons.APPLY_CHANNEL_MASK.config(
+        state="disabled",
+        relief=tk.SUNKEN,
+        text=f"Applying... {selected_channel}",
+    )
+    buttons.gui.indicateWait(f"Copying channel {selected_channel} mask")
+
+    def on_done():
+        """Restores button state after mask-copy workflow finishes."""
+        focused = SessionManager.getBuffer()
+        if _focused_frame_has_visible_masks(focused):
+            buttons.toggle["DISPLAY_MASKS"].set(1)
+            focused.drawSegmentation = True
+        buttons.gui.dismissWait()
+        buttons.toggle["APPLY_CHANNEL_MASK"].set(0)
+        buttons.APPLY_CHANNEL_MASK.config(
+            state="normal",
+            relief=tk.RAISED,
+            text="Copy Best Channel Mask to All Frames",
+        )
+
     SessionManager.apply_channel_mask_to_frames(
         source_channel=selected_channel,
         selected_frames=frames,
         target_channels="all_channels",
-        on_done=on_done
+        on_done=on_done,
     )
 
-def on_frames_selected(self, selected_channel, selection):
-    frames = get_selected_frames(selection) if isinstance(selection, str) else selection
+
+def _focused_frame_has_visible_masks(focused):
+    """Returns True when the focused frame should show masks after copying."""
+    if focused is None:
+        return False
+    if not focused.bbox_generated:
+        return False
+    return focused.segment_generated or bool(focused.get_segments(focused.selected_channel))
+
+
+def on_frames_selected(buttons, selected_channel, selection):
+    """Validates the chosen target frames before copying masks."""
+    frames = get_selected_frames(selection)
     missing = frames_missing_channel(frames, selected_channel)
     if missing:
-        show_channel_missing_popup(self, selected_channel, missing)
+        show_channel_missing_popup(buttons, selected_channel, missing)
         return
-    start_apply_channel_mask(self, selected_channel, frames)
+    start_apply_channel_mask(buttons, selected_channel, frames)
 
 
-def on_channel_selected(self, selected_channel):
+def on_channel_selected(buttons, selected_channel):
+    """Starts copying to all frames after the source channel is chosen."""
     if not buffer_has_channel(selected_channel):
-        buf = SessionManager.getBuffer()
-        sid = buf.sample_id if buf else "?"
-        self.gui.popBox("w", "Channel Not Available", f"Current frame {sid} has no channel {selected_channel}.")
+        buffer_frame = SessionManager.getBuffer()
+        sample_id = buffer_frame.sample_id if buffer_frame is not None else "?"
+        buttons.gui.popBox(
+            "w",
+            "Channel Not Available",
+            f"Current frame {sample_id} has no channel {selected_channel}.",
+        )
         return
-    frame_names = get_frame_names()
-    FrameSelectPopup(self.gui.getRoot(), frame_names, lambda sel: on_frames_selected(self, selected_channel, sel))
+    on_frames_selected(buttons, selected_channel, "all")
 
 
 def buffer_has_channel(channel):
-    buf = SessionManager.getBuffer()
-    return buf is not None and channel in buf.available_channels
+    """Returns True when the focused frame contains the chosen channel."""
+    buffer_frame = SessionManager.getBuffer()
+    if buffer_frame is None:
+        return False
+    return channel in buffer_frame.available_channels
+
+
+def get_apply_channel_source_choices():
+    """Returns the channels that are valid sources for copied masks."""
+    channels = SessionManager.get_all_available_channels()
+    return [channel for channel in channels if channel != "DAPI"]
 
 
 def get_frame_names():
-    return [f.sample_id for f in SessionManager.getPool()]
+    """Returns the sample IDs for every loaded frame."""
+    return [frame.sample_id for frame in SessionManager.getPool()]
 
 
 def get_selected_frames(selection):
+    """Maps one frame-selection shortcut to the chosen frame objects."""
     pool = SessionManager.getPool()
     if isinstance(selection, list):
         return selection
     if selection == "all":
         return pool
-    elif selection == "next5":
-        buf = SessionManager.getBuffer()
-        start = pool.index(buf) if buf in pool else 0
-        return pool[start:start+5]
+    if selection == "next5":
+        buffer_frame = SessionManager.getBuffer()
+        start = pool.index(buffer_frame) if buffer_frame in pool else 0
+        return pool[start : start + 5]
     return pool
 
 
 def frames_missing_channel(frames, channel):
-    return [f.sample_id for f in frames if channel not in f.available_channels]
+    """Returns frame IDs that do not contain the chosen source channel."""
+    return [frame.sample_id for frame in frames if channel not in frame.available_channels]
 
 
-def show_channel_missing_popup(self, channel, missing):
-    preview = ", ".join(missing[:5]) + ("..." if len(missing) > 5 else "")
-    self.gui.popBox("w", "Channel Not Available", f"Channel {channel} is missing for: {preview}")
-    self.toggle["SEGMENT"].set(0)
-
+def show_channel_missing_popup(buttons, channel, missing):
+    """Shows a short warning when target frames are missing the source channel."""
+    preview = ", ".join(missing[:5])
+    if len(missing) > 5:
+        preview = f"{preview}..."
+    buttons.gui.popBox("w", "Channel Not Available", f"Channel {channel} is missing for: {preview}")
+    buttons.toggle["DISPLAY_MASKS"].set(0)
 
 
 class ChannelSelectPopup(tk.Toplevel):
+    """Lets the user choose which existing channel mask to copy from."""
+
     def __init__(self, parent, available_channels, callback):
+        """Builds the popup that asks for the source mask channel."""
         super().__init__(parent)
-        self.title("Select Channel Mask")
+        self.title("Copy Cytoplasm Mask")
         self.callback = callback
         self.selected_channel = tk.StringVar(value=available_channels[0])
-
-        tk.Label(self, text="Which channel mask do you want to apply for current frame?\n(Chosen channel mask will apply to all channels)").pack(pady=10)
-
-        frame = tk.Frame(self)
-        frame.pack(pady=10)
-        for ch in available_channels:
-            tk.Radiobutton(frame, text=f"Channel {ch}", variable=self.selected_channel, value=ch).pack(side=tk.LEFT, padx=20)
-
+        self._build_label()
+        self._build_channel_options(available_channels)
         tk.Button(self, text="Next", command=self.on_next).pack(pady=10)
 
+    def _build_label(self):
+        """Creates the short instructions shown at the top of the popup."""
+        text = (
+            "Choose which cytoplasm channel mask to copy from the current frame.\n"
+            "That mask will be reused across the cytoplasm frames you pick next."
+        )
+        tk.Label(self, text=text).pack(pady=10)
+
+    def _build_channel_options(self, available_channels):
+        """Creates one radio button for each source channel option."""
+        frame = tk.Frame(self)
+        frame.pack(pady=10)
+        for channel in available_channels:
+            label = f"Cytoplasm channel {channel}"
+            tk.Radiobutton(frame, text=label, variable=self.selected_channel, value=channel).pack(
+                side=tk.LEFT,
+                padx=20,
+            )
+
     def on_next(self):
+        """Sends the chosen source channel back to the caller."""
         self.callback(self.selected_channel.get())
         self.destroy()
 
-class FrameSelectPopup(tk.Toplevel):
-    def __init__(self, parent, frame_names, callback):
+
+class CytoplasmActionPopup(tk.Toplevel):
+    """Let the user choose which cytoplasm action to run next."""
+
+    def __init__(self, parent, select_callback, segment_callback, copy_callback):
+        """Build the popup that groups the cytoplasm workflow actions."""
         super().__init__(parent)
-        self.title("Apply Mask To Frames")
+        self.title("Segment Cytoplasm")
+        self._select_callback = select_callback
+        self._segment_callback = segment_callback
+        self._copy_callback = copy_callback
+        tk.Label(self, text="Choose the next cytoplasm action.").pack(padx=20, pady=12)
+        tk.Button(self, text="Select Cytoplasm Frames", command=self._run_select).pack(
+            fill="x",
+            padx=20,
+            pady=4,
+        )
+        tk.Button(self, text="Run Cytoplasm Segmentation", command=self._run_segmentation).pack(
+            fill="x",
+            padx=20,
+            pady=4,
+        )
+        tk.Button(self, text="Copy Channel Mask", command=self._run_copy).pack(
+            fill="x",
+            padx=20,
+            pady=(0, 12),
+        )
+
+    def _run_select(self):
+        """Close the popup and toggle cytoplasm frame selection mode."""
+        self.destroy()
+        self._select_callback()
+
+    def _run_segmentation(self):
+        """Close the popup and start the cytoplasm segmentation path."""
+        self.destroy()
+        self._segment_callback()
+
+    def _run_copy(self):
+        """Close the popup and start the cytoplasm mask copy path."""
+        self.destroy()
+        self._copy_callback()
+
+
+class FrameSelectPopup(tk.Toplevel):
+    """Lets the user choose which frames should receive copied masks."""
+
+    def __init__(self, parent, frame_names, callback):
+        """Builds the popup that asks how many future frames to update."""
+        super().__init__(parent)
+        self.title("Choose Cytoplasm Frames")
         self.callback = callback
         self.selection = tk.StringVar(value="all")
+        tk.Label(self, text="Which cytoplasm frames should receive the copied mask?").pack(pady=10)
+        self._build_frame_preview(frame_names)
+        self._build_selection_choices()
+        tk.Button(self, text="Copy Mask", command=self.on_apply).pack(pady=10)
 
-        tk.Label(self, text="How many more frames would you like to add channel masks?").pack(pady=10)
-
+    def _build_frame_preview(self, frame_names):
+        """Shows a short horizontal preview of the available frame IDs."""
         canvas = tk.Canvas(self, height=120)
         scrollbar = tk.Scrollbar(self, orient="horizontal", command=canvas.xview)
         canvas.configure(xscrollcommand=scrollbar.set)
         frame = tk.Frame(canvas)
-        canvas.create_window((0,0), window=frame, anchor="nw")
+        canvas.create_window((0, 0), window=frame, anchor="nw")
         canvas.pack(fill="x")
         scrollbar.pack(fill="x")
-
         for name in frame_names:
             tk.Label(frame, text=name, relief=tk.RIDGE, width=18).pack(side=tk.LEFT, padx=2, pady=2)
-
         frame.update_idletasks()
         canvas.config(scrollregion=canvas.bbox("all"))
 
-        tk.Radiobutton(self, text="Select Next 5", variable=self.selection, value="next5").pack(anchor="w", padx=20)
-        tk.Radiobutton(self, text="Select All Frames", variable=self.selection, value="all").pack(anchor="w", padx=20)
-
-        tk.Button(self, text="Finish & Apply", command=self.on_apply).pack(pady=10)
+    def _build_selection_choices(self):
+        """Creates the radio buttons that choose the frame selection size."""
+        tk.Radiobutton(self, text="Next 5 Frames", variable=self.selection, value="next5").pack(
+            anchor="w",
+            padx=20,
+        )
+        tk.Radiobutton(self, text="All Frames", variable=self.selection, value="all").pack(
+            anchor="w",
+            padx=20,
+        )
 
     def on_apply(self):
+        """Runs the caller callback with the chosen frame selection."""
         try:
             self.callback(self.selection.get())
         except Exception:

@@ -36,8 +36,27 @@ class ColoredFormatter(logging.Formatter):
         record.msg = f"{log_color}{record.msg}{reset_color}"
         return super().format(record)
 
+
+def _build_console_handler() -> logging.StreamHandler:
+    """Create one console handler for the shared fishcore logger."""
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    formatter = ColoredFormatter("[%(asctime)s][%(levelname)s] %(message)s")
+    console_handler.setFormatter(formatter)
+    return console_handler
+
+
+def _has_fishcore_console_handler(logger: logging.Logger) -> bool:
+    """Return True when the shared fishcore console handler already exists."""
+    for handler in logger.handlers:
+        if isinstance(handler, logging.StreamHandler):
+            return True
+    return False
+
 class Fish():
-    def __init__(self,config: pathlib.Path) -> None:
+    def __init__(self, config: pathlib.Path, backend_role: str = "backend") -> None:
+        """Create one Cellpose-SAM core for a specific segmentation role."""
+        self.backend_role = backend_role
         self.setup__config(config)
         self.setup__logger()
         self.setup__asset()
@@ -50,20 +69,24 @@ class Fish():
     def setup__logger(self):
         self.logger = logging.getLogger('fishcore')
         self.logger.setLevel(logging.INFO)
-        console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.INFO)
-        formatter = ColoredFormatter("[%(asctime)s][%(levelname)s] %(message)s")
-        console_handler.setFormatter(formatter)
-        self.logger.addHandler(console_handler)
+        if not _has_fishcore_console_handler(self.logger):
+            self.logger.addHandler(_build_console_handler())
         loggers = [logging.getLogger(name) for name in logging.root.manager.loggerDict]
         for logger in loggers:
             if "transformers" in logger.name.lower():
                 logger.setLevel(logging.ERROR)
+    def _role_text(self) -> str:
+        """Return a readable role label for startup log messages."""
+        return self.backend_role.replace("_", " ").title()
     def setup__asset(self): # TODO update this : SAM -> Cellpose-SAM after testing similar to table in readme is completed
         asset_folder_path = pathlib.Path(self.config["general"]["asset_folder_path"])
+        model_folder_path = pathlib.Path(self.config["general"]["model_folder_path"])
         if not asset_folder_path.is_absolute():
             asset_folder_path = (self.config_path.parent / asset_folder_path).resolve()
+        if not model_folder_path.is_absolute():
+            model_folder_path = (self.config_path.parent / model_folder_path).resolve()
         self.asset_folder_path = asset_folder_path
+        self.model_folder_path = model_folder_path
         self.supported_version = self.config["general"]["supported_version"].split(",")
         self.model_version = None
         self.model_path = None
@@ -71,29 +94,31 @@ class Fish():
         self._configure_ssl_certs()
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.logger.info(
-            "PyTorch backend: torch=%s cuda_available=%s cuda_version=%s selected_device=%s",
+            "%s backend: torch=%s cuda_available=%s cuda_version=%s selected_device=%s",
+            self._role_text(),
             torch.__version__,
             torch.cuda.is_available(),
             torch.version.cuda,
             self.device,
         )
         if self.device == "cuda":
-            self.logger.info("CUDA device: %s", torch.cuda.get_device_name(0))
+            self.logger.info("%s CUDA device: %s", self._role_text(), torch.cuda.get_device_name(0))
         else:
             self.logger.warning(
-                "Running on CPU. Install a CUDA-enabled PyTorch build in this environment to use the GPU."
+                "%s backend is running on CPU. Install a CUDA-enabled PyTorch build in this environment to use the GPU.",
+                self._role_text(),
             )
         self.model = models.CellposeModel(gpu=(self.device == "cuda"))
-        checkpoint_path = self.config_path.parent / "cellpose-SAM" / "weights" / "fish_cellpose_v1.pt"
+        checkpoint_path = self.model_folder_path / self.config["cellpose_sam"]["checkpoint"]
         checkpoint = torch.load(checkpoint_path, map_location=self.device)
         self.model.net.load_state_dict(checkpoint["state_dict"]) # load weights
         self.model.net.eval() # Ensure inference is deterministic and consistent : dropout is turned off & BatchNorm uses average during training 
         self.eval_diam = checkpoint["eval_diam"] # set eval_diam (hyperparameter) to the average mask diameter of GT labels in training set
         self.model_version = "cellpose-sam"
         self.model_path = checkpoint_path
-        self.logger.info(f"Loaded cellpose-sam model. eval_diam={self.eval_diam}")
+        self.logger.info("%s Cellpose-SAM model loaded. eval_diam=%s", self._role_text(), self.eval_diam)
         self.gdino_config = pathlib.Path(groundingdino.__path__[0]) / self.config["dino"]["config"]
-        repo_gdino_weights = self.config_path.parent / "GroundingDINO" / self.config["dino"]["weights"]
+        repo_gdino_weights = self.model_folder_path / self.config["dino"]["weights"]
         package_gdino_weights = pathlib.Path(groundingdino.__path__[0]) / self.config["dino"]["weights"]
         self.gdino_weights = repo_gdino_weights if repo_gdino_weights.exists() else package_gdino_weights
         self.gdino_model = dino.load_model(self.gdino_config, self.gdino_weights, device=self.device)

@@ -5,7 +5,6 @@ import csv
 import pathlib
 import time
 from concurrent.futures import ThreadPoolExecutor
-import pickle, threading, concurrent.futures, time
 
 from ..services.bundle_data import bundle
 from ..services.apply_channel_mask import apply_channel_mask_to_frames
@@ -16,17 +15,13 @@ logger = logging.getLogger('fishcore')
 
 
 class SessionManager:
+    """Coordinates pool-wide state changes for every loaded frame."""
+
     __pool = []
     __buffer = None
     __importPath = None
     __segmentation_timing_rows = []
     __segmentation_timing_lock = threading.Lock()
-
-
-    """
-    Responsible for handling operations that affect the entire session
-    or pool of abstract objects.
-    """
     # --- Pool Management ---
     @classmethod
     def addToPool(cls, abstract_object):
@@ -80,13 +75,13 @@ class SessionManager:
                 logger.debug(f"Object {abstract_object} is not an instance of abstract. Skipping.")
                 continue
             if abstract_object.selected:
-                abstract_object.thumbnail = "default"
+                abstract_object.update_thumbnail()
                 new_pool.append(abstract_object)
             else:
                 try:
                     del abstract_object.thumbnail  # hides from UI
                 except Exception as e:
-                    logger.debug(f"Failed to delete thumbnail for {getattr(abstract_object,'sample_id','?')}: {e}")
+                    logger.debug(f"Failed to delete thumbnail for {abstract_object.sample_id}: {e}")
         cls.__pool = new_pool
         cls.__buffer = None
         cls.sendFirst()
@@ -139,34 +134,47 @@ class SessionManager:
         return cls.__importPath
 
     @classmethod
-    def _get_inference_worker_limit(cls, gui, total_jobs: int) -> int:
-        backend = gui.getBackEnd()
-        if getattr(backend, "device", "cpu") == "cuda":
-            logger.info("GPU detected; limiting inference concurrency to 1 worker.")
+    def _get_nucleus_worker_limit(cls, gui, total_jobs: int) -> int:
+        """Choose a safe worker count for nucleus center generation."""
+        backend = gui.getNucleusBackend()
+        if backend.device == "cuda":
+            logger.info("GPU detected; limiting nucleus work to 1 worker.")
             return 1
-        return max(1, min(os.cpu_count() or 1, total_jobs))
+        logger.info("CPU detected; limiting nucleus work to 2 workers to avoid bbox contention.")
+        return max(1, min(2, total_jobs))
+
+    @classmethod
+    def _get_cytoplasm_worker_limit(cls, gui, total_jobs: int) -> int:
+        """Choose a safe worker count for cytoplasm segmentation work."""
+        logger.info("Cytoplasm segmentation allows up to 3 workers.")
+        return max(1, min(3, total_jobs))
 
     @classmethod
     def generate_bboxes(cls, gui):
+        """Start background nucleus center generation for every loaded frame."""
         abstracts = cls.getPool()
         if not abstracts:
             return
 
         def job():
-            max_workers = cls._get_inference_worker_limit(gui, len(abstracts))
+            start = time.perf_counter()
+            max_workers = cls._get_nucleus_worker_limit(gui, len(abstracts))
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 for abs_obj in abstracts:
                     executor.submit(cls._generate_one_bbox, gui, abs_obj)
+            logger.info(
+                "Prepared nucleus bbox and centers for %s frames in %.2f seconds",
+                len(abstracts),
+                time.perf_counter() - start,
+            )
 
         threading.Thread(target=job, daemon=True).start()
 
     @classmethod
     def _generate_one_bbox(cls, gui, abs_obj):
-        start_time = time.time()
+        """Prepare nucleus centers and masks for one frame in the background."""
         _ = abs_obj.bbox
         cls._refresh_if_loaded(gui, abs_obj)
-        elapsed = time.time() - start_time
-        logger.info("Computed nucleus centers for sample %s in %.4f seconds", abs_obj.sample_id, elapsed,)
 
     @classmethod
     def _refresh_if_loaded(cls, gui, abs_obj):
@@ -180,7 +188,7 @@ class SessionManager:
         """
         Ensures GUI is now in a view-only mode. 
         Called when:
-        - The user exits BBOX mode 
+        - The user exits Show Centers mode 
         - The user clicks on "Save" and Progress.save is called
 
         Note for Shizuka:
@@ -197,7 +205,7 @@ class SessionManager:
         """
         Ensures GUI is now in a view-only mode. 
         Called when:
-        - The user exits SEGMENT mode 
+        - The user hides masks with Display Masks 
         - The user clicks on "Save" and Progress.save is called
         """
         cls.getBuffer().drawSegmentation = False
@@ -207,7 +215,7 @@ class SessionManager:
     def grabPool(cls) -> list['bundle']:
         """
         Overview: 
-            Collects all selected frames and pacakges their data using the bundle class in services/bundle_data.
+            Collects all selected frames and packages their data using the bundle class in services/bundle_data.
             Iterates over all abstract objects in the pool, and for each selected frame,
             creates a bundle object containing nucleus path, cytoplasm paths, revised bounding boxes,
             and revised segmentation masks. This is useful for saving session state and loading data.
@@ -222,14 +230,16 @@ class SessionManager:
                 continue 
             if abstract_object.selected:
                 seg_dict = {}
-                for ch in abstract_object.SEGMENT_CHANNELS:
+                for ch in abstract_object.available_channels:
                     seg_dict[ch] = [s._segment__data.T for s in abstract_object.get_segments(ch)]
                 bundled_info_for_save = bundle(
                     abstract_object.sample_id,
                     nucleus_path=abstract_object.getNucleusPath(),
                     cyto_paths=list(abstract_object.getCytoplasmPaths()),
                     bbox=abstract_object.boundingBoxRevised,
-                    segment=seg_dict
+                    segment=seg_dict,
+                    nucleus_segment=[s._segment__data.T for s in abstract_object.get_nucleus_segments()],
+                    selected_channel=abstract_object.selected_channel,
                 )
                 result.append(bundled_info_for_save)
         return result
@@ -268,7 +278,7 @@ class SessionManager:
         gui.popBox("i", "Segmentation", f"Started segmentation for {len(selected_frames)} images.")
 
         def monitor_threads():
-            max_workers = cls._get_inference_worker_limit(gui, len(selected_frames))
+            max_workers = cls._get_cytoplasm_worker_limit(gui, len(selected_frames))
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = [
                     executor.submit(cls._segment_each, abs_obj, gui)
@@ -278,6 +288,7 @@ class SessionManager:
                     future.result()
             cls._export_segmentation_timing_csv()
             gui.getFuncButton().toggle["SEGMENTATION_SELECTION"].set(0)
+            gui.getRoot().after(0, lambda: gui.getFuncButton()._set_cytoplasm_segment_running(False))
 
         threading.Thread(target=monitor_threads, daemon=True).start()
 
@@ -310,9 +321,9 @@ class SessionManager:
     
     @classmethod
     def _ui_show_segmented(cls, a, gui):
-        a.thumbnail = "segmented" # blue and orange
+        a.thumbnail = "segmented" # refresh thumbnail so the right-side status stack is rebuilt
         a.selected_for_segmentation = False
-        if a is cls.getBuffer() and gui.getFuncButton().segButtonPressed():
+        if a is cls.getBuffer() and gui.getFuncButton().displayMaskButtonPressed():
             a.drawSegmentation = True
 
 
@@ -324,7 +335,7 @@ class SessionManager:
         start = time.perf_counter()
 
         original_channel = abs_obj.selected_channel
-        channels_to_segment = [ch for ch in abs_obj.available_channels if ch in abs_obj.SEGMENT_CHANNELS]
+        channels_to_segment = list(abs_obj.available_channels)
         for ch in channels_to_segment:
             abs_obj.segment_channel(ch)
         abs_obj.selected_channel = original_channel
