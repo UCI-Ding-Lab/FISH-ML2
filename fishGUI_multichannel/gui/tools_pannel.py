@@ -4,16 +4,20 @@ import threading
 from PIL import Image, ImageTk
 from ..services.progress import Progress
 from .abstract import abstract as GUIAbstract
+
+
 class seasoning():
+    """Builds the right-side tool panel for viewing and editing masks."""
+
     def __init__(self, gui):
+        """Creates the tool panel widgets and stores the shared GUI object."""
         self.gui = gui
         self.toolbank = tkinter.Frame(self.gui.getLowerFrame().getFrameA(), width=150, background="grey")
         self.button1 = tkinter.Button(self.toolbank, height=2, text="Save Progress", command=self.SAVEPROG_CALL)
         self.button2 = tkinter.Button(self.toolbank, height=2, text="Load Progress", command=self.LOADPROG_CALL)
         self.sep = tkinter.Frame(self.toolbank, height=1, bd=0, relief=tkinter.SUNKEN, bg="black")
-        self.seg_editor = tkinter.LabelFrame(self.toolbank, text="Segmentation Editor")
-        
-        icon_path = pathlib.Path(self.gui.getBackEnd().config["gui"]["icon_folder"])
+        self.seg_editor = tkinter.LabelFrame(self.toolbank, text="Edit Masks")
+        icon_path = self._get_icon_path()
         
         self.tools_icon = {"brush": ImageTk.PhotoImage(Image.open(icon_path/"brush.png")),
                            "eraser": ImageTk.PhotoImage(Image.open(icon_path/"eraser.png")),
@@ -21,7 +25,8 @@ class seasoning():
         
         self.tools_var = {"brush": tkinter.IntVar(value=0),
                           "eraser": tkinter.IntVar(value=0),
-                          "add_bbox": tkinter.IntVar(value=0)}
+                          "add_bbox": tkinter.IntVar(value=0),
+                          "add_mask": tkinter.IntVar(value=0)}
         
         self.tools = {"brush": tkinter.Checkbutton(self.seg_editor
                                                    ,image=self.tools_icon["brush"]
@@ -35,7 +40,10 @@ class seasoning():
                                                     ,command=lambda: self.press_act("eraser")),
                     "add_bbox": tkinter.Button(self.seg_editor
                                                ,image=self.tools_icon["add_bbox"]
-                                               ,command=self.ADDBBOX_CALL)}
+                                               ,command=self.ADDBBOX_CALL),
+                    "add_mask": tkinter.Button(self.seg_editor
+                                               ,text="Add Mask"
+                                               ,command=self.ADDMASK_CALL)}
         
         self.marker_size_var = tkinter.IntVar(value=15)
         self.marker_size_scale = tkinter.Scale(self.toolbank,
@@ -70,7 +78,13 @@ class seasoning():
         self.channel_var = tkinter.StringVar(value="647")
         self.channel_selector = tkinter.OptionMenu(self.toolbank, self.channel_var, "")
 
+    def _get_icon_path(self) -> pathlib.Path:
+        """Return the shared GUI icon folder from the app config."""
+        config = self.gui.getNucleusBackend().config
+        return pathlib.Path(config["gui"]["icon_folder"])
+
     def pack(self):
+        """Places the tool panel widgets on the right side of the window."""
         self.toolbank.pack(side=tkinter.RIGHT, fill=tkinter.BOTH)
         self.button1.pack(side=tkinter.TOP, fill=tkinter.X)
         self.button2.pack(side=tkinter.TOP, fill=tkinter.X)
@@ -78,7 +92,8 @@ class seasoning():
         self.seg_editor.pack(side=tkinter.TOP, fill=tkinter.X)
         self.tools["brush"].grid(row=0, column=0)
         self.tools["eraser"].grid(row=0, column=1)
-        self.tools["add_bbox"].grid(row=1, column=0, columnspan=2)
+        self.tools["add_bbox"].grid(row=1, column=0)
+        self.tools["add_mask"].grid(row=1, column=1)
         self.marker_size_scale.pack(side=tkinter.TOP, fill=tkinter.X)
         self.sep2.pack(fill=tkinter.X)
         self.contrast_bar.pack(side=tkinter.TOP, fill=tkinter.X)
@@ -89,6 +104,7 @@ class seasoning():
         self.channel_selector.pack(side=tkinter.TOP, fill=tkinter.X)
 
     def on_contrast_bar_change(self, event):
+        """Adjusts contrast for the currently loaded image preview."""
         if event is None:
             self.contrast_var.set(250)
         contrast_value = self.contrast_var.get()
@@ -96,42 +112,43 @@ class seasoning():
         self.gui.getStove().adjust_contrast(factor)
     
     def on_brightness_bar_change(self, event):
+        """Adjusts brightness for the currently loaded image preview."""
         if event is None:
             self.brightness_var.set(250)
         brightness_value = self.brightness_var.get()
         factor = (250 - brightness_value) * 0.005
         self.gui.getStove().adjust_brightness(factor)
     
-    # def press_act(self, widget: str):
-    #     if not self.gui.getFuncButton().segButtonPressed():
-    #         self.gui.popBox("w", "Segmentation Mode", "Please enter Segmentation mode first")
-    #         for k, v in self.tools_var.items():
-    #             v.set(0)
-    #         return
-    #     for k, v in self.tools_var.items():
-    #         if k != widget:
-    #             v.set(0)
-    
     def get_marker_size(self) -> int:
+        """Returns the current brush or eraser radius."""
         return self.marker_size_var.get()
+
     def brushButtonPressed(self) -> bool:
+        """Returns True when the brush tool is active."""
         return self.tools_var["brush"].get()
+
     def eraserButtonPressed(self) -> bool:
+        """Returns True when the eraser tool is active."""
         return self.tools_var["eraser"].get()
+
+    def addMaskButtonPressed(self) -> bool:
+        """Return True when the next brush stroke should create a new mask."""
+        return self.tools_var["add_mask"].get()
     
     def ADDBBOX_CALL(self):
+        """Adds one editable center box to the currently loaded frame."""
         if not self.press_act("add_bbox"):
             return
-        if not self.gui.getFuncButton().bboxButtonPressed():
-            self.gui.popBox("w", "BBOX Mode", "Please enter BBOX mode first")
+        if not self.gui.getFuncButton().nucleusPromptModeActive():
+            self.gui.popBox("w", "Nucleus Prompt Mode", "Choose GroundingDINO + SAM first")
             return
-        loaded_image = self.gui.getStove().getLoaded() # TODO - check what this loads
+        loaded_image = self.gui.getStove().getLoaded()
         if not loaded_image:
             self.gui.popBox("w", "No Image", "No image is loaded")
             return
         from .canvas.box import box
         width, height = loaded_image.getImgNumpyRGB().shape[1], loaded_image.getImgNumpyRGB().shape[0]
-        bbox = [width // 2 - 150, height // 2 - 150, width // 2 + 150, height // 2 + 150] # generate a 300x300 box at the center
+        bbox = [width // 2 - 150, height // 2 - 150, width // 2 + 150, height // 2 + 150]
         
         # Deselect all existing boxes before adding a new one
         for b in loaded_image.bbox:
@@ -144,8 +161,18 @@ class seasoning():
         box.setBuffer(new_box)
         self.gui.getStove().canvas.draw()
 
+    def ADDMASK_CALL(self):
+        """Prepare one brush stroke that will become a new mask."""
+        if not self.press_act("add_mask"):
+            return
+        self.tools_var["add_mask"].set(1)
+        self.tools_var["brush"].set(1)
+        self.tools_var["eraser"].set(0)
+        self._deactivate_navigation_tool()
+
 
     def SAVEPROG_CALL(self):
+        """Saves the current session in a background thread."""
         self.gui.indicateWait("Saving")
         def job():
             try:
@@ -157,6 +184,7 @@ class seasoning():
         threading.Thread(target=job, daemon=True).start()
 
     def LOADPROG_CALL(self):
+        """Loads one saved session in a background thread."""
         self.gui.indicateWait("Loading")
         def job():
             try:
@@ -165,14 +193,11 @@ class seasoning():
                 self.gui.popBox("e", "Load Error", str(e))
             finally:
                 self.gui.getRoot().after(0, self.gui.dismissWait)
-                self.gui.popBox("i", "Loading Completed", "All frames have finished loading.")
         threading.Thread(target=job, daemon=True).start()
 
     def on_channel_change(self, new_chan: str):
         """
-        - point seg to the right mask list
-        - refresh thumbnail
-        - redraw main canvas with updated mask and image
+        Switches the focused frame to a new display channel and redraws it.
         """
         self.channel_var.set(new_chan)
         
@@ -180,22 +205,21 @@ class seasoning():
         if not abs_obj:
             return
 
+        show_masks = self.gui.getFuncButton().displayMaskButtonPressed()
         abs_obj.drawSegmentation = False
 
         # select channel and sync mask pointer
         abs_obj.selected_channel = new_chan
-        abs_obj.seg = abs_obj._get_seg_obj_for_channel(new_chan)
-
-        # let abstract rebuild the image and thumbnails
-        abs_obj.update_thumbnail()
 
         # redraw canvas with new channel + masks
         self.gui.getStove().cook(abs_obj)
-        abs_obj.drawSegmentation = True
+        if show_masks:
+            abs_obj.drawSegmentation = True
 
     def _deactivate_navigation_tool(self):
+        """Turns off the Matplotlib navigation tool before mask editing starts."""
         stove = self.gui.getStove()
-        toolbar = getattr(stove, "toolbar", None)
+        toolbar = stove.toolbar
         if toolbar is None:
             return
 
@@ -208,27 +232,38 @@ class seasoning():
                 pass
 
     def press_act(self, widget: str):
+        """Validates which editing tools are allowed in the current view mode."""
         func_btn = self.gui.getFuncButton()
-        bbox_on = func_btn.bboxButtonPressed()
-        seg_on = func_btn.segButtonPressed()
+        bbox_on = func_btn.nucleusPromptModeActive()
+        seg_on = func_btn.displayMaskButtonPressed()
 
-        # Only allow add_bbox if BBOX is ON and SEGMENT is OFF
         if widget == "add_bbox":
             if not bbox_on or seg_on:
-                self.gui.popBox("w", "Tool Disabled", "Add BBOX is only available when BBOX mode is ON and Segmentation mode is OFF.")
+                self.gui.popBox(
+                    "w",
+                    "Tool Disabled",
+                    "Add Box is only available during nucleus prompt review while Edit Masks is off.",
+                )
                 return False
 
-        # Only allow brush/eraser if SEGMENT is ON and BBOX is OFF
-        if widget in ("brush", "eraser"):
+        if widget == "add_mask":
             if not seg_on or bbox_on:
-                self.gui.popBox("w", "Tool Disabled", "Brush and Eraser are only available when Segmentation mode is ON and BBOX mode is OFF.")
+                self.gui.popBox("w", "Tool Disabled", "Add Mask is only available while Edit Masks is on.")
+                return False
+
+        if widget in ("brush", "eraser", "add_mask"):
+            if not seg_on or bbox_on:
+                self.gui.popBox(
+                    "w",
+                    "Tool Disabled",
+                    "Brush and Eraser are only available while Edit Masks is on and nucleus prompt review is off.",
+                )
                 for k, v in self.tools_var.items():
                     v.set(0)
                 return False
 
-        # Ensure only one tool is active at a time (for brush/eraser)
         for k, v in self.tools_var.items():
-            if k != widget:
+            if k != widget and not (widget == "add_mask" and k == "brush"):
                 v.set(0)
 
         if widget in ("brush", "eraser") and self.tools_var[widget].get():
@@ -237,22 +272,19 @@ class seasoning():
         return True
     
     def update_channel_selector_for_image(self, abs_obj):
-        # Rebuild options for the focused image so channels stay sample-specific.
-        self.update_channel_menu(getattr(abs_obj, "available_channels", []))
-        # Then sync selection to the image's current channel.
+        """Syncs the channel dropdown to the newly focused frame."""
+        self.update_channel_menu(abs_obj.available_channels)
         self.channel_var.set(abs_obj.selected_channel)
 
     def update_channel_menu(self, channels: list[str]):
-        # Always include DAPI 
+        """Rebuilds the channel dropdown for the currently loaded sample."""
         opts = ["DAPI"] + (channels or [])
         menu = self.channel_selector["menu"]
         menu.delete(0, "end")
         for ch in opts:
             menu.add_command(label=ch, command=lambda v=ch: self.on_channel_change(v))
 
-        # Preserve current selection if valid, else default to first
         cur = self.channel_var.get()
         self.channel_var.set(cur if cur in opts else opts[0])
 
-        # Enable menu only if more than one option
         self.channel_selector.configure(state="normal" if len(opts) > 1 else "disabled")

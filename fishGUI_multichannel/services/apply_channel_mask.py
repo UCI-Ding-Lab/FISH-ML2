@@ -8,7 +8,20 @@ import time
 
 logger = logging.getLogger("fishcore")
 
-# --- Helper Functions --- 
+def is_cytoplasm_channel(channel):
+    """
+    Return True when a channel should participate in copy-mask mode.
+    """
+    return channel != "DAPI"
+
+
+def filter_cytoplasm_channels(channels):
+    """
+    Return only the channels that are valid cytoplasm targets.
+    """
+    return [channel for channel in channels if is_cytoplasm_channel(channel)]
+
+
 def ensure_channel_segmented(frame, channel):
     """
     Ensures the segmentation for the given channel is computed for this frame.
@@ -28,17 +41,17 @@ def extract_finalized_masks(frame, source_channel):
     Extracts finalized mask arrays from the source channel for a frame.
     """
     seg_objs = frame._get_seg_list_for_channel(source_channel) or []
-    mask_list = [obj._segment__data.T for obj in seg_objs] # TODO check why it needs to be transposed -- consistency with export, matlab program?
-    frame.set_finalized_mask(mask_list)
+    mask_list = [obj._segment__data.T for obj in seg_objs]
     logger.debug(f"Built {len(mask_list)} masks for frame {frame.sample_id}")
     return mask_list
 
 
-def apply_masks_on_main(frame, target_channels, mask_list):
+def apply_masks_on_main(frame, source_channel, target_channels, mask_list):
     """
     On main thread: applies mask list to all target channels and updates state.
     """
     try:
+        target_channels = filter_cytoplasm_channels(target_channels)
         shared_segs = [segment(frame.gui, m) for m in mask_list] if mask_list else []
         for ch in target_channels:
             logger.debug(f"Applying mask to channel {ch} for frame {frame.sample_id}")
@@ -48,7 +61,8 @@ def apply_masks_on_main(frame, target_channels, mask_list):
                 except Exception:
                     pass
             frame._set_seg_list_for_channel(ch, shared_segs)
-        frame.seg = frame._get_seg_list_for_channel(frame.selected_channel)
+        frame.copy_pairings(source_channel, target_channels)
+        frame.current_channel_mask = frame._get_seg_list_for_channel(frame.selected_channel)
         frame.segment_generated = bool(frame.has_all_channel_segments())
     except Exception as e:
         logger.error(f"Failed to apply masks: {e}", exc_info=True)
@@ -83,24 +97,33 @@ def apply_channel_mask_to_frames(
     Applies the mask from source_channel to all target_channels for selected frames.
     Runs compute in background threads, UI updates on main thread.
     """
+    if not is_cytoplasm_channel(source_channel):
+        logger.info(f"Skipping apply-channel for source {source_channel}")
+        if on_done:
+            on_done()
+        return
     frame_pool = abstract_cls.getPool()
     frame_indices = _resolve_frame_indices(frame_pool, selected_frames)
     focused_frame = abstract_cls.getBuffer()
     try:
-        seg_mode_on = bool(focused_frame and focused_frame.gui.getFuncButton().segButtonPressed())
+        seg_mode_on = bool(
+            focused_frame and focused_frame.gui.getFuncButton().displayMaskButtonPressed()
+        )
     except Exception:
         seg_mode_on = False
     root = _get_gui_root(abstract_cls, frame_pool)
 
-    def _get_inference_worker_limit(total_jobs):
+    def _get_cytoplasm_worker_limit(total_jobs):
+        """Choose a safe worker count for cytoplasm mask preparation."""
         try:
-            backend = None
             if focused_frame is not None and focused_frame.gui is not None:
-                backend = focused_frame.gui.getBackEnd()
+                backend = focused_frame.gui.getCytoplasmBackend()
             elif frame_pool and frame_pool[0].gui is not None:
-                backend = frame_pool[0].gui.getBackEnd()
-            if getattr(backend, "device", "cpu") == "cuda":
-                logger.info("GPU detected; limiting apply-channel concurrency to 1 worker.")
+                backend = frame_pool[0].gui.getCytoplasmBackend()
+            else:
+                backend = None
+            if backend is not None and backend.device == "cuda":
+                logger.info("GPU detected; limiting copy-mask concurrency to 1 worker.")
                 return 1
         except Exception:
             pass
@@ -115,7 +138,8 @@ def apply_channel_mask_to_frames(
         try:
             ensure_channel_segmented(frame, source_channel)
             masks = extract_finalized_masks(frame, source_channel)
-            return ("ok", sid, frame, masks, frame.available_channels)
+            targets = filter_cytoplasm_channels(frame.available_channels)
+            return ("ok", sid, frame, masks, targets)
         except Exception as e:
             logger.error(f"Compute failed for {sid}: {e}", exc_info=True)
             return ("error", sid, frame, None, None)
@@ -128,14 +152,14 @@ def apply_channel_mask_to_frames(
                 continue
             if status == "error":
                 continue
-            apply_masks_on_main(frame, targets, masks)
+            apply_masks_on_main(frame, source_channel, targets, masks)
             update_ui_for_focused_frame(frame, focused_frame, seg_mode_on)
             logger.debug(f"Applied mask to frame {sid}")
         if skipped:
             try:
-                messagebox.showinfo("Skipped Frames", f"No bounding box for: {', '.join(skipped)}")
+                messagebox.showinfo("Skipped Frames", f"No nucleus centers for: {', '.join(skipped)}")
             except Exception:
-                logger.info(f"Skipped Frames: {', '.join(skipped)}")
+                logger.info(f"Skipped Frames without centers: {', '.join(skipped)}")
         if on_done:
             try:
                 on_done()
@@ -145,12 +169,12 @@ def apply_channel_mask_to_frames(
     def coordinator():
         start = time.perf_counter()
         results = []
-        max_workers = _get_inference_worker_limit(len(frame_indices))
+        max_workers = _get_cytoplasm_worker_limit(len(frame_indices))
         with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="ApplyMask") as ex:
             futures = {ex.submit(compute_worker, i): i for i in frame_indices}
             for fut in as_completed(futures):
                 results.append(fut.result())
-        logger.info(f"Apply Channel Mask: processed {len(results)} frames in {time.perf_counter() - start:.2f}s")
+        logger.info(f"Copy Channel Masks: processed {len(results)} frames in {time.perf_counter() - start:.2f}s")
         if root is not None:
             root.after(0, lambda: apply_results_on_main(results))
         else:

@@ -8,8 +8,8 @@ def _make_bare_tool_panel(seg_on=False, bbox_on=False):
     panel.gui = MagicMock()
 
     func_button = panel.gui.getFuncButton.return_value
-    func_button.segButtonPressed.return_value = seg_on
-    func_button.bboxButtonPressed.return_value = bbox_on
+    func_button.displayMaskButtonPressed.return_value = seg_on
+    func_button.nucleusPromptModeActive.return_value = bbox_on
 
     brush_var = MagicMock()
     brush_var.get.return_value = 0
@@ -17,10 +17,13 @@ def _make_bare_tool_panel(seg_on=False, bbox_on=False):
     eraser_var.get.return_value = 0
     add_bbox_var = MagicMock()
     add_bbox_var.get.return_value = 0
+    add_mask_var = MagicMock()
+    add_mask_var.get.return_value = 0
     panel.tools_var = {
         "brush": brush_var,
         "eraser": eraser_var,
         "add_bbox": add_bbox_var,
+        "add_mask": add_mask_var,
     }
     return panel
 
@@ -34,11 +37,12 @@ def test_press_act_disables_brush_and_eraser_outside_segmentation_mode():
     panel.gui.popBox.assert_called_once_with(
         "w",
         "Tool Disabled",
-        "Brush and Eraser are only available when Segmentation mode is ON and BBOX mode is OFF.",
+        "Brush and Eraser are only available while Edit Masks is on and nucleus prompt review is off.",
     )
     panel.tools_var["brush"].set.assert_called_once_with(0)
     panel.tools_var["eraser"].set.assert_called_once_with(0)
     panel.tools_var["add_bbox"].set.assert_called_once_with(0)
+    panel.tools_var["add_mask"].set.assert_called_once_with(0)
 
 
 def test_press_act_keeps_only_one_segmentation_tool_active_at_a_time():
@@ -51,6 +55,7 @@ def test_press_act_keeps_only_one_segmentation_tool_active_at_a_time():
     assert result is True
     panel.tools_var["eraser"].set.assert_called_once_with(0)
     panel.tools_var["add_bbox"].set.assert_called_once_with(0)
+    panel.tools_var["add_mask"].set.assert_called_once_with(0)
     panel._deactivate_navigation_tool.assert_called_once_with()
 
 

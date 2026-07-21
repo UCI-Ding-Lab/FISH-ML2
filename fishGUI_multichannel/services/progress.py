@@ -5,12 +5,11 @@ from ..gui.abstract import abstract
 from ..gui.canvas.box import box
 from ..gui.canvas.segment import segment
 from .bundle_data import bundle
+from .export_pairs import build_paired_export_data
 from .matPacker import create
+from .pairing import export_pairing_debug_pdf
 from .session_manager import SessionManager
-from ..utils.sample_channels import (
-    channels_from_paths,
-    get_cytoplasm_paths_and_names,
-)
+from ..utils.sample_channels import channels_from_paths
 import pathlib
 
 logger = logging.getLogger('fishcore')
@@ -26,18 +25,11 @@ class Progress:
                                          filetypes=[("Pickle files", "*.pkl")],
                                          title="Save Session As")
         if not filename: 
-            logger.info("Save session cancelled by user.")
             return
-        try: 
-            logger.info(f"Saving session to {filename}") 
-            list_of_bundled_data = SessionManager.grabPool() 
-            logger.info(f"Collected {len(list_of_bundled_data)} bundles") 
-            with open(filename, "wb") as file: pickle.dump(list_of_bundled_data, file) 
-            logger.info("Session saved successfully") 
-            messagebox.showinfo("Done", "Session saved as " + filename) 
-        except Exception as error:
-            logger.exception("Session save failed") 
-            messagebox.showerror("Save Error", str(error))  
+        list_of_bundled_data = SessionManager.grabPool() # grabPool() returns a list of bundled data (includes file paths, bbox and masks for all abstract objects)
+        with open(filename, "wb") as file:
+            pickle.dump(list_of_bundled_data, file)
+        messagebox.showinfo("Done", "Session saved as " + filename)    
         
     def load(gui):
         """
@@ -76,50 +68,23 @@ class Progress:
             
             return nucleus_path, cytoplasm_paths
             
-        def create_abstract_object(
-            sample_id,
-            nucleus_path,
-            cyto_paths,
-            bbox_list,
-            seg_dict,
-            nucleus_centers,
-            gui,
-        ):
+        def create_abstract_object(sample_id, nucleus_path, cyto_paths, bbox_list, seg_dict, nucleus_masks, selected_channel, gui):
             channels = channels_from_paths(nucleus_path, cyto_paths)
-            if "DAPI" not in channels:
-                messagebox.showwarning(
-                    "Missing DAPI",
-                    f"Could not resolve a DAPI path for sample {sample_id}; skipping.",
-                )
-                return None
-
-            cyto_paths, cyto_channels = get_cytoplasm_paths_and_names(channels)
             abstract_object = abstract(
-                sample_id,
+                sample_id, 
                 nucleus_path=nucleus_path,
-                cyto_paths=cyto_paths,
-                cyto_channels=cyto_channels,
                 channels=channels,
                 gallery_frame=gui.getTifSequence().gallery_frame,
-                gui=gui,
+                gui=gui
             )
-            if nucleus_centers:
-                abstract_object.nucleus_centers = [
-                    (float(x), float(y)) for x, y in nucleus_centers
-                ]
             abstract_object.bbox = [box(b, gui) for b in bbox_list]
-            if abstract_object.getNucleusCenters() or bbox_list:
-                abstract_object.bbox_generated = True
-            elif not abstract_object.bbox_generated:
-                _ = abstract_object.bbox
-            for ch, mask_list in seg_dict.items():
-                seg_objs = [segment(gui, m) for m in mask_list]
-                abstract_object._set_seg_obj_for_channel(ch, seg_objs)
-            abstract_object.segment_generated = any(seg_dict.values())
-            if abstract_object.selected_channel:
-                abstract_object.seg = abstract_object._get_seg_obj_for_channel(
-                    abstract_object.selected_channel
-                )
+            abstract_object.nucleus_centers = abstract_object._compute_nucleus_centers_from_boxes(bbox_list)
+            abstract_object.set_nucleus_segments([segment(gui, m) for m in nucleus_masks])
+            for channel, mask_list in seg_dict.items():
+                segs = [segment(gui, m) for m in mask_list]
+                abstract_object.set_segments(channel, segs)
+            if selected_channel in ["DAPI"] + abstract_object.available_channels:
+                abstract_object.selected_channel = selected_channel
             return abstract_object
 
         # --- Main Logic ---
@@ -137,9 +102,10 @@ class Progress:
                     cytoplasm_paths,
                     bbox_list,
                     seg_dict,
-                    nucleus_centers,
-                ) = single_bundle.extract_data_from_bundles()
-                valid_paths = return_valid_paths(nucleus_path, cytoplasm_paths)
+                    nucleus_masks,
+                    selected_channel,
+                ) = single_bundle.extract_data_from_bundles() 
+                valid_paths = return_valid_paths(nucleus_path, cytoplasm_paths) 
                 if valid_paths is None: # prevent loading frames and its data with at least one invalid path
                     continue
                 abs_obj = create_abstract_object(
@@ -148,15 +114,16 @@ class Progress:
                     cytoplasm_paths,
                     bbox_list,
                     seg_dict,
-                    nucleus_centers,
+                    nucleus_masks,
+                    selected_channel,
                     gui,
                 )
-                if abs_obj is None:
-                    continue
                 gui.getSeasoning().update_channel_menu(abs_obj.available_channels)     
                 gui.getSeasoning().update_channel_selector_for_image(abs_obj)
             except Exception as error:
                 messagebox.showwarning("Skipped one row", f"Reason:{error}")
+        gui.setWorkflowMode("neutral")
+        gui.getFuncButton().refresh_toolbar()
         SessionManager.sendFirst()
 
     @staticmethod
@@ -174,7 +141,7 @@ class Progress:
             messagebox.showwarning("No Data", "No frames with segmentation data found")
             return
         
-        d = {"name":[],"image":[],"xy":[],"masks":[]}
+        d = {"name":[],"image":[],"xy":[],"masks":[],"nucleus_masks":[]}
         prep_start = time.perf_counter()
         
         # get directory path
@@ -182,29 +149,31 @@ class Progress:
         if not directory_name:
             directory_name = str(pathlib.Path(f).parent) # fallback to directory where export is saved
 
-        # TODO - O(n^2) -  think of ways to improve effiiency
         for abs in toSave:
-            cyto_chnls_and_paths = abs.getCytoplasmChannelsAndPaths()
-            for channel, path in cyto_chnls_and_paths.items():
-                seg_objs = abs._get_seg_obj_for_channel(channel)
-                if not abs.selected or not seg_objs:
+            cyto_channels_and_paths = abs.getCytoplasmChannelsAndPaths()
+            for channel, path in cyto_channels_and_paths.items():
+                if not abs.selected or not abs.has_segments(channel):
                     img = None
                     xy = []
                     masks = []
+                    nucleus_masks = []
                 else:
-                    img = abs.getImgNumpyRGBCyto(channel)
-                    xy = [mask.xy for mask in seg_objs]
-                    masks = [mask.box for mask in seg_objs]
+                    img = abs.getImgNumpyRGBForChannel(channel)
+                    xy, masks, nucleus_masks = build_paired_export_data(abs, channel)
 
                 d["name"].append(path.name)
                 d["image"].append(img)
                 d["xy"].append(xy)
-                d["masks"].append(masks) 
+                d["masks"].append(masks)
+                d["nucleus_masks"].append(nucleus_masks)
         prep_seconds = time.perf_counter() - prep_start
 
         write_start = time.perf_counter()
-        create(d["name"], d["xy"], d["masks"], f, dirname=str(directory_name))
+        create(d["name"], d["xy"], d["masks"], d["nucleus_masks"], f, dirname=str(directory_name))
         write_seconds = time.perf_counter() - write_start
+        debug_pdf_path = None
+        if should_export_pairing_debug_pdf(gui):
+            debug_pdf_path = export_pairing_debug_pdf([frame for frame in toSave if frame.selected], pathlib.Path(directory_name))
         total_seconds = time.perf_counter() - total_start
 
         logger.info(
@@ -224,9 +193,18 @@ class Progress:
                     (
                         f"Prepared {len(d['name'])} entries in {prep_seconds:.2f}s\n"
                         f"Wrote MAT in {write_seconds:.2f}s\n"
+                        f"Pairing PDF: {debug_pdf_path.name if debug_pdf_path else 'not written'}\n"
                         f"Total {total_seconds:.2f}s"
                     ),
                 ),
             )
         except Exception:
             pass
+
+
+def should_export_pairing_debug_pdf(gui) -> bool:
+    """Return whether the current GUI wants the optional pairing debug PDF."""
+    try:
+        return gui.shouldExportPairingDebugPdf()
+    except AttributeError:
+        return False

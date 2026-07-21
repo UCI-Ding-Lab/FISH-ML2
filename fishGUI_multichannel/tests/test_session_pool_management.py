@@ -1,4 +1,3 @@
-import numpy as np
 from unittest.mock import MagicMock, patch
 
 from fishGUI_multichannel.gui.abstract import abstract
@@ -9,6 +8,9 @@ def _make_pool_abstract(selected=False):
     abs_obj = abstract.__new__(abstract)
     abs_obj._abstract__selected = selected
     abs_obj._abstract__selected_for_segmentation = False
+    abs_obj._abstract__current_channel = "647"
+    abs_obj._abstract__channel_segments = {"647": [], "488": []}
+    abs_obj._abstract__nucleus_segments = []
     abs_obj._abstract__thumbnail_state = None
     abs_obj._abstract__img_tk_thumbnail = object()
     abs_obj._abstract__img_tk_thumbnail_bbox = object()
@@ -27,13 +29,11 @@ def _make_pool_abstract(selected=False):
     abs_obj.available_channels = ["647", "488"]
     abs_obj._abstract__bbox = [MagicMock(final=[1, 2, 3, 4])]
     abs_obj._abstract__bbox_generated = True
+    abs_obj.get_segments = MagicMock(return_value=[])
+    abs_obj.get_nucleus_segments = MagicMock(return_value=[])
     abs_obj.getNucleusPath = MagicMock(return_value="nucleus.tif")
     abs_obj.getCytoplasmPaths = MagicMock(return_value=["cyto_647.tif", "cyto_488.tif"])
-    abs_obj.getNucleusCenters = MagicMock(return_value=[])
-    abs_obj.getImgNumpyCyto = MagicMock(return_value={"647": np.zeros((10, 10)), "488": np.zeros((10, 10))})
-    abs_obj._get_seg_obj_for_channel = MagicMock(
-        side_effect=lambda ch: [MagicMock(_segment__data=MagicMock(T=f"mask-{ch}"))]
-    )
+    abs_obj.selected_channel = "647"
     abs_obj.sample_id = "sample-001"
     abs_obj.on_click = MagicMock()
     return abs_obj
@@ -59,7 +59,7 @@ def test_remove_unselected_keeps_selected_frames_and_refocuses_after_cleanup():
         SessionManager.removeUnselected()
 
     assert SessionManager.getPool() == [selected_frame]
-    assert selected_frame.thumbnail == "default"
+    selected_frame.update_thumbnail.assert_called_once_with()
     mock_send_first.assert_called_once_with()
 
 
@@ -89,6 +89,8 @@ def test_get_all_available_channels_returns_unique_sorted_channels():
 def test_grab_pool_bundles_only_selected_frames():
     selected_frame = _make_pool_abstract(selected=True)
     selected_frame.sample_id = "sample-007"
+    selected_frame.get_segments = MagicMock(side_effect=lambda ch: [MagicMock(_segment__data=MagicMock(T=f"mask-{ch}"))])
+    selected_frame.get_nucleus_segments = MagicMock(return_value=[MagicMock(_segment__data=MagicMock(T="mask-DAPI"))])
     unselected_frame = _make_pool_abstract(selected=False)
     SessionManager._SessionManager__pool = [selected_frame, unselected_frame]
 
@@ -101,6 +103,7 @@ def test_grab_pool_bundles_only_selected_frames():
         cyto_paths=["cyto_647.tif", "cyto_488.tif"],
         bbox=[[1, 2, 3, 4]],
         segment={"647": ["mask-647"], "488": ["mask-488"]},
-        nucleus_centers=[],
+        nucleus_segment=["mask-DAPI"],
+        selected_channel="647",
     )
     assert result == [mock_bundle.return_value]

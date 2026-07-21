@@ -40,7 +40,7 @@ class stove():
         self.tb_pointer = Circle((0, 0), 15, linewidth=0.5, edgecolor='cyan', facecolor='none')
         self.xs = []
         self.ys = []
-        self.old_center = None
+        self.nucleus_center = None
         self.markers: list[Circle] = []
         self.press = False
         
@@ -62,7 +62,11 @@ class stove():
         self.pit.pack(side=tkinter.LEFT, fill=tkinter.BOTH, expand=True)
         self.sep.pack(side=tkinter.LEFT, fill=tkinter.Y)
         self.canvas.get_tk_widget().pack(side=tkinter.TOP, fill=tkinter.BOTH, expand=True)
-        self.toolbar.pack(side=tkinter.BOTTOM, fill=tkinter.BOTH)
+        self.toolbar.pack(side=tkinter.BOTTOM, fill=tkinter.X)
+
+    def set_mode_banner(self, text: str, bg: str, fg: str):
+        """Keep a simple hook for mode updates without drawing a second banner."""
+        return None
 
     def _refresh_nucleus_centers(self, abs):
         old_patches = getattr(abs, "_nuc_center_patches", []) or []
@@ -76,7 +80,7 @@ class stove():
         patches = []
         for cx, cy in centers:
             try:
-                cpatch = Circle((cx, cy), radius=5, color='lime', fill=True)
+                cpatch = Circle((cx, cy), radius=5, color="lime", fill=True)
                 self.subplot.add_patch(cpatch)
                 patches.append(cpatch)
             except Exception:
@@ -160,9 +164,8 @@ class stove():
                         anchor.setBuffer(target)
 
                         b = box.getBuffer()
-                        if self.old_center is None:
-                            self.old_center = b.center
-                        b.removeCenter(self.gui, self.old_center)
+                        if self.nucleus_center is None:
+                            self.nucleus_center = b.rect.get_center()
 
                         return
                 target = self.getLoaded().findBoxFromPoint(event.xdata, event.ydata) 
@@ -174,7 +177,7 @@ class stove():
                     return  # Exit early if we found a box
                     
             # Handle SEGMENT mode interactions (only if not handled by bbox above)
-            if self.gui.getFuncButton().segButtonPressed():
+            if self.gui.getFuncButton().displayMaskButtonPressed():
                 brush_active = self.gui.getSeasoning().brushButtonPressed()
                 eraser_active = self.gui.getSeasoning().eraserButtonPressed()
                 buf = segment.getBuffer()
@@ -185,7 +188,9 @@ class stove():
                 # switching to overlapping segments while editing.
                 if brush_active or eraser_active:
                     edit_margin = max(2, min(6, int(self.gui.getSeasoning().get_marker_size() / 2)))
-                    if buf and buf.selected and buf.contains(event.xdata, event.ydata, margin=edit_margin):
+                    if self.gui.getSeasoning().addMaskButtonPressed() and brush_active:
+                        self._begin_mask_stroke(event)
+                    elif buf and buf.selected and buf.contains(event.xdata, event.ydata, margin=edit_margin):
                         try:
                             buf.push_undo() # record undo snapshot at the start of the stroke if available
                         except Exception:
@@ -219,9 +224,11 @@ class stove():
         self.press = False
         if self.gui.getFuncButton().bboxButtonPressed():
             anchor.clearBuffer()
-            self.old_center = None
-        elif self.gui.getFuncButton().segButtonPressed():
-            if self.gui.getSeasoning().brushButtonPressed() and segment.getBuffer() and segment.getBuffer().selected:
+            self.nucleus_center = None
+        elif self.gui.getFuncButton().displayMaskButtonPressed():
+            if self.gui.getSeasoning().addMaskButtonPressed() and self.gui.getSeasoning().brushButtonPressed():
+                self._finish_new_mask_stroke()
+            elif self.gui.getSeasoning().brushButtonPressed() and segment.getBuffer() and segment.getBuffer().selected:
                 final = list(zip(self.xs, self.ys))
                 for marker in self.markers:
                     marker.remove()
@@ -282,12 +289,11 @@ class stove():
             
             b.rect.set_width(w)
             b.rect.set_height(h)
-            new_center = b.rect.get_center()
-            b.center = new_center # Successfully adds dot once bbox is clicked out
+            self.nucleus_center = b.rect.get_center()
             b.anchorUpdate()
             self.canvas.draw()
 
-        elif self.gui.getFuncButton().segButtonPressed() and segment.getBuffer() and segment.getBuffer().selected:
+        elif self._can_collect_mask_stroke():
             current_x, current_y = event.xdata, event.ydata
             if current_x is None or current_y is None: 
                 return
@@ -324,6 +330,60 @@ class stove():
         self.subplot.add_patch(circle)
         self.subplot.draw_artist(circle)
 
+    def _begin_mask_stroke(self, event: MouseEvent) -> None:
+        """Start collecting points for editing or creating a mask."""
+        if event.xdata is None or event.ydata is None:
+            return
+        self.xs = [event.xdata]
+        self.ys = [event.ydata]
+        self.bufferSetCurrent(1)
+        self.bufferSetCurrent(2)
+        self.marker_draw(event.xdata, event.ydata)
+        self.canvas.blit(self.subplot.bbox)
+
+    def _clear_stroke_markers(self) -> None:
+        """Remove temporary brush preview circles from the canvas."""
+        for marker in self.markers:
+            marker.remove()
+        self.markers.clear()
+
+    def _can_collect_mask_stroke(self) -> bool:
+        """Return True when brush movement should collect mask stroke points."""
+        if not self.gui.getFuncButton().displayMaskButtonPressed():
+            return False
+        if self.gui.getSeasoning().addMaskButtonPressed():
+            return self.gui.getSeasoning().brushButtonPressed()
+        return bool(segment.getBuffer() and segment.getBuffer().selected)
+
+    def _build_new_mask_segment(self, points: list[tuple]) -> segment:
+        """Create one new segment from the collected brush stroke points."""
+        image_shape = self.getLoaded().getImgNumpyRGB().shape[:2]
+        new_segment = segment(self.gui, np.zeros(image_shape, dtype=np.uint8))
+        for x, y in points:
+            new_segment.update_mask(x, y, self.gui.getSeasoning().get_marker_size())
+        new_segment.recal_patch()
+        return new_segment
+
+    def _select_new_mask_segment(self, new_segment: segment) -> None:
+        """Add a new segment to the current channel and select it."""
+        loaded = self.getLoaded()
+        segment.clearBufferAndDeselect()
+        loaded.current_channel_mask.append(new_segment)
+        new_segment.selected = True
+        segment.setBuffer(new_segment)
+        new_segment.draw = True
+
+    def _finish_new_mask_stroke(self) -> None:
+        """Create one new mask from the current Add Mask brush stroke."""
+        points = list(zip(self.xs, self.ys))
+        self._clear_stroke_markers()
+        if points:
+            self._select_new_mask_segment(self._build_new_mask_segment(points))
+        self.gui.getSeasoning().tools_var["add_mask"].set(0)
+        self.canvas.draw_idle()
+        self.xs.clear()
+        self.ys.clear()
+
     def isLoaded(self) -> bool:
         return self.__onLoad is not None
     def getLoaded(self):
@@ -334,7 +394,7 @@ class stove():
         self.__onLoad = None
 
     def onUndo(self, event=None):
-        if not self.gui.getFuncButton().segButtonPressed():
+        if not self.gui.getFuncButton().displayMaskButtonPressed():
             return
         loaded = self.getLoaded()
 
@@ -357,7 +417,7 @@ class stove():
 
 
     def onRedo(self, event=None):
-        if not self.gui.getFuncButton().segButtonPressed():
+        if not self.gui.getFuncButton().displayMaskButtonPressed():
             return
         loaded = self.getLoaded()
 
@@ -380,7 +440,7 @@ class stove():
 
 
     def onReset(self, event=None):
-        if not self.gui.getFuncButton().segButtonPressed():
+        if not self.gui.getFuncButton().displayMaskButtonPressed():
             return
         loaded = self.getLoaded()
 

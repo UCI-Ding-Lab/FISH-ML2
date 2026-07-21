@@ -9,6 +9,7 @@ def _make_bare_toolbar():
     toolbar.fishGUI.getSeasoning.return_value.tools_var = {
         "brush": MagicMock(),
         "eraser": MagicMock(),
+        "add_mask": MagicMock(),
     }
     toolbar.set_message = MagicMock()
     toolbar._update_buttons_checked = MagicMock()
@@ -17,13 +18,14 @@ def _make_bare_toolbar():
     return toolbar
 
 
-def test_reset_tool_bank_turns_off_brush_and_eraser():
+def test_reset_tool_bank_turns_off_brush_eraser_and_add_mask():
     toolbar = _make_bare_toolbar()
 
     toolbar.resetToolBank()
 
     toolbar.fishGUI.getSeasoning.return_value.tools_var["brush"].set.assert_called_once_with(0)
     toolbar.fishGUI.getSeasoning.return_value.tools_var["eraser"].set.assert_called_once_with(0)
+    toolbar.fishGUI.getSeasoning.return_value.tools_var["add_mask"].set.assert_called_once_with(0)
 
 
 def test_zoom_resets_tool_bank_before_delegating_to_the_base_toolbar():

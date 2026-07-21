@@ -17,23 +17,15 @@ def test_add_to_gallery_groups_files_by_sample_and_updates_channel_menu(workspac
     gui = MagicMock()
     sequence = _make_bare_tif_sequence(gui)
 
-    sample1_dapi = workspace_temp_dir / "img_s001_wDAPI_s001.tif"
-    sample1_647 = workspace_temp_dir / "img_s001_w647_s001.tif"
-    sample1_488 = workspace_temp_dir / "img_s001_w488_s001.tif"
-    sample2_dapi = workspace_temp_dir / "img_s002_wDAPI_s002.tif"
-    sample2_555 = workspace_temp_dir / "img_s002_w555_s002.tif"
+    sample1_dapi = workspace_temp_dir / "img_s001_wDAPI.tif"
+    sample1_647 = workspace_temp_dir / "img_s001_w647.tif"
+    sample1_488 = workspace_temp_dir / "img_s001_w488.tif"
+    sample2_dapi = workspace_temp_dir / "img_s002_wDAPI.tif"
+    sample2_555 = workspace_temp_dir / "img_s002_w555.tif"
 
     tif_files = [sample1_647, sample2_555, sample1_dapi, sample2_dapi, sample1_488]
-
-    sample1_channels = {
-        "647": sample1_647,
-        "DAPI": sample1_dapi,
-        "488": sample1_488,
-    }
-    sample2_channels = {
-        "555": sample2_555,
-        "DAPI": sample2_dapi,
-    }
+    sample1_channels = {"647": sample1_647, "DAPI": sample1_dapi, "488": sample1_488}
+    sample2_channels = {"555": sample2_555, "DAPI": sample2_dapi}
 
     abstract_1 = MagicMock(available_channels=["647", "488"])
     abstract_2 = MagicMock(available_channels=["555"])
@@ -46,8 +38,6 @@ def test_add_to_gallery_groups_files_by_sample_and_updates_channel_menu(workspac
         call(
             "001",
             sample1_dapi,
-            [sample1_647, sample1_488],
-            ["647", "488"],
             sample1_channels,
             sequence.gallery_frame,
             gui,
@@ -55,8 +45,6 @@ def test_add_to_gallery_groups_files_by_sample_and_updates_channel_menu(workspac
         call(
             "002",
             sample2_dapi,
-            [sample2_555],
-            ["555"],
             sample2_channels,
             sequence.gallery_frame,
             gui,
