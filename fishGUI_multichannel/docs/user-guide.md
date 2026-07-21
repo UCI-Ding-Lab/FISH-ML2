@@ -135,8 +135,6 @@ flowchart TD
     L --> M[Inspect masks and adjust nucleus boxes if needed]
     M --> N[Manually refine segmentation results]
     N --> O[Export finalized MATLAB output]
-    O --> P{Pairing data available}
-    P -->|Yes| Q[Generate optional pairing debug PDF]
-    P -->|No| R[Finish]
-    Q --> R
 ```
+
+When pairing data is available, export can also write an optional pairing debug PDF, but export remains the final main workflow step.

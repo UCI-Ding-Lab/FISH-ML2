@@ -140,10 +140,6 @@ flowchart LR
     B --> C[Segment Cytoplasm]
     C --> D[Review and Edit]
     D --> E[Export]
-    E --> F{Pairing data?}
-    F -->|Yes| G[Debug PDF]
-    F -->|No| H[Finish]
-    G --> H
 ```
 
 For more detailed step-by-step usage, see the user guide: [fishGUI_multichannel/docs/user-guide.md](fishGUI_multichannel/docs/user-guide.md)
@@ -155,6 +151,8 @@ For developer workflow details and product-intent notes, see: [fishGUI_multichan
 ## Export Format
 
 The current `fishGUI_multichannel` export path writes paired cytoplasm and nucleus masks for each exported cell.
+
+When pairing data is available, export can also write an optional pairing debug PDF, but that is a side output rather than a separate main workflow step.
 
 Each exported MATLAB cell entry can store:
 
