@@ -28,6 +28,7 @@ def test_build_paired_export_data_skips_unmatched_nucleus_masks():
         def __init__(self, xy=None, box=None):
             self.xy = xy
             self.box = box
+            self._segment__data = box.T
 
     class FakeAbstract:
         """Store pairing and segment data used by one export test."""
@@ -52,7 +53,7 @@ def test_build_paired_export_data_skips_unmatched_nucleus_masks():
 
     xy, masks, nucleus_masks = build_paired_export_data(FakeAbstract(), "647")
 
-    assert xy == [(3.0, 4.0)]
+    assert xy == [(1, 1)]
     assert len(masks) == 1
     assert len(nucleus_masks) == 1
 
@@ -65,6 +66,7 @@ def test_build_paired_export_data_skips_stale_pair_indexes():
         def __init__(self, xy=None, box=None):
             self.xy = xy
             self.box = box
+            self._segment__data = box.T
 
     class FakeAbstract:
         """Store stale pairing data used by one export test."""

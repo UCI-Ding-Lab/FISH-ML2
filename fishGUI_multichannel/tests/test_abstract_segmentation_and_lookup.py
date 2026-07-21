@@ -54,7 +54,8 @@ def test_bbox_computes_nucleus_centers_once_from_the_nucleus_backend(bare_abstra
 
     result = abs_obj.bbox
 
-    assert result == []
+    assert len(result) == 1
+    assert result[0].final == [0, 0, 4, 6]
     assert abs_obj.nucleus_centers == [(2.0, 3.0)]
     assert abs_obj.bbox_generated is True
 

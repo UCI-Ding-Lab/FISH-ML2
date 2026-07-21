@@ -20,12 +20,12 @@ ALLOWED_CHANNELS = DOCUMENTED_CHANNELS | {"DAPI"}
 
 def normalize_channel_name(channel: str) -> str:
     """Return a standard channel name while keeping unknown labels flexible."""
-    channel_name = channel.upper()
-    if channel_name == "DAPI":
-        return channel_name
-    channel_digits = re.search(r"\d+", channel_name)
-    if channel_digits and channel_digits.group(0) in DOCUMENTED_CHANNELS:
-        return channel_digits.group(0)
+    channel_name = channel.upper().strip("-_ ")
+    if "DAPI" in channel_name:
+        return "DAPI"
+    for channel_digits in re.findall(r"\d+", channel_name):
+        if channel_digits in DOCUMENTED_CHANNELS:
+            return channel_digits
     return channel_name
 
 
@@ -33,15 +33,15 @@ def parse_sample_id_and_channel(path: pathlib.Path) -> tuple[str | None, str | N
     """Return the sample id and channel name parsed from one TIFF path."""
     stem = path.stem
     sample_match = re.search(r"s(\d{1,4})", stem, re.IGNORECASE)
-    channel_match = re.search(
-        r"(?:^|[_-])w\d*[-_]?([A-Za-z]*\d{3}|DAPI|[A-Za-z]+)(?=$|[_-])",
-        stem,
-        re.IGNORECASE,
-    )
-    if not sample_match or not channel_match:
+    channel_starts = list(re.finditer(r"(?:^|[_-])(w)", stem, re.IGNORECASE))
+    if not sample_match or not channel_starts:
         logger.warning("Could not parse sample/channel from %r", stem)
         return None, None
-    return sample_match.group(1), normalize_channel_name(channel_match.group(1))
+    channel_start = channel_starts[-1].start(1)
+    channel_name = stem[channel_start:]
+    channel_name = re.sub(r"([_-]s\d{1,4})$", "", channel_name, flags=re.IGNORECASE)
+    channel_name = re.sub(r"^w", "", channel_name, flags=re.IGNORECASE)
+    return sample_match.group(1), normalize_channel_name(channel_name)
 
 
 def group_files_by_sample_and_channel(

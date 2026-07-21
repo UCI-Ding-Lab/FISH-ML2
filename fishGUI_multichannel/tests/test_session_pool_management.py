@@ -8,6 +8,9 @@ def _make_pool_abstract(selected=False):
     abs_obj = abstract.__new__(abstract)
     abs_obj._abstract__selected = selected
     abs_obj._abstract__selected_for_segmentation = False
+    abs_obj._abstract__current_channel = "647"
+    abs_obj._abstract__channel_segments = {"647": [], "488": []}
+    abs_obj._abstract__nucleus_segments = []
     abs_obj._abstract__thumbnail_state = None
     abs_obj._abstract__img_tk_thumbnail = object()
     abs_obj._abstract__img_tk_thumbnail_bbox = object()
@@ -56,7 +59,7 @@ def test_remove_unselected_keeps_selected_frames_and_refocuses_after_cleanup():
         SessionManager.removeUnselected()
 
     assert SessionManager.getPool() == [selected_frame]
-    assert selected_frame.thumbnail == "default"
+    selected_frame.update_thumbnail.assert_called_once_with()
     mock_send_first.assert_called_once_with()
 
 
