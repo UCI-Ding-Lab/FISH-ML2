@@ -1,135 +1,133 @@
-import tkinter
-import pathlib
-import re
 import logging
+import pathlib
+import tkinter
+
 from ..services.session_manager import SessionManager
+from ..utils.sample_channels import (
+    group_files_by_sample_and_channel,
+    undocumented_channels_in_grouped,
+)
 
-logger = logging.getLogger('fishcore')
+logger = logging.getLogger("fishcore")
 
-"""
-Manages the gallery of TIFF image sequences for the GUI.
-Handles scrolling, thumbnail display, and grouping by sample/channel.
-"""
+
 class tifSequence():
+    """Manage the thumbnail gallery for imported TIFF image samples."""
+
     def __init__(self, gui):
+        """Create the scrollable gallery canvas and connect mouse bindings."""
         self.gui = gui
         container = gui.getLowerFrame().getFrameB()
         self.base = tkinter.Canvas(container, height=74)
-
         self.scrollbar = tkinter.Scrollbar(container, orient=tkinter.HORIZONTAL, command=self.base.xview)
         self.base.configure(xscrollcommand=self.scrollbar.set)
-
         self.gallery_frame = tkinter.Frame(self.base)
         self.base.create_window((0, 0), window=self.gallery_frame, anchor="nw")
+        self._bind_gallery_events()
 
-        self.base.bind("<Configure>", lambda e: self.update_scrollregion())
+    def _bind_gallery_events(self) -> None:
+        """Connect canvas resize, scroll, and thumbnail click handlers."""
+        self.base.bind("<Configure>", lambda event: self.update_scrollregion())
         self.base.bind_all("<MouseWheel>", self.on_mouse_wheel)
         self.base.bind_all("<Button-4>", self.on_mouse_wheel)
         self.base.bind_all("<Button-5>", self.on_mouse_wheel)
-
-        # Delegate clicks that Canvas eats back to labels.
         self.base.bind("<Button-1>", self._delegate_thumb_click, add="+")
-        
+
     def update_scrollregion(self):
+        """Refresh the scroll bounds after thumbnails are added or removed."""
         self.base.update_idletasks()
         self.base.config(scrollregion=self.base.bbox("all"))
 
     def on_mouse_wheel(self, event):
-        if event.num == 4:  # Linux scrolling up
+        """Move the gallery horizontally when the user scrolls."""
+        button_number = self._event_button_number(event)
+        scroll_delta = self._event_scroll_delta(event)
+        if button_number == 4 or scroll_delta > 0:
             self.base.xview_scroll(-1, "units")
-        elif event.num == 5:  # Linux scrolling down
+            return
+        if button_number == 5 or scroll_delta < 0:
             self.base.xview_scroll(1, "units")
-        elif event.delta:  # Windows/macOS
-            if event.delta > 0:
-                self.base.xview_scroll(-1, "units")
-            else:
-                self.base.xview_scroll(1, "units")
-        
+
+    def _event_button_number(self, event) -> int | None:
+        """Return the platform-specific mouse button number from a Tk event."""
+        try:
+            return event.num
+        except AttributeError:
+            return None
+
+    def _event_scroll_delta(self, event) -> int:
+        """Return the platform-specific wheel delta from a Tk event."""
+        try:
+            return event.delta
+        except AttributeError:
+            return 0
+
     def pack(self):
+        """Show the gallery canvas and its horizontal scrollbar."""
         self.base.pack(side=tkinter.TOP, fill=tkinter.BOTH, expand=True)
         self.scrollbar.pack(side=tkinter.BOTTOM, fill=tkinter.X)
-    
+
     def unpack(self):
+        """Hide the gallery canvas and scrollbar."""
         self.base.pack_forget()
         self.scrollbar.pack_forget()
-    
+
     def resetPosition(self):
+        """Return the gallery scroll position to the beginning."""
         self.base.xview_moveto(0)
         self.base.yview_moveto(0)
 
-    # Called in buttons.py, IMPORT_call method    
     def addToGallery(self, tif_files: list):
-        from .abstract import abstract # prevent circular imports
+        """Add imported TIFF files to the thumbnail gallery by sample."""
+        from .abstract import abstract
 
-        def parse_sampleID_and_channel(path: pathlib.Path):
-            stem = path.stem
-            sample_match = re.search(r"s(\d{1,4})", stem, re.IGNORECASE)
-            channel_match = re.search(r"w[-_]?(?:.*?)?(DAPI|488|647|555|594|514)", stem, re.IGNORECASE)
-            if not (sample_match and channel_match):
-                logger.warning(f"addToGallery → skipping {stem!r}, couldn't parse s### or w###")
-                return None, None
-            sample_id = sample_match.group(1)
-            channel_name = channel_match.group(1).upper()
-            return sample_id, channel_name
-
-        def group_files_by_sample_and_channel(file_paths: list):
-            """Group files into a dict[sample_id][channel_name] = path."""
-            grouped = {}
-            for file_path in file_paths:
-                path = pathlib.Path(file_path)
-                sample_id, channel_name = parse_sampleID_and_channel(path)
-                if sample_id and channel_name:
-                    grouped.setdefault(sample_id, {})[channel_name] = path
-            return grouped
-        
-        # TODO - can be replaced by getCytoplasmPaths in abstract.py? -- no since its not instantiated yet 
-        def get_cytoplasm_paths(channels: dict):
-            """Return list of cytoplasm channel paths (647, 488) if present."""
-            cyto_paths = []
-            if "647" in channels:
-                cyto_paths.append(channels["647"])
-            if "488" in channels:
-                cyto_paths.append(channels["488"])
-            if "555" in channels:
-                cyto_paths.append(channels["555"])
-            if "594" in channels:
-                cyto_paths.append(channels["594"])
-            if "514" in channels:
-                cyto_paths.append(channels["514"])
-            return cyto_paths
-        
-        grouped = group_files_by_sample_and_channel(tif_files)
-
+        grouped = group_files_by_sample_and_channel(tif_files, on_parse_error=self._show_parse_error)
+        self._show_undocumented_channel_warning(grouped)
         for sample_id, channels in grouped.items():
-            nucleus_path = channels.get("DAPI")
-            if nucleus_path is None:
-                logger.warning(f"addToGallery → sample {sample_id} has no DAPI, skipping")
-                continue
-
-            cyto_paths = get_cytoplasm_paths(channels)
-            logger.info(f"addToGallery → instantiating abstract for sample {sample_id}")
-            abs_obj = abstract(
-                sample_id,
-                nucleus_path,
-                cyto_paths,
-                self.gallery_frame,
-                self.gui
-            )
-            self.gui.getSeasoning().update_channel_menu(abs_obj.available_channels)
-
+            self._add_sample_to_gallery(sample_id, channels, abstract)
         SessionManager.sendFirst()
         self.update_scrollregion()
-    
-    # TODO - unnnecessary now?
+
+    def _show_parse_error(self, path: pathlib.Path) -> None:
+        """Show a warning when one file name cannot be parsed."""
+        stem = path.stem
+        logger.warning("addToGallery -> skipping %r, could not parse sample/channel", stem)
+        self.gui.popBox("e", "File Path Error", f"Could not parse sample/channel from {stem!r}")
+
+    def _show_undocumented_channel_warning(self, grouped: dict) -> None:
+        """Warn when imported channels do not have tuned preprocessing defaults."""
+        undocumented = undocumented_channels_in_grouped(grouped)
+        if not undocumented:
+            return
+        channel_text = ", ".join(undocumented)
+        self.gui.popBox("w", "Channel Caution", f"Channels [{channel_text}] may not have tuned segmentation defaults.")
+        logger.warning("addToGallery -> undocumented channels detected: %s", channel_text)
+
+    def _add_sample_to_gallery(self, sample_id: str, channels: dict, abstract_cls) -> None:
+        """Create one frame object for a grouped sample."""
+        nucleus_path = channels.get("DAPI")
+        if nucleus_path is None:
+            logger.warning("addToGallery -> sample %s has no DAPI, skipping", sample_id)
+            return
+        logger.info("addToGallery -> instantiating abstract for sample %s", sample_id)
+        abs_obj = abstract_cls(sample_id, nucleus_path, channels, self.gallery_frame, self.gui)
+        self.gui.getSeasoning().update_channel_menu(abs_obj.available_channels)
+
     def _delegate_thumb_click(self, event):
-        """If the Canvas eats a click, find the Label under the pointer and call its on_click."""
-        w = self.base.winfo_containing(event.x_root, event.y_root)
-        cur = w
+        """Forward canvas clicks to the thumbnail object under the pointer."""
+        cur = self.base.winfo_containing(event.x_root, event.y_root)
         while cur is not None:
-            if hasattr(cur, "_abs"):
-                try:
-                    return cur._abs.on_click(event)
-                except Exception:
-                    return "break"
-            cur = getattr(cur, "master", None)
+            try:
+                return cur._abs.on_click(event)
+            except AttributeError:
+                cur = self._get_parent_widget(cur)
+            except Exception:
+                return "break"
         return None
+
+    def _get_parent_widget(self, widget):
+        """Return a widget's parent, or None when there is no parent."""
+        try:
+            return widget.master
+        except AttributeError:
+            return None
