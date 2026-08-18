@@ -62,8 +62,9 @@ class Fish():
         self.sam_nucleus_predictor = self.SamNucleusPredictor(self)
     
     def setup__config(self, config):
+        self.config_path = pathlib.Path(config).resolve()
         self.config = configparser.ConfigParser()
-        self.config.read(config)
+        self.config.read(self.config_path)
     def setup__logger(self):
         self.logger = logging.getLogger('fishcore')
         self.logger.setLevel(logging.INFO)
@@ -93,7 +94,9 @@ class Fish():
         self.model_config = SamConfig.from_pretrained("facebook/sam-vit-base")
         self.processor = SamProcessor.from_pretrained("facebook/sam-vit-huge")
         self.gdino_config = pathlib.Path(groundingdino.__path__[0]) / self.config["dino"]["config"]
-        self.gdino_weights = self.model_folder_path / self.config["dino"]["weights"]
+        repo_gdino_weights = self.model_folder_path / self.config["dino"]["weights"]
+        package_gdino_weights = pathlib.Path(groundingdino.__path__[0]) / self.config["dino"]["weights"]
+        self.gdino_weights = repo_gdino_weights if repo_gdino_weights.exists() else package_gdino_weights
         self.gdino_model = dino.load_model(self.gdino_config, self.gdino_weights)
         self.logger.info("%s GroundingDINO and SAM assets loaded", self._role_text())
 

@@ -151,21 +151,24 @@ class Progress:
 
         for abs in toSave:
             cyto_channels_and_paths = abs.getCytoplasmChannelsAndPaths()
-            for channel, path in cyto_channels_and_paths.items():
-                if not abs.selected or not abs.has_segments(channel):
-                    img = None
-                    xy = []
-                    masks = []
-                    nucleus_masks = []
-                else:
-                    img = abs.getImgNumpyRGBForChannel(channel)
-                    xy, masks, nucleus_masks = build_paired_export_data(abs, channel)
+            channel_items = list(cyto_channels_and_paths.items())
+            if not channel_items:
+                continue
+            channel, path = channel_items[0]
+            if not abs.selected or not abs.has_segments(channel):
+                img = None
+                xy = []
+                masks = []
+                nucleus_masks = []
+            else:
+                img = abs.getImgNumpyRGBForChannel(channel)
+                xy, masks, nucleus_masks = build_paired_export_data(abs, channel)
 
-                d["name"].append(path.name)
-                d["image"].append(img)
-                d["xy"].append(xy)
-                d["masks"].append(masks)
-                d["nucleus_masks"].append(nucleus_masks)
+            d["name"].append(path.name)
+            d["image"].append(img)
+            d["xy"].append(xy)
+            d["masks"].append(masks)
+            d["nucleus_masks"].append(nucleus_masks)
         prep_seconds = time.perf_counter() - prep_start
 
         write_start = time.perf_counter()

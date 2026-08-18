@@ -15,6 +15,65 @@ from ..services.session_manager import SessionManager
 logger = logging.getLogger("fishcore")
 
 
+class HoverTooltip:
+    """Show a short help message when the mouse stays over one widget."""
+
+    def __init__(self, widget, text: str, delay_ms: int = 2000):
+        """Store the widget, tooltip text, and hover delay."""
+        self.widget = widget
+        self.text = text
+        self.delay_ms = delay_ms
+        self.tip_window = None
+        self.after_id = None
+        self._bind_events()
+
+    def _bind_events(self) -> None:
+        """Connect hover events that show and hide the tooltip."""
+        self.widget.bind("<Enter>", self._schedule_show, add="+")
+        self.widget.bind("<Leave>", self._hide_tooltip, add="+")
+        self.widget.bind("<ButtonPress>", self._hide_tooltip, add="+")
+
+    def _schedule_show(self, _event=None) -> None:
+        """Start the timer that shows the tooltip after a short delay."""
+        self._cancel_scheduled_show()
+        self.after_id = self.widget.after(self.delay_ms, self._show_tooltip)
+
+    def _cancel_scheduled_show(self) -> None:
+        """Stop one pending tooltip timer if it exists."""
+        if self.after_id is None:
+            return
+        self.widget.after_cancel(self.after_id)
+        self.after_id = None
+
+    def _show_tooltip(self) -> None:
+        """Create the tooltip window beside the hovered widget."""
+        if self.tip_window is not None:
+            return
+        self.tip_window = tkinter.Toplevel(self.widget)
+        self.tip_window.wm_overrideredirect(True)
+        label = self._build_label()
+        label.pack()
+        self.tip_window.update_idletasks()
+        tooltip_width = self.tip_window.winfo_width()
+        tooltip_height = self.tip_window.winfo_height()
+        widget_center_x = self.widget.winfo_rootx() + (self.widget.winfo_width() // 2)
+        x = widget_center_x - (tooltip_width // 2)
+        y = self.widget.winfo_rooty() - tooltip_height - 8
+        self.tip_window.wm_geometry(f"+{x}+{y}")
+
+    def _build_label(self):
+        """Build the visible label shown inside the tooltip window."""
+        return tkinter.Label(self.tip_window, text=self.text, justify="left", wraplength=160, background="#FFF7CC", relief="solid", borderwidth=1, padx=8, pady=6)
+
+    def _hide_tooltip(self, _event=None) -> None:
+        """Hide the tooltip and clear any delayed show request."""
+        self._cancel_scheduled_show()
+        if self.tip_window is None:
+            return
+        self.tip_window.destroy()
+        self.tip_window = None
+
+
 class funcButton:
     """Builds the main workflow buttons for the multichannel GUI."""
 
@@ -91,6 +150,14 @@ class funcButton:
             offvalue=0,
             indicatoron=False,
             command=self.SEGMENT_SELECTION_call,
+        )
+        self.segment_selection_tooltip = HoverTooltip(
+            self.SEGMENTATION_SELECTION,
+            "Choose which frames to include when testing cytoplasm segmentation.\n"
+            "Turn this on, then Shift+Click thumbnails to mark or unmark frames.\n"
+            "Only the marked frames will be used by \"Segment All Channels for Selected Frames\".\n"
+            "Use this step to compare cytoplasm results across frames and see which channel gives the best mask.\n"
+            "After you find the best channel, use \"Copy Best Channel Mask to All Frames\" to reuse that mask on the other cytoplasm channels.",
         )
         self.SEGMENT = tkinter.Button(
             self.container,
@@ -412,11 +479,6 @@ class funcButton:
     def _start_cytoplasm_frame_selection(self):
         """Turn on thumbnail picking for cytoplasm segmentation."""
         self._exit_nucleus_prompt_mode()
-        self.gui.popBox(
-            "i",
-            "Select Cytoplasm Frames",
-            "Click thumbnails to choose frames for cytoplasm segmentation.",
-        )
 
     def _stop_cytoplasm_frame_selection(self):
         """Turn off thumbnail picking and clear chosen cytoplasm frames."""

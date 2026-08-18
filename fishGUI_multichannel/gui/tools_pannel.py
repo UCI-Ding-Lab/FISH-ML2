@@ -200,19 +200,23 @@ class seasoning():
         Switches the focused frame to a new display channel and redraws it.
         """
         self.channel_var.set(new_chan)
-        
+
         abs_obj = self.gui.getStove().getLoaded()
         if not abs_obj:
             return
 
-        show_masks = self.gui.getFuncButton().displayMaskButtonPressed()
+        func_btn = self.gui.getFuncButton()
+        show_masks = func_btn.displayMaskButtonPressed()
+        show_bbox = func_btn.bboxButtonPressed() and new_chan == "DAPI"
+
         abs_obj.drawSegmentation = False
+        abs_obj.drawBbox = False
 
-        # select channel and sync mask pointer
         abs_obj.selected_channel = new_chan
-
-        # redraw canvas with new channel + masks
         self.gui.getStove().cook(abs_obj)
+
+        if show_bbox:
+            abs_obj.drawBbox = True
         if show_masks:
             abs_obj.drawSegmentation = True
 

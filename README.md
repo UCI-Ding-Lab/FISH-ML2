@@ -57,7 +57,7 @@ The current `fishGUI_multichannel` app uses the following external model files:
 The pretrained Cellpose-SAM checkpoint for the current cytoplasm workflow
 
 - **Checkpoint:** [Google Drive Folder](https://drive.google.com/drive/folders/1PV2_K14ZOFsYIagmr0WM4Pg9eHKpSbBO?usp=sharing)
-- **Path:** `models/cellpose_sam/fish_cellpose_v1.pt`
+- **Path:** `assets/model/cellpose-sam/fish_cellpose_v1.pt`
 
 #### GroundingDINO
 
@@ -65,13 +65,13 @@ The GroundingDINO files for nucleus center computation and nucleus prompt genera
 
 - **Repository:** [GitHub Repository](https://github.com/IDEA-Research/GroundingDINO)
 - **Checkpoint:** [Hugging Face Model](https://huggingface.co/ShilongLiu/GroundingDINO/blob/main/groundingdino_swint_ogc.pth)
-- **Path:** `models/groundingdino/groundingdino_swint_ogc.pth`
+- **Path:** `assets/model/groundingdino/groundingdino_swint_ogc.pth`
 
 #### SAM Checkpoints
 
 The `fish_v*.pth` SAM checkpoints for the `GroundingDINO + SAM` nucleus backend
 
-- **Path:** `models/sam/fish_v*.pth`
+- **Path:** `assets/model/sam/fish_v*.pth`
 
 Organize the files in the root directory of the repository like this:
 
@@ -83,13 +83,18 @@ Organize the files in the root directory of the repository like this:
 |   |   |-- eraser.png
 |   |   `-- bbox.png
 |-- /GroundingDINO
-|-- /models
-|   |-- /cellpose_sam
-|   |   `-- fish_cellpose_v1.pt
-|   |-- /groundingdino
-|   |   `-- groundingdino_swint_ogc.pth
-|   `-- /sam
-|       `-- fish_v3.50.pth
+|-- /assets
+|   |-- /icon
+|   |   |-- brush.png
+|   |   |-- eraser.png
+|   |   `-- bbox.png
+|   `-- /model
+|       |-- /cellpose-sam
+|       |   `-- fish_cellpose_v1.pt
+|       |-- /groundingdino
+|       |   `-- groundingdino_swint_ogc.pth
+|       `-- /sam
+|           `-- fish_v3.50.pth
 |-- /core
 |-- /evaluation
 |-- /fishGUI_multichannel

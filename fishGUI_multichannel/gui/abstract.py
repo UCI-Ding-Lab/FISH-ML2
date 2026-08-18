@@ -458,14 +458,7 @@ class abstract():
             )
             if use_stored_masks:
                 return self.get_segments(target_channel)
-        if not self.bbox_generated:
-            self.gui.popBox(
-                "w",
-                "Nucleus Prompts Not Ready",
-                "Please prepare nucleus prompts before running cytoplasm segmentation.",
-            )
-            return self.get_segments(target_channel)
-        
+
         nucleus_img = self.__img_np_nucleus_native
         seg_dict = run_cytoplasm_segmentation(nucleus_img, self.__img_np_cyto, self.gui, target_channel)
         seg_list = seg_dict.get(target_channel, [])
@@ -674,13 +667,6 @@ class abstract():
         - event : thumbnail click while cytoplasm frame-selection mode is on
         """
         if self.gui.getFuncButton().frameSegButtonPressed():
-            if not self.bbox_generated:
-                self.gui.popBox(
-                    "w",
-                    "Nucleus Prompts Not Ready",
-                    "Prepare nucleus prompts before selecting frames for cytoplasm segmentation.",
-                )
-                return
             self.__selected_for_segmentation = not self.__selected_for_segmentation
             self.update_thumbnail()
             return "break"

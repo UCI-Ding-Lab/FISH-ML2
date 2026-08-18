@@ -141,13 +141,14 @@ class SessionManager:
             logger.info("GPU detected; limiting nucleus work to 1 worker.")
             return 1
         logger.info("CPU detected; limiting nucleus work to 2 workers to avoid bbox contention.")
-        return max(1, min(2, total_jobs))
+        return max(1, min(1, total_jobs))
 
     @classmethod
     def _get_cytoplasm_worker_limit(cls, gui, total_jobs: int) -> int:
         """Choose a safe worker count for cytoplasm segmentation work."""
-        logger.info("Cytoplasm segmentation allows up to 3 workers.")
-        return max(1, min(3, total_jobs))
+        worker_count = max(1, min(1, total_jobs))
+        logger.info("Cytoplasm segmentation is using %s worker(s).", worker_count)
+        return worker_count
 
     @classmethod
     def generate_bboxes(cls, gui):
@@ -269,10 +270,7 @@ class SessionManager:
             cls.__segmentation_timing_rows = []
 
         selected_frames = cls._get_selected_frames()
-        ready, not_ready = cls._split_by_bbox_generated(selected_frames)
-        if not_ready:
-            cls._show_bbox_not_ready_popup(gui, not_ready)
-        if not ready:
+        if not selected_frames:
             return
 
         gui.popBox("i", "Segmentation", f"Started segmentation for {len(selected_frames)} images.")
