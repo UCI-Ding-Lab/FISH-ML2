@@ -77,11 +77,6 @@ Organize the files in the root directory of the repository like this:
 
 ```text
 /FISH-ML2  # Root directory
-|-- /assets
-|   |-- /icon
-|   |   |-- brush.png
-|   |   |-- eraser.png
-|   |   `-- bbox.png
 |-- /GroundingDINO
 |-- /assets
 |   |-- /icon
