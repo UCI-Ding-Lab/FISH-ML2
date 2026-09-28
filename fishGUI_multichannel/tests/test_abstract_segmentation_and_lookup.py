@@ -1,10 +1,13 @@
 import numpy as np
+import pytest
 from unittest.mock import MagicMock, patch
 
 
-def test_segment_channel_stores_results_only_for_the_requested_channel(bare_abstract_factory):
+@pytest.mark.parametrize("prompts_ready", [False, True])
+def test_segment_channel_stores_results_only_for_the_requested_channel(bare_abstract_factory, prompts_ready):
+    """Segment only the requested channel whether nucleus prompts exist or not"""
     abs_obj = bare_abstract_factory()
-    abs_obj._abstract__bbox_generated = True
+    abs_obj._abstract__bbox_generated = prompts_ready
 
     with patch("fishGUI_multichannel.gui.abstract.run_cytoplasm_segmentation", return_value={"488": [99]}) as mock_segment:
         result = abs_obj.segment_channel("488")
@@ -12,12 +15,8 @@ def test_segment_channel_stores_results_only_for_the_requested_channel(bare_abst
     assert result == [99]
     assert abs_obj.get_segments("488") == [99]
     assert abs_obj.get_segments("647") == []
-    mock_segment.assert_called_once_with(
-        abs_obj._abstract__img_np_nucleus_native,
-        abs_obj._abstract__img_np_cyto,
-        abs_obj.gui,
-        "488",
-    )
+    abs_obj.gui.popBox.assert_not_called()
+    mock_segment.assert_called_once_with(abs_obj._abstract__img_np_nucleus_native, abs_obj._abstract__img_np_cyto, abs_obj.gui, "488")
 
 
 def test_segment_nucleus_stores_dapi_masks_separately(bare_abstract_factory):

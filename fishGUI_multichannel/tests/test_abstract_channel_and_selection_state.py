@@ -1,5 +1,6 @@
 from unittest.mock import MagicMock
 import numpy as np
+import pytest
 
 
 def test_set_seg_list_for_channel_updates_only_the_requested_channel(bare_abstract_factory):
@@ -86,10 +87,11 @@ def test_selected_for_segmentation_property_updates_the_segmentation_selection_s
     assert abs_obj.selected_for_segmentation is False
 
 
-def test_on_multi_toggle_uses_plain_click_when_cytoplasm_frame_selection_mode_is_on(bare_abstract_factory):
-    """Toggle cytoplasm frame selection with a normal click when selection mode is active."""
+@pytest.mark.parametrize("prompts_ready", [False, True])
+def test_on_multi_toggle_selects_cytoplasm_frames_with_or_without_prompts(bare_abstract_factory, prompts_ready):
+    """Select a cytoplasm frame whether nucleus prompts exist or not"""
     abs_obj = bare_abstract_factory()
-    abs_obj._abstract__bbox_generated = True
+    abs_obj._abstract__bbox_generated = prompts_ready
     abs_obj.gui.getFuncButton.return_value.frameSegButtonPressed.return_value = True
     event = MagicMock()
 
@@ -98,6 +100,7 @@ def test_on_multi_toggle_uses_plain_click_when_cytoplasm_frame_selection_mode_is
     assert abs_obj.selected_for_segmentation is True
     abs_obj.update_thumbnail.assert_called_once_with()
     assert result == "break"
+    abs_obj.gui.popBox.assert_not_called()
 
 
 def test_selected_channel_property_switches_the_current_channel_mask(bare_abstract_factory):

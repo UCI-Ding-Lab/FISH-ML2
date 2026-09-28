@@ -1,5 +1,7 @@
 from unittest.mock import MagicMock
 
+import pytest
+
 from fishGUI_multichannel.gui.tools_pannel import seasoning
 
 
@@ -46,6 +48,22 @@ def test_on_channel_change_returns_early_when_no_image_is_loaded():
 
     panel.channel_var.set.assert_called_once_with("DAPI")
     panel.gui.getStove.return_value.cook.assert_not_called()
+
+
+@pytest.mark.parametrize("channel", ["DAPI", "488"])
+@pytest.mark.parametrize("boxes_enabled", [False, True])
+@pytest.mark.parametrize("masks_enabled", [False, True])
+def test_channel_switch_restores_only_requested_overlays(channel, boxes_enabled, masks_enabled):
+    """Show boxes only on DAPI and show masks only when their toggle is on"""
+    panel = _make_bare_tool_panel()
+    loaded = panel.gui.getStove.return_value.getLoaded.return_value
+    loaded.drawBbox = loaded.drawSegmentation = True
+    buttons = panel.gui.getFuncButton.return_value
+    buttons.bboxButtonPressed.return_value = boxes_enabled
+    buttons.displayMaskButtonPressed.return_value = masks_enabled
+    panel.on_channel_change(channel)
+    assert loaded.drawBbox is (boxes_enabled and channel == "DAPI")
+    assert loaded.drawSegmentation is masks_enabled
 
 
 def test_update_channel_selector_for_image_syncs_the_current_channel():

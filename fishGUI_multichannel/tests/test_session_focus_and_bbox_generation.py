@@ -1,7 +1,27 @@
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from fishGUI_multichannel.gui.abstract import abstract
 from fishGUI_multichannel.services.session_manager import SessionManager
+
+
+@pytest.mark.parametrize("device", ["cpu", "cuda"])
+@pytest.mark.parametrize("total_jobs", [1, 5])
+def test_nucleus_processing_uses_one_worker(device, total_jobs):
+    """Use one nucleus worker even when several frames are waiting"""
+    gui = MagicMock()
+    gui.getNucleusBackend.return_value.device = device
+    assert SessionManager._get_nucleus_worker_limit(gui, total_jobs) == 1
+
+
+@pytest.mark.parametrize("device", ["cpu", "cuda"])
+@pytest.mark.parametrize("total_jobs", [1, 5])
+def test_cytoplasm_processing_uses_one_worker(device, total_jobs):
+    """Use one cytoplasm worker even when several frames are waiting"""
+    gui = MagicMock()
+    gui.getCytoplasmBackend.return_value.device = device
+    assert SessionManager._get_cytoplasm_worker_limit(gui, total_jobs) == 1
 
 
 def _make_bare_abstract(selected=False):

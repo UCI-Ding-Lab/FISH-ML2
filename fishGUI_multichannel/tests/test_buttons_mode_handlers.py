@@ -90,7 +90,7 @@ def test_segment_selection_call_clears_frame_selection_and_restores_thumbnail_st
 
 
 def test_segment_selection_call_starts_cytoplasm_frame_selection_when_turning_on():
-    """Shows the cytoplasm frame-picking message when selection mode turns on."""
+    """Start cytoplasm frame selection without showing a popup"""
     button = _make_button_handler()
     button.toggle["SEGMENTATION_SELECTION"].get.return_value = 1
     button._exit_nucleus_prompt_mode = MagicMock()
@@ -99,11 +99,7 @@ def test_segment_selection_call_starts_cytoplasm_frame_selection_when_turning_on
 
     button.toggle["SEGMENTATION_SELECTION"].get.assert_called_once_with()
     button._exit_nucleus_prompt_mode.assert_called_once_with()
-    button.gui.popBox.assert_called_once_with(
-        "i",
-        "Select Cytoplasm Frames",
-        "Click thumbnails to choose frames for cytoplasm segmentation.",
-    )
+    button.gui.popBox.assert_not_called()
 
 
 def test_segment_call_starts_segmentation_for_selected_frames():
