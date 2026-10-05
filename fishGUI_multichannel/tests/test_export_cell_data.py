@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 
 import numpy as np
 
-from fishGUI_multichannel.services.export_pairs import build_paired_export_data, extract_export_channel
+from fishGUI_multichannel.services.export_cell_data import build_paired_export_data, extract_export_channel
 
 
 def test_extract_export_channel_reads_a_supported_cytoplasm_channel_from_the_filename():

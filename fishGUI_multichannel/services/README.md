@@ -32,10 +32,10 @@ Builds pairings between DAPI nucleus masks and cytoplasm masks for each channel.
 
 ---
 
-## export_pairs.py
+## export_cell_data.py
 
-**Export pairing data collection**  
-Collects the matched cytoplasm masks, matched nucleus masks, and exported cell positions for one channel before MATLAB export.
+**Export cell data collection**  
+Builds the cell positions and cropped masks for one frame before MATLAB export: paired whole-cell and nucleus masks, nucleus masks only, or whole-cell masks only.
 
 ---
 
@@ -81,6 +81,6 @@ Marks the services directory as a Python package.
 
 - `session_manager.py` coordinates sample-level background work across the whole GUI.
 - `segmentation.py` and `apply_channel_mask.py` provide the main heavy workflow actions.
-- `pairing.py`, `export_pairs.py`, and `matPacker.py` prepare the paired cytoplasm and nucleus data used for export.
+- `pairing.py`, `export_cell_data.py`, and `matPacker.py` prepare the cell data used for export.
 - `session_save_load.py` is the main entry point for save and load behavior.
 - `mat_export.py` is the main entry point for MATLAB export.

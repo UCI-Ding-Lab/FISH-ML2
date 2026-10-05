@@ -1,6 +1,6 @@
 import numpy as np
 
-from fishGUI_multichannel.services.export_pairs import (
+from fishGUI_multichannel.services.export_cell_data import (
     build_nucleus_only_export_data,
     build_whole_cell_only_export_data,
 )

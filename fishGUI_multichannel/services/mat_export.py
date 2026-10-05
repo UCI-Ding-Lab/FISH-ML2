@@ -3,7 +3,7 @@ import pathlib
 import time
 from tkinter import filedialog, messagebox
 
-from .export_pairs import build_paired_export_data
+from .export_cell_data import build_paired_export_data
 from .matPacker import create
 from .pairing import export_pairing_debug_pdf
 from .session_manager import SessionManager
