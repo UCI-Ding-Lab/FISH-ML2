@@ -25,6 +25,41 @@ def build_paired_export_data(abs_obj, channel: str) -> tuple[list, list, list]:
     return xy, masks, nucleus_masks
 
 
+def build_nucleus_only_export_data(abs_obj) -> tuple[list, list]:
+    """
+    Build cell positions and masks from every nucleus mask, without pairing.
+    """
+    return build_single_mask_export_data(abs_obj.get_nucleus_segments())
+
+
+def build_whole_cell_only_export_data(abs_obj, channel: str) -> tuple[list, list]:
+    """
+    Build cell positions and masks from every whole-cell mask of one channel, without pairing.
+    """
+    return build_single_mask_export_data(abs_obj.get_segments(channel))
+
+
+def build_single_mask_export_data(segs: list) -> tuple[list, list]:
+    """
+    Crop each segment to its own bounds and return matching positions and masks.
+    """
+    cells = [build_single_mask_cell(segment_to_mask(seg)) for seg in segs]
+    xy = [cell["pos"] for cell in cells]
+    masks = [cell["mask"] for cell in cells]
+    return xy, masks
+
+
+def build_single_mask_cell(mask: object) -> dict:
+    """
+    Build one export cell from a single full-image mask.
+    """
+    bounds = collect_mask_bounds(mask)
+    return {
+        "pos": build_export_position(bounds),
+        "mask": crop_mask(mask, bounds),
+    }
+
+
 def collect_valid_export_pairs(abs_obj, channel: str) -> list[dict]:
     """
     Return only pairs whose nucleus and cytoplasm indexes still exist for export.
