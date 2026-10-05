@@ -163,3 +163,64 @@ def test_whole_cell_modes_still_skip_dapi_only_frames(export_mode, single_mode_s
     writer, pairing, nucleus_only, whole_cell_only, debug_pdf = single_mode_spies
     export_frames([make_dapi_only_frame("s001")], export_mode)
     writer.assert_called_once_with([], [], [], [] if export_mode == BOTH else None, "result.mat", dirname=".")
+
+
+def export_frames_and_get_warning(frames, export_mode):
+    """Run the export and return the warning text passed to the completion popup"""
+    with patch.object(mat_export, "show_export_complete") as show_complete:
+        export_frames(frames, export_mode)
+    return show_complete.call_args.args[2]
+
+
+def test_no_warning_when_every_selected_frame_has_cells(single_mode_spies):
+    """Show the plain completion message when nothing is missing"""
+    sample = make_export_frame("s001", ["647"])
+    assert export_frames_and_get_warning([sample], BOTH) is None
+
+
+def test_warning_lists_selected_frames_exported_with_zero_cells(single_mode_spies):
+    """List selected frames that had no masks for the chosen mode, but not unselected ones"""
+    ready = make_export_frame("s001", ["647"])
+    unsegmented = make_export_frame("s002", ["647"], has_masks=False)
+    unselected = make_export_frame("s003", ["647"], selected=False, has_masks=False)
+    warning = export_frames_and_get_warning([ready, unsegmented, unselected], WHOLE_CELL_ONLY)
+    assert "1 selected frame(s) were exported with 0 cells (no masks for Whole-cell only)" in warning
+    assert "s002_w647.tif" in warning
+    assert "s003_w647.tif" not in warning
+
+
+def test_warning_lists_dapi_only_frames_left_out_of_mixed_nucleus_only_export(single_mode_spies):
+    """Explain that DAPI-only frames were left out because other frames have cytoplasm images"""
+    sample = make_export_frame("s001", ["647"])
+    sample.has_nucleus_segments.return_value = True
+    warning = export_frames_and_get_warning([sample, make_dapi_only_frame("s002")], NUCLEUS_ONLY)
+    assert "1 DAPI-only frame(s) were left out because other selected frames have cytoplasm images" in warning
+    assert "s002_wDAPI.tif" in warning
+
+
+def test_warning_explains_dapi_only_frames_left_out_of_whole_cell_modes(single_mode_spies):
+    """Explain that whole-cell modes need cytoplasm images"""
+    sample = make_export_frame("s001", ["647"])
+    warning = export_frames_and_get_warning([sample, make_dapi_only_frame("s002")], BOTH)
+    assert "left out because Both (paired) needs cytoplasm images" in warning
+
+
+def test_format_frame_names_shortens_long_lists():
+    """Show at most ten names and count the rest"""
+    text = mat_export.format_frame_names([f"s{i:03d}.tif" for i in range(12)])
+    assert text.count("\n") == 10
+    assert text.endswith("... and 2 more")
+
+
+@pytest.mark.parametrize("warning, popup", [(None, "showinfo"), ("2 frames missing", "showwarning")])
+def test_show_export_complete_uses_a_warning_popup_only_when_needed(warning, popup):
+    """Use one popup: information normally, a warning when frames are missing"""
+    gui = MagicMock()
+    with patch.object(mat_export.messagebox, "showinfo") as showinfo, \
+         patch.object(mat_export.messagebox, "showwarning") as showwarning:
+        mat_export.show_export_complete(gui, "summary", warning)
+        gui.getRoot.return_value.after.call_args.args[1]()
+    used = {"showinfo": showinfo, "showwarning": showwarning}
+    used[popup].assert_called_once()
+    other = "showwarning" if popup == "showinfo" else "showinfo"
+    used[other].assert_not_called()

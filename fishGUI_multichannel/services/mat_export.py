@@ -10,7 +10,7 @@ from .export_cell_data import (
     build_whole_cell_only_export_data,
     first_cytoplasm_channel_and_path,
 )
-from .export_modes import BOTH, NUCLEUS_ONLY, WHOLE_CELL_ONLY
+from .export_modes import BOTH, EXPORT_MODE_LABELS, NUCLEUS_ONLY, WHOLE_CELL_ONLY
 from .mat_file_writer import write_tracked_mat_file
 from .pairing import export_pairing_debug_pdf
 from .session_manager import SessionManager
@@ -44,11 +44,15 @@ def export_session_to_mat(gui, export_mode: str = BOTH):
     # DAPI-only frames are exported only when every selected frame is DAPI-only, so DoFISH
     # never looks for cytoplasm channel images that do not exist
     include_dapi_only_frames = export_mode == NUCLEUS_ONLY and all_selected_frames_are_dapi_only(toSave)
+    empty_frame_names = []
+    skipped_dapi_only_names = []
 
     for abs in toSave:
         first_channel = first_cytoplasm_channel_and_path(abs)
         if first_channel is None:
             if not include_dapi_only_frames:
+                if abs.selected:
+                    skipped_dapi_only_names.append(abs.getNucleusPath().name)
                 continue
             channel, path = None, abs.getNucleusPath()
         else:
@@ -61,6 +65,8 @@ def export_session_to_mat(gui, export_mode: str = BOTH):
         else:
             img = abs.getImgNumpyRGBForChannel(channel)
             xy, masks, nucleus_masks = build_frame_cells(abs, channel, export_mode)
+        if abs.selected and not xy:
+            empty_frame_names.append(path.name)
 
         d["name"].append(path.name)
         d["image"].append(img)
@@ -87,19 +93,56 @@ def export_session_to_mat(gui, export_mode: str = BOTH):
         total_seconds,
     )
 
-    try:
-        gui.getRoot().after(
-            0,
-            lambda: messagebox.showinfo(
-                "Export Complete",
-                (
-                    f"Prepared {len(d['name'])} entries in {prep_seconds:.2f}s\n"
-                    f"Wrote MAT in {write_seconds:.2f}s\n"
-                    f"Pairing PDF: {debug_pdf_path.name if debug_pdf_path else 'not written'}\n"
-                    f"Total {total_seconds:.2f}s"
-                ),
-            ),
+    summary = (
+        f"Prepared {len(d['name'])} entries in {prep_seconds:.2f}s\n"
+        f"Wrote MAT in {write_seconds:.2f}s\n"
+        f"Pairing PDF: {debug_pdf_path.name if debug_pdf_path else 'not written'}\n"
+        f"Total {total_seconds:.2f}s"
+    )
+    warning = build_export_warning(empty_frame_names, skipped_dapi_only_names, export_mode)
+    show_export_complete(gui, summary, warning)
+
+
+def build_export_warning(empty_frame_names: list, skipped_dapi_only_names: list, export_mode: str) -> str | None:
+    """Describe selected frames that ended up with no cells, or None when every selected frame has cells."""
+    parts = []
+    if empty_frame_names:
+        parts.append(
+            f"{len(empty_frame_names)} selected frame(s) were exported with 0 cells "
+            f"(no masks for {EXPORT_MODE_LABELS[export_mode]}):\n"
+            + format_frame_names(empty_frame_names)
         )
+    if skipped_dapi_only_names:
+        if export_mode == NUCLEUS_ONLY:
+            reason = "other selected frames have cytoplasm images"
+        else:
+            reason = f"{EXPORT_MODE_LABELS[export_mode]} needs cytoplasm images"
+        parts.append(
+            f"{len(skipped_dapi_only_names)} DAPI-only frame(s) were left out because {reason}:\n"
+            + format_frame_names(skipped_dapi_only_names)
+        )
+    return "\n\n".join(parts) if parts else None
+
+
+def format_frame_names(frame_names: list, limit: int = 10) -> str:
+    """List frame names one per line, shortening long lists."""
+    lines = [f"  {name}" for name in frame_names[:limit]]
+    if len(frame_names) > limit:
+        lines.append(f"  ... and {len(frame_names) - limit} more")
+    return "\n".join(lines)
+
+
+def show_export_complete(gui, summary: str, warning: str | None) -> None:
+    """Show the export summary on the main Tk thread, as a warning when some frames have no cells."""
+    def show():
+        """Show one popup with the summary and any warning."""
+        if warning:
+            messagebox.showwarning("Export Complete With Warnings", f"{summary}\n\n{warning}")
+        else:
+            messagebox.showinfo("Export Complete", summary)
+
+    try:
+        gui.getRoot().after(0, show)
     except Exception:
         pass
 
