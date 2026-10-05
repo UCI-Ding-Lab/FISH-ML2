@@ -2,21 +2,6 @@ import pathlib
 import numpy as np
 import scipy.io
 
-def read(mat: dict, img_number: int, target: str, cell: int, title: str):
-    """
-    Read one value back from the exported MATLAB structure.
-    """
-    if target == "filename":
-        return mat["Tracked"][0, img_number]["filename"][0, 0]
-    # dirname exists only on the first entry (if written)
-    if target == "dirname":
-        first = mat["Tracked"][0, 0]
-        dtype = first.dtype
-        if dtype is not None and dtype.names and ("dirname" in dtype.names):
-            return first["dirname"][0, 0]
-        return None
-    return mat["Tracked"][0, img_number][target][0, 0][0, cell][title][0, 0]
-
 def write_tracked_mat_file(
     name: list[str],
     xy: list[list[tuple[float, float]]],
