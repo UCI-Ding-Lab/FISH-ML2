@@ -3,7 +3,13 @@ import pathlib
 import time
 from tkinter import filedialog, messagebox
 
-from .export_cell_data import build_paired_export_data, first_cytoplasm_channel_and_path
+from .export_cell_data import (
+    build_nucleus_only_export_data,
+    build_paired_export_data,
+    build_whole_cell_only_export_data,
+    first_cytoplasm_channel_and_path,
+)
+from .export_modes import BOTH, NUCLEUS_ONLY, WHOLE_CELL_ONLY
 from .mat_file_writer import write_tracked_mat_file
 from .pairing import export_pairing_debug_pdf
 from .session_manager import SessionManager
@@ -11,8 +17,8 @@ from .session_manager import SessionManager
 logger = logging.getLogger('fishcore')
 
 
-def export_session_to_mat(gui):
-    """Export the selected frames as a MATLAB .mat file for DoFISH."""
+def export_session_to_mat(gui, export_mode: str = BOTH):
+    """Export the selected frames as a MATLAB .mat file for DoFISH, using one export mode."""
     total_start = time.perf_counter()
     f = filedialog.asksaveasfilename(defaultextension=".mat", 
                                      filetypes=[("Matlab files", "*.mat")],
@@ -39,14 +45,14 @@ def export_session_to_mat(gui):
         if first_channel is None:
             continue
         channel, path = first_channel
-        if not abs.selected or not abs.has_segments(channel):
+        if not abs.selected or not frame_has_masks_for_mode(abs, channel, export_mode):
             img = None
             xy = []
             masks = []
             nucleus_masks = []
         else:
             img = abs.getImgNumpyRGBForChannel(channel)
-            xy, masks, nucleus_masks = build_paired_export_data(abs, channel)
+            xy, masks, nucleus_masks = build_frame_cells(abs, channel, export_mode)
 
         d["name"].append(path.name)
         d["image"].append(img)
@@ -56,10 +62,11 @@ def export_session_to_mat(gui):
     prep_seconds = time.perf_counter() - prep_start
 
     write_start = time.perf_counter()
-    write_tracked_mat_file(d["name"], d["xy"], d["masks"], d["nucleus_masks"], f, dirname=str(directory_name))
+    nucleus_masks_to_write = d["nucleus_masks"] if export_mode == BOTH else None
+    write_tracked_mat_file(d["name"], d["xy"], d["masks"], nucleus_masks_to_write, f, dirname=str(directory_name))
     write_seconds = time.perf_counter() - write_start
     debug_pdf_path = None
-    if should_export_pairing_debug_pdf(gui):
+    if export_mode == BOTH and should_export_pairing_debug_pdf(gui):
         debug_pdf_path = export_pairing_debug_pdf([frame for frame in toSave if frame.selected], pathlib.Path(directory_name))
     total_seconds = time.perf_counter() - total_start
 
@@ -87,6 +94,24 @@ def export_session_to_mat(gui):
         )
     except Exception:
         pass
+
+
+def frame_has_masks_for_mode(frame, channel: str, export_mode: str) -> bool:
+    """Return True when one frame has the masks the chosen export mode needs."""
+    if export_mode == NUCLEUS_ONLY:
+        return frame.has_nucleus_segments()
+    return frame.has_segments(channel)
+
+
+def build_frame_cells(frame, channel: str, export_mode: str) -> tuple[list, list, list]:
+    """Build one frame's cell positions, masks, and nucleus masks for the chosen export mode."""
+    if export_mode == NUCLEUS_ONLY:
+        xy, masks = build_nucleus_only_export_data(frame)
+        return xy, masks, []
+    if export_mode == WHOLE_CELL_ONLY:
+        xy, masks = build_whole_cell_only_export_data(frame, channel)
+        return xy, masks, []
+    return build_paired_export_data(frame, channel)
 
 
 def should_export_pairing_debug_pdf(gui) -> bool:

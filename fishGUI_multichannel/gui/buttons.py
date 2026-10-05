@@ -8,8 +8,10 @@ import tkinter
 import tkinter as tk
 from tkinter import filedialog
 
+from ..services.export_modes import guess_export_mode
 from ..services.mat_export import export_session_to_mat
 from ..services.session_manager import SessionManager
+from .export_mode_popup import ask_export_mode
 
 
 logger = logging.getLogger("fishcore")
@@ -610,15 +612,27 @@ class funcButton:
             tkinter.messagebox.showwarning("Image Not Loaded", "Please select an image first")
             self.toggle["EXPORT"].set(0)
             return
+        export_mode = self._ask_export_mode()
+        if export_mode is None:
+            self.toggle["EXPORT"].set(0)
+            return
         self._reset_main_mode_toggles_before_export()
         self.gui.indicateWait("Dataset conversion")
 
         def job():
             """Runs export work off the main Tk thread."""
-            export_session_to_mat(self.gui)
+            export_session_to_mat(self.gui, export_mode)
             self.gui.getRoot().after(0, self._finish_export)
 
         threading.Thread(target=job, daemon=True).start()
+
+    def _ask_export_mode(self):
+        """Ask which masks to export, starting on the last choice or a guess; None means cancel."""
+        initial_mode = guess_export_mode(SessionManager.getPool(), self.gui.getLastExportMode())
+        export_mode = ask_export_mode(self.gui.getRoot(), initial_mode)
+        if export_mode is not None:
+            self.gui.setLastExportMode(export_mode)
+        return export_mode
 
     def _finish_export(self):
         """Clear the export button and close the waiting popup."""

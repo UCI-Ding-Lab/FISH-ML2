@@ -208,3 +208,30 @@ def test_export_call_warns_and_resets_toggle_when_no_image_is_loaded():
 
     mock_warning.assert_called_once_with("Image Not Loaded", "Please select an image first")
     button.toggle["EXPORT"].set.assert_called_once_with(0)
+
+
+def test_export_call_cancelled_popup_stops_export_and_resets_toggle():
+    button = _make_button_handler()
+    button.gui.getStove.return_value.isLoaded.return_value = True
+
+    with patch.object(SessionManager, "getPool", return_value=[]),          patch("fishGUI_multichannel.gui.buttons.ask_export_mode", return_value=None),          patch("fishGUI_multichannel.gui.buttons.threading.Thread") as mock_thread:
+        button.EXPORT_call()
+
+    mock_thread.assert_not_called()
+    button.gui.indicateWait.assert_not_called()
+    button.gui.setLastExportMode.assert_not_called()
+    button.toggle["EXPORT"].set.assert_called_once_with(0)
+
+
+def test_export_call_remembers_and_exports_the_chosen_mode():
+    button = _make_button_handler()
+    button.gui.getStove.return_value.isLoaded.return_value = True
+    button.gui.getLastExportMode.return_value = "nucleus_only"
+
+    with patch.object(SessionManager, "getPool", return_value=[]),          patch("fishGUI_multichannel.gui.buttons.ask_export_mode", return_value="whole_cell_only") as mock_popup,          patch("fishGUI_multichannel.gui.buttons.export_session_to_mat") as mock_export,          patch("fishGUI_multichannel.gui.buttons.threading.Thread") as mock_thread:
+        button.EXPORT_call()
+        mock_thread.call_args.kwargs["target"]()
+
+    mock_popup.assert_called_once_with(button.gui.getRoot.return_value, "nucleus_only")
+    button.gui.setLastExportMode.assert_called_once_with("whole_cell_only")
+    mock_export.assert_called_once_with(button.gui, "whole_cell_only")
