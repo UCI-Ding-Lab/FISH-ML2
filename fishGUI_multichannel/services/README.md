@@ -51,8 +51,15 @@ Builds the `Tracked` MATLAB structure written during export. In the current `int
 
 ## session_save_load.py
 
-**Save, load, and export entry points**  
-Handles saving session progress to `.pkl`, loading saved sessions back into the GUI, and exporting finalized MATLAB results plus optional pairing debug output.
+**Save and load entry points**  
+Handles saving session progress to `.pkl` and loading saved sessions back into the GUI.
+
+---
+
+## mat_export.py
+
+**MATLAB export entry point**  
+Runs the export from start to finish: asks for the `.mat` path, collects cell data for each selected frame, writes the MATLAB file, and writes the optional pairing debug output.
 
 ---
 
@@ -75,4 +82,5 @@ Marks the services directory as a Python package.
 - `session_manager.py` coordinates sample-level background work across the whole GUI.
 - `segmentation.py` and `apply_channel_mask.py` provide the main heavy workflow actions.
 - `pairing.py`, `export_pairs.py`, and `matPacker.py` prepare the paired cytoplasm and nucleus data used for export.
-- `session_save_load.py` is the main entry point for save, load, and export behavior.
+- `session_save_load.py` is the main entry point for save and load behavior.
+- `mat_export.py` is the main entry point for MATLAB export.
