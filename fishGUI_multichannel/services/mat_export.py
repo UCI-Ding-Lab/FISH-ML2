@@ -4,6 +4,7 @@ import time
 from tkinter import filedialog, messagebox
 
 from .export_cell_data import (
+    all_selected_frames_are_dapi_only,
     build_nucleus_only_export_data,
     build_paired_export_data,
     build_whole_cell_only_export_data,
@@ -40,11 +41,18 @@ def export_session_to_mat(gui, export_mode: str = BOTH):
     if not directory_name:
         directory_name = str(pathlib.Path(f).parent) # fallback to directory where export is saved
 
+    # DAPI-only frames are exported only when every selected frame is DAPI-only, so DoFISH
+    # never looks for cytoplasm channel images that do not exist
+    include_dapi_only_frames = export_mode == NUCLEUS_ONLY and all_selected_frames_are_dapi_only(toSave)
+
     for abs in toSave:
         first_channel = first_cytoplasm_channel_and_path(abs)
         if first_channel is None:
-            continue
-        channel, path = first_channel
+            if not include_dapi_only_frames:
+                continue
+            channel, path = None, abs.getNucleusPath()
+        else:
+            channel, path = first_channel
         if not abs.selected or not frame_has_masks_for_mode(abs, channel, export_mode):
             img = None
             xy = []

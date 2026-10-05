@@ -4,10 +4,12 @@ from unittest.mock import MagicMock
 import numpy as np
 
 from fishGUI_multichannel.services.export_cell_data import (
+    all_selected_frames_are_dapi_only,
     build_paired_export_data,
     extract_export_channel,
     first_cytoplasm_channel_and_path,
     frame_has_whole_cell_masks,
+    frame_is_dapi_only,
 )
 
 
@@ -74,3 +76,28 @@ def test_frame_has_whole_cell_masks_checks_only_the_first_channel():
     frame.has_segments.side_effect = lambda channel: channel == "488"
 
     assert frame_has_whole_cell_masks(frame) is False
+
+
+def make_channel_frame(channels, selected=True):
+    """Build a frame double with the given cytoplasm channels"""
+    frame = MagicMock(selected=selected)
+    frame.getCytoplasmChannelsAndPaths.return_value = {ch: pathlib.Path(f"{ch}.tif") for ch in channels}
+    return frame
+
+
+def test_frame_is_dapi_only_without_cytoplasm_channels():
+    """A frame is DAPI-only when it has no cytoplasm channel images."""
+    assert frame_is_dapi_only(make_channel_frame([])) is True
+    assert frame_is_dapi_only(make_channel_frame(["488"])) is False
+
+
+def test_all_selected_frames_are_dapi_only_ignores_unselected_frames():
+    """Only selected frames decide whether the export is DAPI-only."""
+    frames = [make_channel_frame([]), make_channel_frame(["488"], selected=False)]
+    assert all_selected_frames_are_dapi_only(frames) is True
+
+
+def test_all_selected_frames_are_dapi_only_is_false_for_mixed_or_empty_selections():
+    """Mixed selections and empty selections are not DAPI-only."""
+    assert all_selected_frames_are_dapi_only([make_channel_frame([]), make_channel_frame(["488"])]) is False
+    assert all_selected_frames_are_dapi_only([make_channel_frame([], selected=False)]) is False

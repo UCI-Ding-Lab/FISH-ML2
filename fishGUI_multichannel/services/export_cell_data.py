@@ -20,6 +20,21 @@ def first_cytoplasm_channel_and_path(frame) -> tuple[str, pathlib.Path] | None:
     return channel_items[0] if channel_items else None
 
 
+def frame_is_dapi_only(frame) -> bool:
+    """
+    Return True when one frame has a DAPI image but no cytoplasm channel images.
+    """
+    return first_cytoplasm_channel_and_path(frame) is None
+
+
+def all_selected_frames_are_dapi_only(frames: list) -> bool:
+    """
+    Return True when there is at least one selected frame and every selected frame is DAPI-only.
+    """
+    selected = [frame for frame in frames if frame.selected]
+    return bool(selected) and all(frame_is_dapi_only(frame) for frame in selected)
+
+
 def frame_has_whole_cell_masks(frame) -> bool:
     """
     Return True when the exported cytoplasm channel of one frame has whole-cell masks.

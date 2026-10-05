@@ -125,3 +125,41 @@ def test_paired_export_still_writes_debug_pdf_when_requested(single_mode_spies):
     export_frames([sample], BOTH, debug_pdf=True)
     pairing.assert_called_once_with(sample, "647")
     debug_pdf.assert_called_once()
+
+
+def make_dapi_only_frame(sample_id, selected=True, has_nuclei=True):
+    """Build a sample with a DAPI image but no cytoplasm channel images"""
+    frame = make_export_frame(sample_id, [], selected=selected)
+    frame.getNucleusPath.return_value = Path(f"{sample_id}_wDAPI.tif")
+    frame.has_nucleus_segments.return_value = has_nuclei
+    return frame
+
+
+def test_nucleus_only_export_includes_dapi_only_frames_when_all_are_dapi_only(single_mode_spies):
+    """Use the DAPI filename when every selected frame is DAPI-only"""
+    writer, pairing, nucleus_only, whole_cell_only, debug_pdf = single_mode_spies
+    frames = [make_dapi_only_frame("s001"), make_dapi_only_frame("s002")]
+    export_frames(frames, NUCLEUS_ONLY)
+    assert nucleus_only.call_args_list == [call(frame) for frame in frames]
+    writer.assert_called_once_with(
+        ["s001_wDAPI.tif", "s002_wDAPI.tif"], [[(2, 2)]] * 2, [["nucleus cell"]] * 2, None, "result.mat", dirname="."
+    )
+
+
+def test_nucleus_only_export_leaves_out_dapi_only_frames_in_mixed_sessions(single_mode_spies):
+    """Skip DAPI-only frames when another selected frame has cytoplasm images"""
+    writer, pairing, nucleus_only, whole_cell_only, debug_pdf = single_mode_spies
+    dapi_only = make_dapi_only_frame("s001")
+    sample = make_export_frame("s002", ["647"])
+    sample.has_nucleus_segments.return_value = True
+    export_frames([dapi_only, sample], NUCLEUS_ONLY)
+    nucleus_only.assert_called_once_with(sample)
+    writer.assert_called_once_with(["s002_w647.tif"], [[(2, 2)]], [["nucleus cell"]], None, "result.mat", dirname=".")
+
+
+@pytest.mark.parametrize("export_mode", [WHOLE_CELL_ONLY, BOTH])
+def test_whole_cell_modes_still_skip_dapi_only_frames(export_mode, single_mode_spies):
+    """Never export DAPI-only frames in modes that need cytoplasm images"""
+    writer, pairing, nucleus_only, whole_cell_only, debug_pdf = single_mode_spies
+    export_frames([make_dapi_only_frame("s001")], export_mode)
+    writer.assert_called_once_with([], [], [], [] if export_mode == BOTH else None, "result.mat", dirname=".")
