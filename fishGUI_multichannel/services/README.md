@@ -42,10 +42,10 @@ Builds the cell positions and cropped masks for one frame before MATLAB export: 
 ## mat_file_writer.py
 
 **MATLAB export structure builder**  
-Builds the `Tracked` MATLAB structure written during export. In the current `integrate-DAPI` workflow, each exported cell entry stores both:
+Builds and writes the `Tracked` MATLAB structure during export (`write_tracked_mat_file`). Each exported cell entry stores:
 
-- `mask`: cytoplasm or whole-cell segmentation
-- `nucleus_mask`: matched nuclear segmentation
+- `mask`: always present; the mask DoFISH analyzes
+- `nucleus_mask`: only present when nucleus masks are passed in (paired export); otherwise the field is left out, matching older DoFISH files
 
 ---
 
