@@ -8,7 +8,7 @@ import tkinter
 import tkinter as tk
 from tkinter import filedialog
 
-from ..services.progress import Progress
+from ..services.session_save_load import SessionSaveLoad
 from ..services.session_manager import SessionManager
 
 
@@ -615,7 +615,7 @@ class funcButton:
 
         def job():
             """Runs export work off the main Tk thread."""
-            Progress.export(self.gui)
+            SessionSaveLoad.export(self.gui)
             self.gui.getRoot().after(0, self._finish_export)
 
         threading.Thread(target=job, daemon=True).start()

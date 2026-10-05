@@ -14,7 +14,7 @@ import pathlib
 
 logger = logging.getLogger('fishcore')
 
-class Progress:
+class SessionSaveLoad:
     @staticmethod
     def save():
         """

@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
-from fishGUI_multichannel.services import progress
+from fishGUI_multichannel.services import session_save_load
 from fishGUI_multichannel.services.session_manager import SessionManager
 
 
@@ -21,9 +21,9 @@ def make_export_frame(sample_id, channels, selected=True, has_masks=True):
 def export_spies():
     """Capture exported data while replacing dialogs and file writing"""
     with (
-        patch.object(progress.filedialog, "asksaveasfilename", return_value="result.mat"),
-        patch.object(progress, "create") as writer,
-        patch.object(progress, "build_paired_export_data", return_value=([(1, 1)], ["cell"], ["nucleus"])) as pairing,
+        patch.object(session_save_load.filedialog, "asksaveasfilename", return_value="result.mat"),
+        patch.object(session_save_load, "create") as writer,
+        patch.object(session_save_load, "build_paired_export_data", return_value=([(1, 1)], ["cell"], ["nucleus"])) as pairing,
     ):
         yield writer, pairing
 
@@ -33,7 +33,7 @@ def export_frames(frames):
     gui = MagicMock()
     gui.shouldExportPairingDebugPdf.return_value = False
     with patch.object(SessionManager, "getPool", return_value=frames):
-        progress.Progress.export(gui)
+        session_save_load.SessionSaveLoad.export(gui)
 
 
 @pytest.mark.parametrize("channels", [("647", "488"), ("488", "647")])

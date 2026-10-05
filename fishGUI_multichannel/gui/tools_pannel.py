@@ -2,7 +2,7 @@ import tkinter
 import pathlib
 import threading
 from PIL import Image, ImageTk
-from ..services.progress import Progress
+from ..services.session_save_load import SessionSaveLoad
 from .abstract import abstract as GUIAbstract
 
 
@@ -176,7 +176,7 @@ class seasoning():
         self.gui.indicateWait("Saving")
         def job():
             try:
-                Progress.save()
+                SessionSaveLoad.save()
             except Exception as e:
                 self.gui.popBox("e", "Save Error", str(e))
             finally:
@@ -188,7 +188,7 @@ class seasoning():
         self.gui.indicateWait("Loading")
         def job():
             try:
-                Progress.load(self.gui)
+                SessionSaveLoad.load(self.gui)
             except Exception as e:
                 self.gui.popBox("e", "Load Error", str(e))
             finally:

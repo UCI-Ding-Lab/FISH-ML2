@@ -190,7 +190,7 @@ class SessionManager:
         Ensures GUI is now in a view-only mode. 
         Called when:
         - The user exits Show Centers mode 
-        - The user clicks on "Save" and Progress.save is called
+        - The user clicks on "Save" and SessionSaveLoad.save is called
 
         Note for Shizuka:
         Checkout ADDBOX_CALL in tools_panel.py
@@ -207,7 +207,7 @@ class SessionManager:
         Ensures GUI is now in a view-only mode. 
         Called when:
         - The user hides masks with Display Masks 
-        - The user clicks on "Save" and Progress.save is called
+        - The user clicks on "Save" and SessionSaveLoad.save is called
         """
         cls.getBuffer().drawSegmentation = False
         cls.sendFocused()
