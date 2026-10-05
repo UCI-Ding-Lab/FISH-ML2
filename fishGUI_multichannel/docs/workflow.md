@@ -323,9 +323,19 @@ Expected behavior:
 
 - export should require at least one loaded sample
 - export should include all currently loaded frames
-- export should iterate through all available cytoplasm channels for each loaded frame
+- export uses the first cytoplasm channel of each frame (see `TODO.md` for the open channel question)
 - finalized mask data may come from edited segmentation results or applied channel masks
 - the export step is the end of the workflow, after inspection and correction
+
+Export modes:
+
+- before exporting, a popup asks which masks to export: `Nucleus only`, `Whole-cell only`, or `Both (paired)`
+- the popup starts on the mode chosen earlier in the session, or on a guess based on what the selected frames have
+- `Nucleus only` stores every nucleus mask in `mask`, with no `nucleus_mask` field
+- `Whole-cell only` stores every whole-cell mask in `mask`, with no `nucleus_mask` field
+- `Both (paired)` stores the whole-cell mask in `mask` and its paired nucleus in `nucleus_mask`; only nucleus-whole-cell pairs are exported
+- DAPI-only frames are exported only in `Nucleus only`, and only when every selected frame is DAPI-only; otherwise the whole-cell modes are greyed out or the DAPI-only frames are left out
+- after export, a warning lists selected frames exported with 0 cells and DAPI-only frames that were left out
 
 Important intention:
 

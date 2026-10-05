@@ -36,6 +36,13 @@ Current main workflow buttons:
 
 ---
 
+## export_mode_popup.py
+
+**Export mode popup**  
+Shows the popup that asks which masks to export (`Nucleus only`, `Whole-cell only`, or `Both (paired)`). Greys out modes that cannot work and returns the chosen mode, or `None` when the user cancels.
+
+---
+
 ## toolbar.py
 
 **Custom matplotlib toolbar**  
