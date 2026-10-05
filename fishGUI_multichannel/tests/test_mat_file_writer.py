@@ -1,7 +1,7 @@
 import numpy as np
 import scipy.io
 
-from fishGUI_multichannel.services.matPacker import build_cell_data, build_cell_dtype, create
+from fishGUI_multichannel.services.mat_file_writer import build_cell_data, build_cell_dtype, create
 
 
 def read_first_cell_fields(mat_path):

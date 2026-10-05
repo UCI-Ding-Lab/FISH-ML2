@@ -39,7 +39,7 @@ Builds the cell positions and cropped masks for one frame before MATLAB export: 
 
 ---
 
-## matPacker.py
+## mat_file_writer.py
 
 **MATLAB export structure builder**  
 Builds the `Tracked` MATLAB structure written during export. In the current `integrate-DAPI` workflow, each exported cell entry stores both:
@@ -81,6 +81,6 @@ Marks the services directory as a Python package.
 
 - `session_manager.py` coordinates sample-level background work across the whole GUI.
 - `segmentation.py` and `apply_channel_mask.py` provide the main heavy workflow actions.
-- `pairing.py`, `export_cell_data.py`, and `matPacker.py` prepare the cell data used for export.
+- `pairing.py`, `export_cell_data.py`, and `mat_file_writer.py` prepare the cell data used for export.
 - `session_save_load.py` is the main entry point for save and load behavior.
 - `mat_export.py` is the main entry point for MATLAB export.
