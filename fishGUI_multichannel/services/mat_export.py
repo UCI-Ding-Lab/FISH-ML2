@@ -3,7 +3,7 @@ import pathlib
 import time
 from tkinter import filedialog, messagebox
 
-from .export_cell_data import build_paired_export_data
+from .export_cell_data import build_paired_export_data, first_cytoplasm_channel_and_path
 from .mat_file_writer import write_tracked_mat_file
 from .pairing import export_pairing_debug_pdf
 from .session_manager import SessionManager
@@ -35,11 +35,10 @@ def export_session_to_mat(gui):
         directory_name = str(pathlib.Path(f).parent) # fallback to directory where export is saved
 
     for abs in toSave:
-        cyto_channels_and_paths = abs.getCytoplasmChannelsAndPaths()
-        channel_items = list(cyto_channels_and_paths.items())
-        if not channel_items:
+        first_channel = first_cytoplasm_channel_and_path(abs)
+        if first_channel is None:
             continue
-        channel, path = channel_items[0]
+        channel, path = first_channel
         if not abs.selected or not abs.has_segments(channel):
             img = None
             xy = []

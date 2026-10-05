@@ -3,7 +3,12 @@ from unittest.mock import MagicMock
 
 import numpy as np
 
-from fishGUI_multichannel.services.export_cell_data import build_paired_export_data, extract_export_channel
+from fishGUI_multichannel.services.export_cell_data import (
+    build_paired_export_data,
+    extract_export_channel,
+    first_cytoplasm_channel_and_path,
+    frame_has_whole_cell_masks,
+)
 
 
 def test_extract_export_channel_reads_a_supported_cytoplasm_channel_from_the_filename():
@@ -41,3 +46,31 @@ def test_build_paired_export_data_returns_only_matched_cytoplasm_and_nucleus_mas
     assert xy == [(1, 1)]
     assert np.array_equal(masks[0], cyto_mask.astype(bool))
     assert np.array_equal(nucleus_masks[0], nucleus_mask.astype(bool))
+
+
+def test_first_cytoplasm_channel_and_path_returns_the_first_channel():
+    """Use the first cytoplasm channel in the frame's channel order."""
+    frame = MagicMock()
+    frame.getCytoplasmChannelsAndPaths.return_value = {
+        "647": pathlib.Path("s001_w647.tif"),
+        "488": pathlib.Path("s001_w488.tif"),
+    }
+
+    assert first_cytoplasm_channel_and_path(frame) == ("647", pathlib.Path("s001_w647.tif"))
+
+
+def test_first_cytoplasm_channel_and_path_is_none_without_cytoplasm_channels():
+    """Return None for a DAPI-only frame."""
+    frame = MagicMock()
+    frame.getCytoplasmChannelsAndPaths.return_value = {}
+
+    assert first_cytoplasm_channel_and_path(frame) is None
+
+
+def test_frame_has_whole_cell_masks_checks_only_the_first_channel():
+    """Report whole-cell masks only when the exported channel has them."""
+    frame = MagicMock()
+    frame.getCytoplasmChannelsAndPaths.return_value = {"647": pathlib.Path("a.tif"), "488": pathlib.Path("b.tif")}
+    frame.has_segments.side_effect = lambda channel: channel == "488"
+
+    assert frame_has_whole_cell_masks(frame) is False

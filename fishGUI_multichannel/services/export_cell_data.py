@@ -12,6 +12,22 @@ def extract_export_channel(path: pathlib.Path) -> str | None:
     return channel
 
 
+def first_cytoplasm_channel_and_path(frame) -> tuple[str, pathlib.Path] | None:
+    """
+    Return the cytoplasm channel and image path that export uses for one frame, or None.
+    """
+    channel_items = list(frame.getCytoplasmChannelsAndPaths().items())
+    return channel_items[0] if channel_items else None
+
+
+def frame_has_whole_cell_masks(frame) -> bool:
+    """
+    Return True when the exported cytoplasm channel of one frame has whole-cell masks.
+    """
+    first_channel = first_cytoplasm_channel_and_path(frame)
+    return first_channel is not None and frame.has_segments(first_channel[0])
+
+
 def build_paired_export_data(abs_obj, channel: str) -> tuple[list, list, list]:
     """
     Build matched cell positions plus cytoplasm and nucleus masks for one channel.
