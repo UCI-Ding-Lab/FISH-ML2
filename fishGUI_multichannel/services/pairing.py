@@ -88,9 +88,9 @@ def match_quality_is_good(center_inside: bool, containment: float, distance: flo
     """Keep matches that contain the nucleus or are a strong spatial fallback."""
     if center_inside:
         return True
-    if containment >= 0.2:
+    if containment >= 0.6:  # >= 60% of nucleus inside cell. Note: handpicked value, may change later (Oct 6 2026, Shizuka)
         return True
-    return distance <= 0.1
+    return distance <= 0.05  # Centers within 5% of image diagonal (~145 px at 2048x2048), for a nucleus outside an under-segmented cell. Note: handpicked value, may change later (Oct 6 2026, Shizuka)
 
 
 def build_pairing_result(nucleus_segments: list, cytoplasm_segments: list) -> dict:
