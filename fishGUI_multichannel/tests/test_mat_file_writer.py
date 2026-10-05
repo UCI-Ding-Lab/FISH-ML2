@@ -1,7 +1,7 @@
 import numpy as np
 import scipy.io
 
-from fishGUI_multichannel.services.mat_file_writer import build_cell_data, build_cell_dtype, create
+from fishGUI_multichannel.services.mat_file_writer import build_cell_data, build_cell_dtype, write_tracked_mat_file
 
 
 def read_first_cell_fields(mat_path):
@@ -55,20 +55,20 @@ def test_build_cell_data_without_nucleus_mask_stores_only_mask():
     assert np.array_equal(cell_data[0, 0]["size"], np.array([2, 2], dtype=np.double))
 
 
-def test_create_keeps_nucleus_mask_field_when_masks_are_given(tmp_path):
+def test_write_tracked_mat_file_keeps_nucleus_mask_field_when_masks_are_given(tmp_path):
     mat_path = tmp_path / "paired.mat"
     mask = np.array([[1, 1], [1, 1]])
 
-    create(["img_w2-488_s001.tif"], [[(1, 1)]], [[mask]], [[mask]], mat_path)
+    write_tracked_mat_file(["img_w2-488_s001.tif"], [[(1, 1)]], [[mask]], [[mask]], mat_path)
 
     assert "nucleus_mask" in read_first_cell_fields(mat_path)
 
 
-def test_create_leaves_out_nucleus_mask_field_when_masks_are_none(tmp_path):
+def test_write_tracked_mat_file_leaves_out_nucleus_mask_field_when_masks_are_none(tmp_path):
     mat_path = tmp_path / "single.mat"
     mask = np.array([[1, 1], [1, 1]])
 
-    create(["img_w2-488_s001.tif"], [[(1, 1)]], [[mask]], None, mat_path)
+    write_tracked_mat_file(["img_w2-488_s001.tif"], [[(1, 1)]], [[mask]], None, mat_path)
 
     fields = read_first_cell_fields(mat_path)
     assert "nucleus_mask" not in fields

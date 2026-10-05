@@ -4,7 +4,7 @@ import time
 from tkinter import filedialog, messagebox
 
 from .export_cell_data import build_paired_export_data
-from .mat_file_writer import create
+from .mat_file_writer import write_tracked_mat_file
 from .pairing import export_pairing_debug_pdf
 from .session_manager import SessionManager
 
@@ -57,7 +57,7 @@ def export_session_to_mat(gui):
     prep_seconds = time.perf_counter() - prep_start
 
     write_start = time.perf_counter()
-    create(d["name"], d["xy"], d["masks"], d["nucleus_masks"], f, dirname=str(directory_name))
+    write_tracked_mat_file(d["name"], d["xy"], d["masks"], d["nucleus_masks"], f, dirname=str(directory_name))
     write_seconds = time.perf_counter() - write_start
     debug_pdf_path = None
     if should_export_pairing_debug_pdf(gui):

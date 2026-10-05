@@ -22,7 +22,7 @@ def export_spies():
     """Capture exported data while replacing dialogs and file writing"""
     with (
         patch.object(mat_export.filedialog, "asksaveasfilename", return_value="result.mat"),
-        patch.object(mat_export, "create") as writer,
+        patch.object(mat_export, "write_tracked_mat_file") as writer,
         patch.object(mat_export, "build_paired_export_data", return_value=([(1, 1)], ["cell"], ["nucleus"])) as pairing,
     ):
         yield writer, pairing

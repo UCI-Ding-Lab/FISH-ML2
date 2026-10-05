@@ -17,7 +17,7 @@ def read(mat: dict, img_number: int, target: str, cell: int, title: str):
         return None
     return mat["Tracked"][0, img_number][target][0, 0][0, cell][title][0, 0]
 
-def create(
+def write_tracked_mat_file(
     name: list[str],
     xy: list[list[tuple[float, float]]],
     masks: list[list[np.ndarray]],
