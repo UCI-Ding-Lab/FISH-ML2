@@ -74,3 +74,18 @@ def test_popup_lists_all_three_modes(root):
 
     run_popup(root, BOTH, read_modes_then_cancel)
     assert values == [NUCLEUS_ONLY, WHOLE_CELL_ONLY, BOTH]
+
+
+def test_unavailable_modes_are_greyed_out(root):
+    states = {}
+
+    def read_states_then_export(popup):
+        states.update({r.cget("value"): r.cget("state") for r in find_widgets(popup, tk.Radiobutton)})
+        click_button(popup, "Export")
+
+    def run():
+        root.after(50, lambda: read_states_then_export(find_widgets(root, tk.Toplevel)[-1]))
+        return ask_export_mode(root, NUCLEUS_ONLY, [NUCLEUS_ONLY])
+
+    assert run() == NUCLEUS_ONLY
+    assert states == {NUCLEUS_ONLY: tk.NORMAL, WHOLE_CELL_ONLY: tk.DISABLED, BOTH: tk.DISABLED}

@@ -2,6 +2,7 @@ from fishGUI_multichannel.services.export_modes import (
     BOTH,
     NUCLEUS_ONLY,
     WHOLE_CELL_ONLY,
+    available_export_modes,
     guess_export_mode,
 )
 
@@ -9,17 +10,20 @@ from fishGUI_multichannel.services.export_modes import (
 class FakeFrame:
     """Store which masks one frame has for export mode tests."""
 
-    def __init__(self, nuclei=False, whole_cells=False, selected=True):
+    def __init__(self, nuclei=False, whole_cells=False, selected=True, dapi_only=False):
         self.selected = selected
         self.nuclei = nuclei
         self.whole_cells = whole_cells
+        self.dapi_only = dapi_only
 
     def has_nucleus_segments(self):
         """Return whether this frame has nucleus masks."""
         return self.nuclei
 
     def getCytoplasmChannelsAndPaths(self):
-        """Return two cytoplasm channels like a real frame."""
+        """Return two cytoplasm channels like a real frame, or none for a DAPI-only frame."""
+        if self.dapi_only:
+            return {}
         return {"488": "img_w2-488_s001.tif", "647": "img_w3-647_s001.tif"}
 
     def has_segments(self, channel):
@@ -51,3 +55,22 @@ def test_guess_ignores_unselected_frames():
 def test_guess_uses_last_mode_when_given():
     frames = [FakeFrame(nuclei=True, whole_cells=True)]
     assert guess_export_mode(frames, last_mode=NUCLEUS_ONLY) == NUCLEUS_ONLY
+
+
+def test_all_modes_are_available_when_a_frame_has_cytoplasm_images():
+    frames = [FakeFrame(dapi_only=True), FakeFrame()]
+    assert available_export_modes(frames) == [NUCLEUS_ONLY, WHOLE_CELL_ONLY, BOTH]
+
+
+def test_only_nucleus_only_is_available_when_every_frame_is_dapi_only():
+    frames = [FakeFrame(dapi_only=True), FakeFrame(dapi_only=True)]
+    assert available_export_modes(frames) == [NUCLEUS_ONLY]
+
+
+def test_guess_ignores_an_unavailable_last_mode():
+    frames = [FakeFrame(nuclei=True, dapi_only=True)]
+    assert guess_export_mode(frames, last_mode=BOTH) == NUCLEUS_ONLY
+
+
+def test_guess_is_nucleus_only_for_unsegmented_dapi_only_frames():
+    assert guess_export_mode([FakeFrame(dapi_only=True)]) == NUCLEUS_ONLY

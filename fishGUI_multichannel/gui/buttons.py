@@ -8,7 +8,7 @@ import tkinter
 import tkinter as tk
 from tkinter import filedialog
 
-from ..services.export_modes import guess_export_mode
+from ..services.export_modes import available_export_modes, guess_export_mode
 from ..services.mat_export import export_session_to_mat
 from ..services.session_manager import SessionManager
 from .export_mode_popup import ask_export_mode
@@ -628,8 +628,10 @@ class funcButton:
 
     def _ask_export_mode(self):
         """Ask which masks to export, starting on the last choice or a guess; None means cancel."""
-        initial_mode = guess_export_mode(SessionManager.getPool(), self.gui.getLastExportMode())
-        export_mode = ask_export_mode(self.gui.getRoot(), initial_mode)
+        frames = SessionManager.getPool()
+        available_modes = available_export_modes(frames)
+        initial_mode = guess_export_mode(frames, self.gui.getLastExportMode())
+        export_mode = ask_export_mode(self.gui.getRoot(), initial_mode, available_modes)
         if export_mode is not None:
             self.gui.setLastExportMode(export_mode)
         return export_mode

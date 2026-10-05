@@ -232,6 +232,8 @@ def test_export_call_remembers_and_exports_the_chosen_mode():
         button.EXPORT_call()
         mock_thread.call_args.kwargs["target"]()
 
-    mock_popup.assert_called_once_with(button.gui.getRoot.return_value, "nucleus_only")
+    mock_popup.assert_called_once_with(
+        button.gui.getRoot.return_value, "nucleus_only", ["nucleus_only", "whole_cell_only", "both"]
+    )
     button.gui.setLastExportMode.assert_called_once_with("whole_cell_only")
     mock_export.assert_called_once_with(button.gui, "whole_cell_only")
