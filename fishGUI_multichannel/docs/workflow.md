@@ -302,7 +302,7 @@ Expected behavior:
 - the system ensures the source channel has segmentation
 - if needed, generate segmentation for that source channel first
 - extract finalized masks from the source channel
-- apply those masks onto cytoplasm target channels across the chosen frames
+- apply those masks onto cytoplasm target channels across all loaded frames
 - preserve the focused sample's selected channel after temporary processing
 - update overlays when needed
 
@@ -424,12 +424,12 @@ Which nucleus mode is used depends on the backend picked at startup (`getNucleus
 
 | Mode | Buttons |
 |---|---|
-| neutral | Import, Select, Segment Nucleus, Segment Cytoplasm, Display Masks, Export |
-| nucleus_cellpose | Segment, Display Masks, Done |
-| nucleus_gdino | BBOX, Segment, Display Masks, Done |
-| cytoplasm | Select Frames for Segmentation, Segment All Channels for Selected Frames, Apply Source Mask, Display Masks, Done |
+| neutral | Import, Select Frames, Segment Nucleus, Segment Cytoplasm, Display/Edit, Export |
+| nucleus_cellpose | Segment, Display/Edit, <- Back to Main Mode |
+| nucleus_gdino | BBOX, Segment, Display/Edit, <- Back to Main Mode |
+| cytoplasm | Select Cytoplasm Frames, Segment All Channels for Selected Frames, Copy Best Channel Mask to All Frames, Display/Edit, <- Back to Main Mode |
 
-`Done` returns to neutral.
+`<- Back to Main Mode` returns to neutral.
 
 ### How each mode flows through the layers
 
