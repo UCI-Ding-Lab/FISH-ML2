@@ -94,7 +94,6 @@ class abstract():
         
         # Segmentation masks
         self.__nucleus_segments = []
-        self.__last_nucleus_prompt_signature = None
         self.__channel_segments = {ch: [] for ch in self.__cyto_channels}
         self.__channel_pairings = {ch: make_empty_pairing_result() for ch in self.__cyto_channels}
         self.__segment_generated: bool = False
@@ -272,21 +271,6 @@ class abstract():
             elapsed,
         )
 
-    def _is_nucleus_workflow_mode(self) -> bool:
-        """Return True when the GUI is in one nucleus workflow mode."""
-        mode = self.gui.getWorkflowMode()
-        return mode in ("nucleus_gdino", "nucleus_cellpose")
-
-    def _shows_bbox_indicator(self) -> bool:
-        """Return True when the computed-center status should be shown."""
-        return self.bbox_generated
-
-    def _shows_orange_mask_indicator(self) -> bool:
-        """Return True when one segmentation-complete status should be shown."""
-        if self._is_nucleus_workflow_mode():
-            return self.has_nucleus_segments()
-        return self.has_all_channel_segments()
-
     def _has_any_right_status_indicator(self) -> bool:
         """Return True when one right-side status dot should be visible."""
         return (
@@ -348,15 +332,6 @@ class abstract():
         self.__nucleus_segments = seg_objs if seg_objs is not None else []
         self.update_thumbnail()
 
-    def _get_nucleus_prompt_signature(self) -> tuple:
-        """
-        Return a stable snapshot of the current bbox prompts for cache checks.
-        """
-        signature = []
-        for bbox_values in self.boundingBoxRevised:
-            signature.append(tuple(round(value, 4) for value in bbox_values))
-        return tuple(signature)
-
     def has_nucleus_segments(self) -> bool:
         """
         Return True when this frame already has DAPI nucleus masks.
@@ -373,7 +348,6 @@ class abstract():
         """
         Run DAPI nucleus segmentation once and store the resulting masks.
         """
-        prompt_signature = self._get_nucleus_prompt_signature()
         if self.has_nucleus_segments():
             use_stored_masks = self.gui.ask_use_stored_masks(
                 "Stored Nucleus Masks",
@@ -388,7 +362,6 @@ class abstract():
             bbox_list=self.boundingBoxRevised,
         )
         self.set_nucleus_segments(nucleus_segments)
-        self.__last_nucleus_prompt_signature = prompt_signature
         return self.get_nucleus_segments()
 
     def _is_dapi_channel(self, channel) -> bool:
@@ -561,14 +534,6 @@ class abstract():
         self.set_pairings(channel, pairing_result)
         return pairing_result
 
-    def refresh_all_pairings(self) -> None:
-        """
-        Rebuild pairings for every available cytoplasm channel in this frame.
-        """
-        for channel in self.available_channels:
-            if self.get_segments(channel):
-                self.update_pairings_for_channel(channel)
-
     @bbox.setter
     def bbox(self, value: list[box]):
         """Store editable nucleus prompt boxes for this frame."""
@@ -623,7 +588,6 @@ class abstract():
         it to focus
         """
         self.gui.getSeasoning().update_channel_selector_for_image(self)
-        self.gui.getStove().bufferSetCurrent(3)
         self.gui.getStove().dump()
         from ..services.session_manager import SessionManager
         prev_thumbnail = SessionManager.getBuffer()

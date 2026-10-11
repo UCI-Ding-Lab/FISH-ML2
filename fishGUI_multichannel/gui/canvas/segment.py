@@ -17,7 +17,6 @@ class segment():
         self.gui = gui
         self.__patch: PathPatch = None
         self.__draw: bool = False
-        self.__exist: bool = True
         self.__selected: bool = False
         
         # history containers
@@ -55,10 +54,6 @@ class segment():
                 path = Path(vertices, codes)
                 self.__patch = PathPatch(path, facecolor='none', edgecolor='orange', linewidth=0.5)
         return self.__patch
-
-    @property
-    def exist(self) -> bool:
-        return self.__exist
 
     @property
     def selected(self) -> bool:

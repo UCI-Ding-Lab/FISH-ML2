@@ -748,11 +748,6 @@ def get_apply_channel_source_choices():
     return [channel for channel in channels if channel != "DAPI"]
 
 
-def get_frame_names():
-    """Returns the sample IDs for every loaded frame."""
-    return [frame.sample_id for frame in SessionManager.getPool()]
-
-
 def get_selected_frames(selection):
     """Maps one frame-selection shortcut to the chosen frame objects."""
     pool = SessionManager.getPool()
@@ -816,95 +811,4 @@ class ChannelSelectPopup(tk.Toplevel):
     def on_next(self):
         """Sends the chosen source channel back to the caller."""
         self.callback(self.selected_channel.get())
-        self.destroy()
-
-
-class CytoplasmActionPopup(tk.Toplevel):
-    """Let the user choose which cytoplasm action to run next."""
-
-    def __init__(self, parent, select_callback, segment_callback, copy_callback):
-        """Build the popup that groups the cytoplasm workflow actions."""
-        super().__init__(parent)
-        self.title("Segment Cytoplasm")
-        self._select_callback = select_callback
-        self._segment_callback = segment_callback
-        self._copy_callback = copy_callback
-        tk.Label(self, text="Choose the next cytoplasm action.").pack(padx=20, pady=12)
-        tk.Button(self, text="Select Cytoplasm Frames", command=self._run_select).pack(
-            fill="x",
-            padx=20,
-            pady=4,
-        )
-        tk.Button(self, text="Run Cytoplasm Segmentation", command=self._run_segmentation).pack(
-            fill="x",
-            padx=20,
-            pady=4,
-        )
-        tk.Button(self, text="Copy Channel Mask", command=self._run_copy).pack(
-            fill="x",
-            padx=20,
-            pady=(0, 12),
-        )
-
-    def _run_select(self):
-        """Close the popup and toggle cytoplasm frame selection mode."""
-        self.destroy()
-        self._select_callback()
-
-    def _run_segmentation(self):
-        """Close the popup and start the cytoplasm segmentation path."""
-        self.destroy()
-        self._segment_callback()
-
-    def _run_copy(self):
-        """Close the popup and start the cytoplasm mask copy path."""
-        self.destroy()
-        self._copy_callback()
-
-
-class FrameSelectPopup(tk.Toplevel):
-    """Lets the user choose which frames should receive copied masks."""
-
-    def __init__(self, parent, frame_names, callback):
-        """Builds the popup that asks how many future frames to update."""
-        super().__init__(parent)
-        self.title("Choose Cytoplasm Frames")
-        self.callback = callback
-        self.selection = tk.StringVar(value="all")
-        tk.Label(self, text="Which cytoplasm frames should receive the copied mask?").pack(pady=10)
-        self._build_frame_preview(frame_names)
-        self._build_selection_choices()
-        tk.Button(self, text="Copy Mask", command=self.on_apply).pack(pady=10)
-
-    def _build_frame_preview(self, frame_names):
-        """Shows a short horizontal preview of the available frame IDs."""
-        canvas = tk.Canvas(self, height=120)
-        scrollbar = tk.Scrollbar(self, orient="horizontal", command=canvas.xview)
-        canvas.configure(xscrollcommand=scrollbar.set)
-        frame = tk.Frame(canvas)
-        canvas.create_window((0, 0), window=frame, anchor="nw")
-        canvas.pack(fill="x")
-        scrollbar.pack(fill="x")
-        for name in frame_names:
-            tk.Label(frame, text=name, relief=tk.RIDGE, width=18).pack(side=tk.LEFT, padx=2, pady=2)
-        frame.update_idletasks()
-        canvas.config(scrollregion=canvas.bbox("all"))
-
-    def _build_selection_choices(self):
-        """Creates the radio buttons that choose the frame selection size."""
-        tk.Radiobutton(self, text="Next 5 Frames", variable=self.selection, value="next5").pack(
-            anchor="w",
-            padx=20,
-        )
-        tk.Radiobutton(self, text="All Frames", variable=self.selection, value="all").pack(
-            anchor="w",
-            padx=20,
-        )
-
-    def on_apply(self):
-        """Runs the caller callback with the chosen frame selection."""
-        try:
-            self.callback(self.selection.get())
-        except Exception:
-            logger.exception("Exception in FrameSelectPopup callback")
         self.destroy()

@@ -67,11 +67,6 @@ class tifSequence():
         self.base.pack(side=tkinter.TOP, fill=tkinter.BOTH, expand=True)
         self.scrollbar.pack(side=tkinter.BOTTOM, fill=tkinter.X)
 
-    def unpack(self):
-        """Hide the gallery canvas and scrollbar."""
-        self.base.pack_forget()
-        self.scrollbar.pack_forget()
-
     def resetPosition(self):
         """Return the gallery scroll position to the beginning."""
         self.base.xview_moveto(0)

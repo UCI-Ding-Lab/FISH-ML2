@@ -14,8 +14,6 @@ from .segment import segment
 
 class stove():
     BILT_BUFFER1 = None
-    BILT_BUFFER2 = None
-    BILT_BUFFER3 = None
     
     def __init__(self, gui):
         self.gui = gui
@@ -52,10 +50,6 @@ class stove():
     def bufferSetCurrent(self, buffer):
         if buffer == 1:
             self.BILT_BUFFER1 = self.biltbg
-        elif buffer == 2:
-            self.BILT_BUFFER2 = self.biltbg
-        elif buffer == 3:
-            self.BILT_BUFFER3 = self.biltbg
 
     def pack(self):
         self.pit.pack(side=tkinter.LEFT, fill=tkinter.BOTH, expand=True)
@@ -197,7 +191,6 @@ class stove():
                         self.xs = [event.xdata]
                         self.ys = [event.ydata]
                         self.bufferSetCurrent(1)
-                        self.bufferSetCurrent(2)
                         try:
                             self.canvas.restore_region(self.BILT_BUFFER1)
                         except Exception:
@@ -336,7 +329,6 @@ class stove():
         self.xs = [event.xdata]
         self.ys = [event.ydata]
         self.bufferSetCurrent(1)
-        self.bufferSetCurrent(2)
         self.marker_draw(event.xdata, event.ydata)
         self.canvas.blit(self.subplot.bbox)
 

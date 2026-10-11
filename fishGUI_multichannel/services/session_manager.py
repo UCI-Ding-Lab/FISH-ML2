@@ -99,19 +99,6 @@ class SessionManager:
                 return
             
     @classmethod
-    def sendFocused(cls):
-        """
-        Focuses the currently buffered object, or the first selected one
-        if none is buffered. 
-        """
-        current = cls.getBuffer()
-        if not isinstance(current, abstract):
-            logger.debug(f"Object {current} is not an instance of abstract. Skipping.")
-            return
-        if current: current.on_click(None)
-        else: cls.sendFirst()
-
-    @classmethod
     def remove_segmentation_selection(cls):
         """
         Deselects all frames for segmentation in the pool.
@@ -182,34 +169,6 @@ class SessionManager:
         if loaded is not abs_obj:
             return
         gui.getRoot().after(0, lambda a=abs_obj: gui.getStove().cook(a))
-
-    @classmethod
-    def saveBboxChanges(cls):
-        """
-        Ensures GUI is now in a view-only mode. 
-        Called when:
-        - The user exits Show Centers mode 
-        - The user clicks on "Save" and SessionSaveLoad.save is called
-
-        Note for Shizuka:
-        Checkout ADDBOX_CALL in tools_panel.py
-        Checkout abstract.py def bbox and its setter
-        Checkout box.py and anchor.py
-        1st line: this simply hides the overlay. the new bbox is saved in self.__bbox in abstract.py
-        """
-        cls.getBuffer().drawBbox = False 
-        cls.sendFocused()
-
-    @classmethod
-    def saveSegChanges(cls):
-        """
-        Ensures GUI is now in a view-only mode. 
-        Called when:
-        - The user hides masks with Display Masks 
-        - The user clicks on "Save" and SessionSaveLoad.save is called
-        """
-        cls.getBuffer().drawSegmentation = False
-        cls.sendFocused()
 
     @classmethod
     def grabPool(cls) -> list['bundle']:
@@ -305,17 +264,6 @@ class SessionManager:
         )
         return selected_frames
 
-    @classmethod
-    def _split_by_bbox_generated(cls, frames):
-        ready = []
-        not_ready = []
-        for obj in frames:
-            if obj.bbox_generated:
-                ready.append(obj)
-            else:
-                not_ready.append(obj)
-        return ready, not_ready
-    
     @classmethod
     def _ui_show_segmented(cls, a, gui):
         a.thumbnail = "segmented" # refresh thumbnail so the right-side status stack is rebuilt

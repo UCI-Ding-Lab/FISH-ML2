@@ -214,10 +214,6 @@ class FishGUI(object):
         """Return the selected backend mode used for nucleus segmentation."""
         return self.__nucleus_backend_mode
 
-    def getCytoplasmBackendMode(self) -> str:
-        """Return the fixed backend mode used for cytoplasm segmentation."""
-        return self.__cytoplasm_backend_mode
-
     def setWorkflowMode(self, mode: str):
         """Store the current workflow mode used by the GUI."""
         self.__workflow_mode = mode
