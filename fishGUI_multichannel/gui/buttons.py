@@ -461,9 +461,11 @@ class funcButton:
                 self.gui.getRoot().after(0, lambda: self.gui.getStove().cook(focused))
                 self.gui.getRoot().after(0, self.gui._refresh_workflow_thumbnails)
             except Exception as error:
+                # Keep the message: Python deletes `error` when this block ends, before the popup runs
+                error_message = str(error)
                 self.gui.getRoot().after(
                     0,
-                    lambda: self.gui.popBox("e", "Nucleus Segmentation Error", str(error)),
+                    lambda: self.gui.popBox("e", "Nucleus Segmentation Error", error_message),
                 )
             finally:
                 self.gui.getRoot().after(0, lambda: self._set_nucleus_segment_running(False))

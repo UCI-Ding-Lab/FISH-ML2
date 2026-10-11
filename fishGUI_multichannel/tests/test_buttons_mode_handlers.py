@@ -237,3 +237,21 @@ def test_export_call_remembers_and_exports_the_chosen_mode():
     )
     button.gui.setLastExportMode.assert_called_once_with("whole_cell_only")
     mock_export.assert_called_once_with(button.gui, "whole_cell_only")
+
+
+def test_nucleus_segmentation_error_popup_shows_the_error_message():
+    button = _make_button_handler()
+    button._set_nucleus_segment_running = MagicMock()
+    failing_frame = MagicMock()
+    failing_frame.segment_nucleus.side_effect = RuntimeError("model failed")
+    scheduled = []
+    button.gui.getRoot.return_value.after.side_effect = lambda delay, callback: scheduled.append(callback)
+
+    with patch.object(SessionManager, "getPool", return_value=[failing_frame]), \
+         patch("fishGUI_multichannel.gui.buttons.threading.Thread") as mock_thread:
+        button._run_nucleus_segmentation(MagicMock())
+        mock_thread.call_args.kwargs["target"]()
+    for callback in scheduled:
+        callback()
+
+    button.gui.popBox.assert_called_once_with("e", "Nucleus Segmentation Error", "model failed")
