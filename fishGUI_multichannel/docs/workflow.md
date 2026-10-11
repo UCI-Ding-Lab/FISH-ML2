@@ -403,6 +403,75 @@ The goal of the workflow is finalized masks ready for downstream use.
 
 ---
 
+## Code Structure: Nucleus and Cytoplasm Modes
+
+### Workflow modes
+
+The current mode is stored on the main app object, `FishGUI` in `app.py`, with `setWorkflowMode()` / `getWorkflowMode()`:
+
+| Mode | Meaning | Banner |
+|---|---|---|
+| `"neutral"` | Main menu | "Main Mode" (purple) |
+| `"nucleus_cellpose"` | Nucleus mode with the Cellpose-SAM backend | "Nucleus Mode" (blue) |
+| `"nucleus_gdino"` | Nucleus mode with GroundingDINO + SAM (uses prompt boxes) | "Nucleus Mode" (blue) |
+| `"cytoplasm"` | Cytoplasm mode | "Cytoplasm Mode" (orange) |
+
+Which nucleus mode is used depends on the backend picked at startup (`getNucleusWorkflowMode()`).
+
+### Buttons per mode
+
+`_render_toolbar_for_mode()` in `gui/buttons.py` shows only the buttons for the current mode:
+
+| Mode | Buttons |
+|---|---|
+| neutral | Import, Select, Segment Nucleus, Segment Cytoplasm, Display Masks, Export |
+| nucleus_cellpose | Segment, Display Masks, Done |
+| nucleus_gdino | BBOX, Segment, Display Masks, Done |
+| cytoplasm | Select Frames for Segmentation, Segment All Channels for Selected Frames, Apply Source Mask, Display Masks, Done |
+
+`Done` returns to neutral.
+
+### How each mode flows through the layers
+
+```text
+            NUCLEUS MODE                                CYTOPLASM MODE
+ UI          buttons.py                                  buttons.py
+             SEGMENT_NUCLEUS_call()                      SEGMENT_call()
+               1st click (neutral) → _enter_nucleus_mode   1st click (neutral) → check a cytoplasm channel exists,
+               next clicks → _run_nucleus_segmentation       set mode "cytoplasm", switch frames to 1st cyto channel
+                 (background thread, every loaded frame)   next clicks → _run_cytoplasm_segmentation
+                                                             (focused frame, or the frames you selected)
+                    │                                           │
+ Frame       abstract.py                                 abstract.py
+             segment_nucleus()                           segment_channel(channel)
+               asks "use stored masks?"                    asks "use stored masks?"
+               stores → set_nucleus_segments()             stores → set_segments(channel, ...)
+                    │                                           │
+ Logic       services/segmentation.py                    services/segmentation.py
+             run_nucleus_segmentation(DAPI, bboxes)      run_cytoplasm_segmentation(DAPI, cyto images, channel)
+                    │                                           │  stacks [DAPI, chosen channel, best 2nd channel]
+ Model       backends/ (via gui.getNucleusBackend())     backends/ (via gui.getCytoplasmBackend())
+             predict_nucleus()                           predict_cytoplasm()
+```
+
+### Where masks are stored
+
+Each frame is one `abstract` object in `gui/abstract.py`:
+
+| Data | Stored in | Read with |
+|---|---|---|
+| Nuclei (one set per frame) | `__nucleus_segments` | `get_nucleus_segments()` |
+| Whole cells (one set per channel) | `__channel_segments[channel]` | `get_segments(channel)` |
+| Pairs (one result per channel) | `__channel_pairings[channel]` | `get_pairings(channel)` |
+
+`get_segments("DAPI")` returns the nuclei, so code that loops over every channel can treat DAPI like any other channel.
+
+### Why cytoplasm segmentation needs DAPI
+
+`run_cytoplasm_segmentation` builds a 3-layer model input: `[DAPI, chosen channel, best other channel]`. The model uses the nucleus layer to find cells, so it stops with a warning when DAPI is missing. A frame with no cytoplasm channel is stopped earlier by the "No Cytoplasm Channel" popup in `_prepare_cytoplasm_source_channel`.
+
+---
+
 ## Guidance For Future AI Assistants
 
 When changing this project, assume the following unless the user says otherwise:
