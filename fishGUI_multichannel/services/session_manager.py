@@ -1,6 +1,5 @@
 import threading
 import logging
-import os
 import csv
 import pathlib
 import time

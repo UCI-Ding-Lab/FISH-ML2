@@ -1,4 +1,4 @@
-import pickle, threading, concurrent.futures
+import pickle
 from tkinter import filedialog, messagebox
 from ..gui.abstract import abstract
 from ..gui.canvas.box import box

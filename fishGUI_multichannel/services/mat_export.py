@@ -33,7 +33,7 @@ def export_session_to_mat(gui, export_mode: str = BOTH):
         messagebox.showwarning("No Data", "No frames with segmentation data found")
         return
 
-    d = {"name":[],"image":[],"xy":[],"masks":[],"nucleus_masks":[]}
+    d = {"name":[],"xy":[],"masks":[],"nucleus_masks":[]}
     prep_start = time.perf_counter()
 
     # get directory path
@@ -58,18 +58,15 @@ def export_session_to_mat(gui, export_mode: str = BOTH):
         else:
             channel, path = first_channel
         if not abs.selected or not frame_has_masks_for_mode(abs, channel, export_mode):
-            img = None
             xy = []
             masks = []
             nucleus_masks = []
         else:
-            img = abs.getImgNumpyRGBForChannel(channel)
             xy, masks, nucleus_masks = build_frame_cells(abs, channel, export_mode)
         if abs.selected and not xy:
             empty_frame_names.append(path.name)
 
         d["name"].append(path.name)
-        d["image"].append(img)
         d["xy"].append(xy)
         d["masks"].append(masks)
         d["nucleus_masks"].append(nucleus_masks)

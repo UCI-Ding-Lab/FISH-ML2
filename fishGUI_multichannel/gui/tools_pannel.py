@@ -3,7 +3,6 @@ import pathlib
 import threading
 from PIL import Image, ImageTk
 from ..services.session_save_load import SessionSaveLoad
-from .abstract import abstract as GUIAbstract
 
 
 class seasoning():

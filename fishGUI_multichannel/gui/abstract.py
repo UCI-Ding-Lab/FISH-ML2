@@ -1,4 +1,3 @@
-import threading
 import time
 import pathlib
 import numpy as np
@@ -890,15 +889,15 @@ class abstract():
                         b.draw = value
                         if not value:
                             box.clearBufferAndDeselect()
-                    except Exception as e:
+                    except Exception:
                         logger.warning("Error setting drawBbox for sample %s", self.sample_id, exc_info=True)
                         continue
-            except Exception as e:
+            except Exception:
                 logger.warning("Error in drawBbox setter for sample %s", self.sample_id, exc_info=True)
         
         try:
             self.gui.getStove().canvas.draw()
-        except Exception as e:
+        except Exception:
             logger.warning("Error drawing canvas in drawBbox for sample %s", self.sample_id, exc_info=True)
         
         self.__drawBbox = value

@@ -2,7 +2,7 @@ import tkinter
 import numpy as np
 from matplotlib.figure import Figure 
 from matplotlib.backend_bases import MouseEvent
-from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg, NavigationToolbar2Tk)
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.patches import Circle
 
 
@@ -37,7 +37,6 @@ class stove():
         self.canvas.mpl_connect("motion_notify_event", self.onCanvasDrag)
         self.toolbar = FishToolBar(self.canvas, self.pit, self.gui)
         self.toolbar.update()
-        self.tb_pointer = Circle((0, 0), 15, linewidth=0.5, edgecolor='cyan', facecolor='none')
         self.xs = []
         self.ys = []
         self.nucleus_center = None

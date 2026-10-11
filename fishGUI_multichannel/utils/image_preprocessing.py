@@ -1,7 +1,7 @@
 import logging
 import cv2
 import numpy as np
-from skimage import filters, morphology, segmentation
+from skimage import morphology
 from skimage.restoration import estimate_sigma
 
 logger = logging.getLogger('fishcore')
