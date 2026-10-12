@@ -2,7 +2,6 @@ from ..gui.canvas.segment import segment
 from tkinter import messagebox
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
-import os
 import logging
 import time
 
@@ -166,9 +165,7 @@ def apply_channel_mask_to_frames(
     def coordinator():
         start = time.perf_counter()
         results = []
-        max_workers = segmentation_worker_limit(
-            _find_cytoplasm_backend(), len(frame_indices), gpu_workers=1, cpu_workers=min(5, os.cpu_count() or 1)
-        )
+        max_workers = segmentation_worker_limit(_find_cytoplasm_backend(), len(frame_indices))
         with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="ApplyMask") as ex:
             futures = {ex.submit(compute_worker, i): i for i in frame_indices}
             for fut in as_completed(futures):

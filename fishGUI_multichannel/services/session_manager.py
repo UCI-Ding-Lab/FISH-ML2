@@ -218,9 +218,7 @@ class SessionManager:
         gui.popBox("i", "Segmentation", f"Started segmentation for {len(selected_frames)} images.")
 
         def monitor_threads():
-            max_workers = segmentation_worker_limit(
-                gui.getCytoplasmBackend(), len(selected_frames), gpu_workers=1, cpu_workers=1
-            )
+            max_workers = segmentation_worker_limit(gui.getCytoplasmBackend(), len(selected_frames))
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = [
                     executor.submit(cls._segment_each, abs_obj, gui)

@@ -5,6 +5,12 @@ logger = logging.getLogger('fishcore')
 # GroundingDINO box finding after import (used by both nucleus backends)
 BOX_GENERATION_WORKERS = 1
 
+# Segmentation model runs (nucleus, cytoplasm, and copy-mask source segmentation)
+# GPU: parallel runs share GPU memory; lower this if "CUDA out of memory" errors appear
+SEGMENTATION_WORKERS_ON_GPU = 3
+# CPU: one run already uses every core, so extra runs mostly compete for the same cores
+SEGMENTATION_WORKERS_ON_CPU = 1
+
 
 def box_generation_worker_limit(total_jobs: int) -> int:
     """Return how many frames may find nucleus boxes at the same time."""
@@ -13,10 +19,10 @@ def box_generation_worker_limit(total_jobs: int) -> int:
     return worker_count
 
 
-def segmentation_worker_limit(backend, total_jobs: int, gpu_workers: int, cpu_workers: int) -> int:
+def segmentation_worker_limit(backend, total_jobs: int) -> int:
     """Return how many frames may run segmentation at the same time on the backend's device."""
     on_gpu = getattr(backend, "device", None) == "cuda"
-    limit = gpu_workers if on_gpu else cpu_workers
+    limit = SEGMENTATION_WORKERS_ON_GPU if on_gpu else SEGMENTATION_WORKERS_ON_CPU
     worker_count = max(1, min(limit, total_jobs))
     logger.info("Segmentation is using %s worker(s) on %s.", worker_count, "GPU" if on_gpu else "CPU")
     return worker_count
