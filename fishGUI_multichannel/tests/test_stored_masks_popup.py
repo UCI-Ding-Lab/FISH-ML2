@@ -13,18 +13,6 @@ from fishGUI_multichannel.gui.stored_masks_popup import (
 )
 
 
-@pytest.fixture(scope="module")
-def root():
-    """Create one hidden Tk root for these tests, or skip when no display is available."""
-    try:
-        tk_root = tk.Tk()
-    except tk.TclError as error:
-        pytest.skip(f"Tk display is not available: {error}")
-    tk_root.withdraw()
-    yield tk_root
-    tk_root.destroy()
-
-
 def click_after_open(root, button_text):
     """Click one popup button once the popup is shown."""
     def click():

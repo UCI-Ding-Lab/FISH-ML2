@@ -1,5 +1,6 @@
 from pathlib import Path
 import shutil
+import tkinter as tk
 from unittest.mock import MagicMock
 import uuid
 
@@ -9,6 +10,21 @@ import pytest
 from fishGUI_multichannel.gui.abstract import abstract
 from fishGUI_multichannel.services.pairing import make_empty_pairing_result
 from fishGUI_multichannel.services.session_manager import SessionManager
+
+
+@pytest.fixture(scope="session")
+def root():
+    """
+    Share one hidden Tk root across every popup test, or skip when no display is available.
+    Creating a second Tk root after destroying one can fail on Windows ("Can't find a usable init.tcl").
+    """
+    try:
+        tk_root = tk.Tk()
+    except tk.TclError as error:
+        pytest.skip(f"Tk display is not available: {error}")
+    tk_root.withdraw()
+    yield tk_root
+    tk_root.destroy()
 
 
 @pytest.fixture(autouse=True)

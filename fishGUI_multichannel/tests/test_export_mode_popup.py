@@ -1,21 +1,7 @@
 import tkinter as tk
 
-import pytest
-
 from fishGUI_multichannel.gui.export_mode_popup import ask_export_mode
 from fishGUI_multichannel.services.export_modes import BOTH, NUCLEUS_ONLY, WHOLE_CELL_ONLY
-
-
-@pytest.fixture(scope="module")
-def root():
-    """Create one hidden Tk root for these tests, or skip when no display is available."""
-    try:
-        tk_root = tk.Tk()
-    except tk.TclError as error:
-        pytest.skip(f"Tk display is not available: {error}")
-    tk_root.withdraw()
-    yield tk_root
-    tk_root.destroy()
 
 
 def find_widgets(widget, widget_type):
