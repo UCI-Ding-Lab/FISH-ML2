@@ -6,11 +6,13 @@ import threading
 import time
 import tkinter
 import tkinter as tk
+from concurrent.futures import ThreadPoolExecutor
 from tkinter import filedialog
 
 from ..services.export_modes import available_export_modes, guess_export_mode
 from ..services.mat_export import export_session_to_mat
 from ..services.session_manager import SessionManager
+from ..services.worker_limits import segmentation_worker_limit
 from .export_mode_popup import ask_export_mode
 from .stored_masks_popup import choose_frames_to_resegment
 
@@ -497,8 +499,7 @@ class funcButton:
         def job():
             total_start = time.perf_counter()
             try:
-                for frame in frames_to_segment:
-                    frame.segment_nucleus(use_stored_masks=False)
+                failed_frames = self._segment_nuclei_in_parallel(frames_to_segment)
                 total_seconds = time.perf_counter() - total_start
                 logger.info(
                     "Completed nucleus segmentation for %s frames in %.2f seconds",
@@ -507,6 +508,14 @@ class funcButton:
                 )
                 self.gui.getRoot().after(0, lambda: self.gui.getStove().cook(focused))
                 self.gui.getRoot().after(0, self.gui._refresh_workflow_thumbnails)
+                if failed_frames:
+                    failure_message = "Nucleus segmentation failed for {} frame(s):\n{}".format(
+                        len(failed_frames), "\n".join(f"  {failure}" for failure in failed_frames)
+                    )
+                    self.gui.getRoot().after(
+                        0,
+                        lambda: self.gui.popBox("e", "Nucleus Segmentation Error", failure_message),
+                    )
             except Exception as error:
                 # Keep the message: Python deletes `error` when this block ends, before the popup runs
                 error_message = str(error)
@@ -519,6 +528,25 @@ class funcButton:
                 self.gui.getRoot().after(0, self.gui.dismissWait)
 
         threading.Thread(target=job, daemon=True).start()
+
+    def _segment_nuclei_in_parallel(self, frames) -> list[str]:
+        """
+        Segment nuclei for several frames at once and store each result on the main thread.
+        Return one "sample: error" line for every frame that failed; the other frames still finish.
+        """
+        max_workers = segmentation_worker_limit(self.gui.getNucleusBackend(), len(frames))
+        failed_frames = []
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [(frame, executor.submit(frame.compute_nucleus_segments)) for frame in frames]
+            for frame, future in futures:
+                try:
+                    segments = future.result()
+                except Exception as error:
+                    logger.exception("Nucleus segmentation failed for sample %s", frame.sample_id)
+                    failed_frames.append(f"{frame.sample_id}: {error}")
+                    continue
+                self.gui.getRoot().after(0, lambda f=frame, s=segments: f.set_nucleus_segments(s))
+        return failed_frames
 
     def SEGMENT_SELECTION_call(self):
         """Toggles which frames will be used by the Segment action."""

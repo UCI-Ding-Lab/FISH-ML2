@@ -365,14 +365,20 @@ class abstract():
                 )
             if use_stored_masks:
                 return self.get_nucleus_segments()
-        nucleus_segments = run_nucleus_segmentation(
+        self.set_nucleus_segments(self.compute_nucleus_segments())
+        return self.get_nucleus_segments()
+
+    def compute_nucleus_segments(self) -> list[segment]:
+        """
+        Run nucleus segmentation and return the masks without storing them.
+        Safe to call from a worker thread because it does not touch the thumbnail.
+        """
+        return run_nucleus_segmentation(
             self._get_nucleus_segmentation_input(),
             self.gui,
             self.sample_id,
             bbox_list=self.boundingBoxRevised,
         )
-        self.set_nucleus_segments(nucleus_segments)
-        return self.get_nucleus_segments()
 
     def _is_dapi_channel(self, channel) -> bool:
         """Returns True when the requested channel is the DAPI display channel."""

@@ -244,20 +244,22 @@ def test_export_call_remembers_and_exports_the_chosen_mode():
 def test_nucleus_segmentation_error_popup_shows_the_error_message():
     button = _make_button_handler()
     button._set_nucleus_segment_running = MagicMock()
-    failing_frame = MagicMock()
+    failing_frame = MagicMock(sample_id=4)
     failing_frame.has_nucleus_segments.return_value = False
-    failing_frame.segment_nucleus.side_effect = RuntimeError("model failed")
+    failing_frame.compute_nucleus_segments.side_effect = RuntimeError("model failed")
     scheduled = []
     button.gui.getRoot.return_value.after.side_effect = lambda delay, callback: scheduled.append(callback)
 
     with patch.object(SessionManager, "getPool", return_value=[failing_frame]), \
          patch("fishGUI_multichannel.gui.buttons.threading.Thread") as mock_thread:
         button._run_nucleus_segmentation(MagicMock())
-        mock_thread.call_args.kwargs["target"]()
+    mock_thread.call_args.kwargs["target"]()
     for callback in scheduled:
         callback()
 
-    button.gui.popBox.assert_called_once_with("e", "Nucleus Segmentation Error", "model failed")
+    button.gui.popBox.assert_called_once_with(
+        "e", "Nucleus Segmentation Error", "Nucleus segmentation failed for 1 frame(s):\n  4: model failed"
+    )
 
 
 def _make_nucleus_frame(has_masks):
@@ -283,17 +285,24 @@ def test_nucleus_segmentation_segments_new_frames_and_chosen_frames_without_aski
     button = _make_button_handler()
     button._set_nucleus_segment_running = MagicMock()
     kept, redone, new = _make_nucleus_frame(True), _make_nucleus_frame(True), _make_nucleus_frame(False)
+    scheduled = []
+    button.gui.getRoot.return_value.after.side_effect = lambda delay, callback: scheduled.append(callback)
 
     with patch.object(SessionManager, "getPool", return_value=[kept, redone, new]), \
          patch("fishGUI_multichannel.gui.buttons.choose_frames_to_resegment", return_value=[redone]) as mock_choose, \
          patch("fishGUI_multichannel.gui.buttons.threading.Thread") as mock_thread:
         button._run_nucleus_segmentation(MagicMock())
-        mock_thread.call_args.kwargs["target"]()
+    mock_thread.call_args.kwargs["target"]()
+    for callback in scheduled:
+        callback()
 
     assert mock_choose.call_args.args[3] == [kept, redone]
-    kept.segment_nucleus.assert_not_called()
-    redone.segment_nucleus.assert_called_once_with(use_stored_masks=False)
-    new.segment_nucleus.assert_called_once_with(use_stored_masks=False)
+    kept.compute_nucleus_segments.assert_not_called()
+    kept.set_nucleus_segments.assert_not_called()
+    for frame in (redone, new):
+        frame.compute_nucleus_segments.assert_called_once_with()
+        frame.set_nucleus_segments.assert_called_once_with(frame.compute_nucleus_segments.return_value)
+    button.gui.popBox.assert_not_called()
 
 
 def test_nucleus_segmentation_with_nothing_to_do_only_redraws():
@@ -416,3 +425,60 @@ def test_gdino_nucleus_segmentation_offers_retry_when_box_finding_failed(retry):
         mock_generate.assert_not_called()
     mock_choose.assert_not_called()
     mock_thread.assert_not_called()
+
+
+def test_segment_nuclei_in_parallel_uses_the_nucleus_backend_worker_limit():
+    button = _make_button_handler()
+    frames = [_make_nucleus_frame(False) for _ in range(5)]
+
+    with patch("fishGUI_multichannel.gui.buttons.segmentation_worker_limit", return_value=3) as mock_limit:
+        button._segment_nuclei_in_parallel(frames)
+
+    mock_limit.assert_called_once_with(button.gui.getNucleusBackend.return_value, 5)
+
+
+def test_segment_nuclei_in_parallel_runs_up_to_the_limit_at_the_same_time():
+    import threading
+    import time
+
+    button = _make_button_handler()
+    running = []
+    peak = []
+    lock = threading.Lock()
+
+    def slow_compute():
+        with lock:
+            running.append(1)
+            peak.append(len(running))
+        time.sleep(0.05)
+        with lock:
+            running.pop()
+        return []
+
+    frames = [_make_nucleus_frame(False) for _ in range(6)]
+    for frame in frames:
+        frame.compute_nucleus_segments.side_effect = slow_compute
+
+    with patch("fishGUI_multichannel.gui.buttons.segmentation_worker_limit", return_value=3):
+        button._segment_nuclei_in_parallel(frames)
+
+    assert max(peak) == 3
+
+
+def test_segment_nuclei_in_parallel_keeps_going_when_one_frame_fails():
+    button = _make_button_handler()
+    scheduled = []
+    button.gui.getRoot.return_value.after.side_effect = lambda delay, callback: scheduled.append(callback)
+    good_before, bad, good_after = (_make_nucleus_frame(False) for _ in range(3))
+    bad.sample_id = 7
+    bad.compute_nucleus_segments.side_effect = RuntimeError("out of memory")
+
+    with patch("fishGUI_multichannel.gui.buttons.segmentation_worker_limit", return_value=3):
+        failed = button._segment_nuclei_in_parallel([good_before, bad, good_after])
+    for callback in scheduled:
+        callback()
+
+    assert failed == ["7: out of memory"]
+    good_before.set_nucleus_segments.assert_called_once()
+    good_after.set_nucleus_segments.assert_called_once()
+    bad.set_nucleus_segments.assert_not_called()
