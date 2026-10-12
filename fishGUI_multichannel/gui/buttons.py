@@ -11,6 +11,7 @@ from tkinter import filedialog
 
 from ..services.export_modes import available_export_modes, guess_export_mode
 from ..services.mat_export import export_session_to_mat
+from ..services.segmentation import describe_failed_frames
 from ..services.session_manager import SessionManager
 from ..services.worker_limits import segmentation_worker_limit
 from .export_mode_popup import ask_export_mode
@@ -509,9 +510,7 @@ class funcButton:
                 self.gui.getRoot().after(0, lambda: self.gui.getStove().cook(focused))
                 self.gui.getRoot().after(0, self.gui._refresh_workflow_thumbnails)
                 if failed_frames:
-                    failure_message = "Nucleus segmentation failed for {} frame(s):\n{}".format(
-                        len(failed_frames), "\n".join(f"  {failure}" for failure in failed_frames)
-                    )
+                    failure_message = describe_failed_frames("Nucleus segmentation", failed_frames)
                     self.gui.getRoot().after(
                         0,
                         lambda: self.gui.popBox("e", "Nucleus Segmentation Error", failure_message),
@@ -607,7 +606,14 @@ class funcButton:
             return
         if self._run_selected_cytoplasm_segmentation():
             return
-        _ = focused.segment
+        try:
+            _ = focused.segment
+        except Exception as error:
+            logger.exception("Cytoplasm segmentation failed for sample %s", focused.sample_id)
+            self.gui.popBox(
+                "e", "Cytoplasm Segmentation Error", describe_failed_frames("Cytoplasm segmentation", [f"{focused.sample_id}: {error}"])
+            )
+            return
         self.gui.getStove().cook(focused)
 
     def _run_selected_cytoplasm_segmentation(self):

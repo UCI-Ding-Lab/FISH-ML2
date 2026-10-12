@@ -150,6 +150,30 @@ def test_run_cytoplasm_segmentation_falls_back_to_focused_frame_when_none_select
     button.gui.getStove.return_value.cook.assert_called_once_with(focused)
 
 
+def test_run_cytoplasm_segmentation_on_the_focused_frame_shows_model_errors():
+    """Shows the error instead of leaving the focused frame without masks silently."""
+    button = _make_button_handler()
+
+    class FailingFrame:
+        sample_id = 5
+
+        @property
+        def segment(self):
+            raise RuntimeError("CUDA out of memory")
+
+    focused = FailingFrame()
+    button._prepare_cytoplasm_source_channel = MagicMock(return_value=True)
+    button._run_selected_cytoplasm_segmentation = MagicMock(return_value=False)
+
+    with patch.object(SessionManager, "getBuffer", return_value=focused):
+        button._run_cytoplasm_segmentation()
+
+    button.gui.popBox.assert_called_once_with(
+        "e", "Cytoplasm Segmentation Error", "Cytoplasm segmentation failed for 1 frame(s):\n  5: CUDA out of memory"
+    )
+    button.gui.getStove.return_value.cook.assert_not_called()
+
+
 def test_display_masks_call_shows_masks_for_the_focused_frame_when_enabled():
     button = _make_button_handler()
     focused = MagicMock()

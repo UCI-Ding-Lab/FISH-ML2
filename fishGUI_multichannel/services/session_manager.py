@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from ..services.bundle_data import bundle
 from ..services.apply_channel_mask import apply_channel_mask_to_frames
+from ..services.segmentation import describe_failed_frames
 from ..services.worker_limits import box_generation_worker_limit, segmentation_worker_limit
 from ..gui.abstract import abstract
 
@@ -239,17 +240,28 @@ class SessionManager:
         gui.popBox("i", "Segmentation", f"Started segmentation for {len(selected_frames)} images.")
 
         def monitor_threads():
-            max_workers = segmentation_worker_limit(gui.getCytoplasmBackend(), len(selected_frames))
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                futures = [
-                    executor.submit(cls._segment_each, abs_obj, gui, abs_obj in frames_to_resegment)
-                    for abs_obj in selected_frames
-                ]
-                for future in futures:
-                    future.result()
-            cls._export_segmentation_timing_csv()
-            gui.getFuncButton().toggle["SEGMENTATION_SELECTION"].set(0)
-            gui.getRoot().after(0, lambda: gui.getFuncButton()._set_cytoplasm_segment_running(False))
+            failed_frames = []
+            try:
+                max_workers = segmentation_worker_limit(gui.getCytoplasmBackend(), len(selected_frames))
+                with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    futures = [
+                        (abs_obj, executor.submit(cls._segment_each, abs_obj, gui, abs_obj in frames_to_resegment))
+                        for abs_obj in selected_frames
+                    ]
+                    for abs_obj, future in futures:
+                        try:
+                            future.result()
+                        except Exception as error:
+                            # One failed frame must not stop the others or leave the button stuck in "running"
+                            logger.exception("Cytoplasm segmentation failed for sample %s", abs_obj.sample_id)
+                            failed_frames.append(f"{abs_obj.sample_id}: {error}")
+                cls._export_segmentation_timing_csv()
+            finally:
+                gui.getFuncButton().toggle["SEGMENTATION_SELECTION"].set(0)
+                gui.getRoot().after(0, lambda: gui.getFuncButton()._set_cytoplasm_segment_running(False))
+            if failed_frames:
+                failure_message = describe_failed_frames("Cytoplasm segmentation", failed_frames)
+                gui.getRoot().after(0, lambda: gui.popBox("e", "Cytoplasm Segmentation Error", failure_message))
 
         threading.Thread(target=monitor_threads, daemon=True).start()
 

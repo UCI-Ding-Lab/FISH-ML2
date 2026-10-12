@@ -5,6 +5,7 @@ import threading
 import logging
 import time
 
+from .segmentation import describe_failed_frames
 from .worker_limits import segmentation_worker_limit
 
 logger = logging.getLogger("fishcore")
@@ -130,23 +131,25 @@ def apply_channel_mask_to_frames(
         sid = frame.sample_id
         if not frame.bbox_generated:
             logger.info(f"Skipping frame {sid}: no bbox")
-            return ("skipped", sid, frame, None, None)
+            return ("skipped", sid, frame, None, None, None)
         try:
             ensure_channel_segmented(frame, source_channel)
             masks = extract_finalized_masks(frame, source_channel)
             targets = filter_cytoplasm_channels(frame.available_channels)
-            return ("ok", sid, frame, masks, targets)
+            return ("ok", sid, frame, masks, targets, None)
         except Exception as e:
             logger.error(f"Compute failed for {sid}: {e}", exc_info=True)
-            return ("error", sid, frame, None, None)
+            return ("error", sid, frame, None, None, str(e))
 
     def apply_results_on_main(results):
         skipped = []
-        for status, sid, frame, masks, targets in results:
+        failed = []
+        for status, sid, frame, masks, targets, error in results:
             if status == "skipped":
                 skipped.append(sid)
                 continue
             if status == "error":
+                failed.append(f"{sid}: {error}")
                 continue
             apply_masks_on_main(frame, source_channel, targets, masks)
             update_ui_for_focused_frame(frame, focused_frame, seg_mode_on)
@@ -156,6 +159,11 @@ def apply_channel_mask_to_frames(
                 messagebox.showinfo("Skipped Frames", f"No nucleus centers for: {', '.join(skipped)}")
             except Exception:
                 logger.info(f"Skipped Frames without centers: {', '.join(skipped)}")
+        if failed:
+            try:
+                messagebox.showerror("Copy Mask Error", describe_failed_frames("Copying the channel mask", failed))
+            except Exception:
+                logger.info(f"Copy mask failed for: {', '.join(failed)}")
         if on_done:
             try:
                 on_done()
