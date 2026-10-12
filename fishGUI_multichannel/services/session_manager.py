@@ -204,9 +204,10 @@ class SessionManager:
 
 
     @classmethod
-    def segment_selected(cls, gui):
+    def segment_selected(cls, gui, frames_to_resegment=()):
         """
-        Runs segmentation on all frames that the user has marked as "selected for segmentation"
+        Runs segmentation on all frames that the user has marked as "selected for segmentation".
+        Frames in frames_to_resegment replace their stored masks; other frames only fill in missing channels.
         """
         with cls.__segmentation_timing_lock:
             cls.__segmentation_timing_rows = []
@@ -221,7 +222,7 @@ class SessionManager:
             max_workers = segmentation_worker_limit(gui.getCytoplasmBackend(), len(selected_frames))
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = [
-                    executor.submit(cls._segment_each, abs_obj, gui)
+                    executor.submit(cls._segment_each, abs_obj, gui, abs_obj in frames_to_resegment)
                     for abs_obj in selected_frames
                 ]
                 for future in futures:
@@ -257,8 +258,8 @@ class SessionManager:
 
 
     @classmethod
-    def _segment_each(cls, abs_obj: abstract, gui):
-        """Run segmentation for every available channel in one frame."""
+    def _segment_each(cls, abs_obj: abstract, gui, resegment: bool = False):
+        """Run segmentation for every available channel in one frame without asking the user."""
         thread_name = threading.current_thread().name
         logger.debug(f"Thread {thread_name} STARTED for sample {abs_obj.sample_id}")
         start = time.perf_counter()
@@ -266,7 +267,9 @@ class SessionManager:
         original_channel = abs_obj.selected_channel
         channels_to_segment = list(abs_obj.available_channels)
         for ch in channels_to_segment:
-            abs_obj.segment_channel(ch)
+            if abs_obj.get_segments(ch) and not resegment:
+                continue
+            abs_obj.segment_channel(ch, use_stored_masks=False)
         abs_obj.selected_channel = original_channel
         abs_obj.segment_generated = abs_obj.has_all_channel_segments()
 

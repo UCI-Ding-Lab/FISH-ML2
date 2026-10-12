@@ -12,6 +12,7 @@ from ..services.export_modes import available_export_modes, guess_export_mode
 from ..services.mat_export import export_session_to_mat
 from ..services.session_manager import SessionManager
 from .export_mode_popup import ask_export_mode
+from .stored_masks_popup import choose_frames_to_resegment
 
 
 logger = logging.getLogger("fishcore")
@@ -443,19 +444,32 @@ class funcButton:
 
     def _run_nucleus_segmentation(self, focused):
         """Run nucleus segmentation for every loaded frame and refresh the focused view."""
+        frame_pool = SessionManager.getPool()
+        frames_with_masks = [frame for frame in frame_pool if frame.has_nucleus_segments()]
+        frames_to_resegment = choose_frames_to_resegment(
+            self.gui.getRoot(), "Stored Nucleus Masks", frame_pool, frames_with_masks, "nucleus masks"
+        )
+        if frames_to_resegment is None:
+            return
+        frames_to_segment = [
+            frame for frame in frame_pool
+            if not frame.has_nucleus_segments() or frame in frames_to_resegment
+        ]
+        if not frames_to_segment:
+            self.gui.getStove().cook(focused)
+            return
         self._set_nucleus_segment_running(True)
         self.gui.indicateWait("Nucleus segmentation")
 
         def job():
             total_start = time.perf_counter()
             try:
-                frame_pool = SessionManager.getPool()
-                for frame in frame_pool:
-                    frame.segment_nucleus()
+                for frame in frames_to_segment:
+                    frame.segment_nucleus(use_stored_masks=False)
                 total_seconds = time.perf_counter() - total_start
                 logger.info(
                     "Completed nucleus segmentation for %s frames in %.2f seconds",
-                    len(frame_pool),
+                    len(frames_to_segment),
                     total_seconds,
                 )
                 self.gui.getRoot().after(0, lambda: self.gui.getStove().cook(focused))
@@ -540,9 +554,18 @@ class funcButton:
         selected_frames = self._get_selected_frames_for_segmentation()
         if not selected_frames:
             return False
+        frames_with_masks = [
+            frame for frame in selected_frames
+            if any(frame.get_segments(channel) for channel in frame.available_channels)
+        ]
+        frames_to_resegment = choose_frames_to_resegment(
+            self.gui.getRoot(), "Stored Cytoplasm Masks", selected_frames, frames_with_masks, "cytoplasm masks"
+        )
+        if frames_to_resegment is None:
+            return True
         self._set_cytoplasm_segment_running(True)
         self.toggle["SEGMENTATION_SELECTION"].set(0)
-        SessionManager.segment_selected(self.gui)
+        SessionManager.segment_selected(self.gui, frames_to_resegment)
         return True
 
     def SEGMENT_NUCLEUS_call(self):

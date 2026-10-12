@@ -107,3 +107,28 @@ def test_grab_pool_bundles_only_selected_frames():
         selected_channel="647",
     )
     assert result == [mock_bundle.return_value]
+
+
+def _make_channel_frame(masks_by_channel):
+    frame = MagicMock(sample_id=1, selected_channel="488", available_channels=list(masks_by_channel))
+    frame.get_segments.side_effect = lambda channel: masks_by_channel[channel]
+    return frame
+
+
+def test_segment_each_fills_in_only_missing_channels_when_keeping_stored_masks():
+    frame = _make_channel_frame({"488": [1], "647": []})
+
+    SessionManager._segment_each(frame, MagicMock(), resegment=False)
+
+    frame.segment_channel.assert_called_once_with("647", use_stored_masks=False)
+
+
+def test_segment_each_resegments_every_channel_without_asking():
+    frame = _make_channel_frame({"488": [1], "647": []})
+
+    SessionManager._segment_each(frame, MagicMock(), resegment=True)
+
+    assert frame.segment_channel.call_args_list == [
+        ((("488",), {"use_stored_masks": False})),
+        ((("647",), {"use_stored_masks": False})),
+    ]

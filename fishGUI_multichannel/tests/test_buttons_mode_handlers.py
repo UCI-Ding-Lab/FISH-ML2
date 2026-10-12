@@ -243,6 +243,7 @@ def test_nucleus_segmentation_error_popup_shows_the_error_message():
     button = _make_button_handler()
     button._set_nucleus_segment_running = MagicMock()
     failing_frame = MagicMock()
+    failing_frame.has_nucleus_segments.return_value = False
     failing_frame.segment_nucleus.side_effect = RuntimeError("model failed")
     scheduled = []
     button.gui.getRoot.return_value.after.side_effect = lambda delay, callback: scheduled.append(callback)
@@ -255,3 +256,83 @@ def test_nucleus_segmentation_error_popup_shows_the_error_message():
         callback()
 
     button.gui.popBox.assert_called_once_with("e", "Nucleus Segmentation Error", "model failed")
+
+
+def _make_nucleus_frame(has_masks):
+    frame = MagicMock()
+    frame.has_nucleus_segments.return_value = has_masks
+    return frame
+
+
+def test_nucleus_segmentation_cancel_runs_nothing():
+    button = _make_button_handler()
+    frames = [_make_nucleus_frame(True), _make_nucleus_frame(False)]
+
+    with patch.object(SessionManager, "getPool", return_value=frames), \
+         patch("fishGUI_multichannel.gui.buttons.choose_frames_to_resegment", return_value=None), \
+         patch("fishGUI_multichannel.gui.buttons.threading.Thread") as mock_thread:
+        button._run_nucleus_segmentation(MagicMock())
+
+    mock_thread.assert_not_called()
+    button.gui.indicateWait.assert_not_called()
+
+
+def test_nucleus_segmentation_segments_new_frames_and_chosen_frames_without_asking():
+    button = _make_button_handler()
+    button._set_nucleus_segment_running = MagicMock()
+    kept, redone, new = _make_nucleus_frame(True), _make_nucleus_frame(True), _make_nucleus_frame(False)
+
+    with patch.object(SessionManager, "getPool", return_value=[kept, redone, new]), \
+         patch("fishGUI_multichannel.gui.buttons.choose_frames_to_resegment", return_value=[redone]) as mock_choose, \
+         patch("fishGUI_multichannel.gui.buttons.threading.Thread") as mock_thread:
+        button._run_nucleus_segmentation(MagicMock())
+        mock_thread.call_args.kwargs["target"]()
+
+    assert mock_choose.call_args.args[3] == [kept, redone]
+    kept.segment_nucleus.assert_not_called()
+    redone.segment_nucleus.assert_called_once_with(use_stored_masks=False)
+    new.segment_nucleus.assert_called_once_with(use_stored_masks=False)
+
+
+def test_nucleus_segmentation_with_nothing_to_do_only_redraws():
+    button = _make_button_handler()
+    focused = MagicMock()
+
+    with patch.object(SessionManager, "getPool", return_value=[_make_nucleus_frame(True)]), \
+         patch("fishGUI_multichannel.gui.buttons.choose_frames_to_resegment", return_value=[]), \
+         patch("fishGUI_multichannel.gui.buttons.threading.Thread") as mock_thread:
+        button._run_nucleus_segmentation(focused)
+
+    mock_thread.assert_not_called()
+    button.gui.getStove.return_value.cook.assert_called_once_with(focused)
+
+
+def test_cytoplasm_segmentation_cancel_does_not_start():
+    button = _make_button_handler()
+    button._set_cytoplasm_segment_running = MagicMock()
+    frame = MagicMock(selected_for_segmentation=True, available_channels=["488"])
+
+    with patch.object(SessionManager, "getPool", return_value=[frame]), \
+         patch("fishGUI_multichannel.gui.buttons.choose_frames_to_resegment", return_value=None), \
+         patch.object(SessionManager, "segment_selected") as mock_segment_selected:
+        assert button._run_selected_cytoplasm_segmentation() is True
+
+    mock_segment_selected.assert_not_called()
+    button._set_cytoplasm_segment_running.assert_not_called()
+
+
+def test_cytoplasm_segmentation_passes_the_frames_to_resegment():
+    button = _make_button_handler()
+    button._set_cytoplasm_segment_running = MagicMock()
+    with_masks = MagicMock(selected_for_segmentation=True, available_channels=["488", "647"])
+    with_masks.get_segments.side_effect = lambda channel: [1] if channel == "488" else []
+    without_masks = MagicMock(selected_for_segmentation=True, available_channels=["488"])
+    without_masks.get_segments.return_value = []
+
+    with patch.object(SessionManager, "getPool", return_value=[with_masks, without_masks]), \
+         patch("fishGUI_multichannel.gui.buttons.choose_frames_to_resegment", return_value=[with_masks]) as mock_choose, \
+         patch.object(SessionManager, "segment_selected") as mock_segment_selected:
+        button._run_selected_cytoplasm_segmentation()
+
+    assert mock_choose.call_args.args[3] == [with_masks]
+    mock_segment_selected.assert_called_once_with(button.gui, [with_masks])

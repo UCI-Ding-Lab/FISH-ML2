@@ -344,15 +344,17 @@ class abstract():
         """
         return self.__img_np_nucleus_native
 
-    def segment_nucleus(self) -> list[segment]:
+    def segment_nucleus(self, use_stored_masks: bool | None = None) -> list[segment]:
         """
         Run DAPI nucleus segmentation once and store the resulting masks.
+        use_stored_masks: True keeps stored masks, False re-segments, None asks the user.
         """
         if self.has_nucleus_segments():
-            use_stored_masks = self.gui.ask_use_stored_masks(
-                "Stored Nucleus Masks",
-                "This image already has stored nucleus masks. Use the stored masks instead of resegmenting?",
-            )
+            if use_stored_masks is None:
+                use_stored_masks = self.gui.ask_use_stored_masks(
+                    "Stored Nucleus Masks",
+                    "This image already has stored nucleus masks. Use the stored masks instead of resegmenting?",
+                )
             if use_stored_masks:
                 return self.get_nucleus_segments()
         nucleus_segments = run_nucleus_segmentation(
@@ -414,8 +416,11 @@ class abstract():
                 return False
         return True
 
-    def segment_channel(self, channel=None) -> list[segment]:
-        """Run nucleus segmentation for DAPI or cytoplasm segmentation for one channel."""
+    def segment_channel(self, channel=None, use_stored_masks: bool | None = None) -> list[segment]:
+        """
+        Run nucleus segmentation for DAPI or cytoplasm segmentation for one channel.
+        use_stored_masks: True keeps stored masks, False re-segments, None asks the user.
+        """
         target_channel = self.__current_channel if channel is None else channel
         if target_channel is None:
             return []
@@ -424,10 +429,11 @@ class abstract():
                 return self.get_nucleus_segments()
             return self.segment_nucleus()
         if self.get_segments(target_channel):
-            use_stored_masks = self.gui.ask_use_stored_masks(
-                "Stored Cytoplasm Masks",
-                f"Channel {target_channel} already has stored masks. Use the stored masks instead of resegmenting?",
-            )
+            if use_stored_masks is None:
+                use_stored_masks = self.gui.ask_use_stored_masks(
+                    "Stored Cytoplasm Masks",
+                    f"Channel {target_channel} already has stored masks. Use the stored masks instead of resegmenting?",
+                )
             if use_stored_masks:
                 return self.get_segments(target_channel)
 
