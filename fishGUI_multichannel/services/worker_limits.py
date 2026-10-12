@@ -6,8 +6,10 @@ logger = logging.getLogger('fishcore')
 BOX_GENERATION_WORKERS = 1
 
 # Segmentation model runs (nucleus, cytoplasm, and copy-mask source segmentation)
-# GPU: parallel runs share GPU memory; lower this if "CUDA out of memory" errors appear
-SEGMENTATION_WORKERS_ON_GPU = 3
+# GPU: parallel runs share GPU memory; lower this if "CUDA out of memory" errors appear.
+# Kept at 1 until 1 vs 3 workers is compared on the same frames: parallel runs share one model,
+# and earlier parallel settings were reverted to 1 (Jul 15 and Aug 17, 2026) without a recorded reason.
+SEGMENTATION_WORKERS_ON_GPU = 1
 # CPU: one run already uses every core, so extra runs mostly compete for the same cores
 SEGMENTATION_WORKERS_ON_CPU = 1
 
