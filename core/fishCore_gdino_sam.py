@@ -292,11 +292,8 @@ class Fish():
                 return
             
             if not bbox:
-                raw = Fish.dino_bbox(self.fish.gdino_config, self.fish.gdino_weights, img)
-                self.fish.logger.info(f"CLU: found {len(raw['bright_points'])} bright points")
-                self.fish.logger.info(f"CLU: found {len(raw['bboxes'])} bounding boxes")
-            else:
-                raw = {"bright_points": "OF", "clusters": "OF", "bboxes": bbox}
+                raise ValueError("SAM nucleus prediction needs prompt boxes, but none were given")
+            raw = {"bright_points": "OF", "clusters": "OF", "bboxes": bbox}
             
             img = Fish.helper__hdr2RgbNorm(img, 1)
             

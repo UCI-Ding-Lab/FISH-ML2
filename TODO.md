@@ -9,11 +9,6 @@
   - Export modes (nucleus only, whole-cell only, paired) were added; confirm with Dr. Ding what the paired export is meant for
   - Test the handpicked pairing thresholds (60% containment, 5% distance) on real images using the pairing debug PDF
 
-- Medium priority: Warn when GroundingDINO + SAM nucleus segmentation runs without reviewed boxes
-  - If a frame's boxes are not ready (or the user deleted all of them), the model silently re-detects boxes with GroundingDINO and segments with those
-  - Those boxes are not saved, so the frame has no purple dot and the user never reviewed them
-  - Consider warning before segmenting, listing affected frames, or skipping them
-
 - Low priority: Handle completely blank image stacks
   - Currently handled manually in most cases
   - Prevent nucleus and cytoplasm preprocessing from failing when all slices are blank
