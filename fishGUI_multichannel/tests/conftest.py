@@ -16,6 +16,7 @@ def reset_session_manager_state():
     SessionManager._SessionManager__pool = []
     SessionManager._SessionManager__buffer = None
     SessionManager._SessionManager__importPath = None
+    SessionManager._SessionManager__bbox_generation_jobs = 0
     yield
     SessionManager._SessionManager__pool = []
     SessionManager._SessionManager__buffer = None

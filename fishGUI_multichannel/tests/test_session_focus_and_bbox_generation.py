@@ -76,6 +76,65 @@ def test_generate_bboxes_submits_each_frame_to_the_background_worker_job():
     ]
 
 
+def test_generate_bboxes_uses_only_the_given_frames_and_reports_while_running():
+    gui = MagicMock()
+    in_pool = _make_bare_abstract(selected=True)
+    retry_frame = _make_bare_abstract(selected=True)
+    SessionManager._SessionManager__pool = [in_pool, retry_frame]
+    running_during_job = []
+
+    class FakeThread:
+        def __init__(self, target=None, daemon=None):
+            self.target = target
+
+        def start(self):
+            running_during_job.append(SessionManager.isGeneratingBboxes())
+            self.target()
+
+    class FakeExecutor:
+        def __init__(self, max_workers=None):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def submit(self, fn, *args):
+            fn(*args)
+
+    with patch("fishGUI_multichannel.services.session_manager.threading.Thread", side_effect=FakeThread), \
+         patch("fishGUI_multichannel.services.session_manager.ThreadPoolExecutor", FakeExecutor), \
+         patch.object(SessionManager, "_generate_one_bbox") as mock_generate_one_bbox:
+        SessionManager.generate_bboxes(gui, [retry_frame])
+
+    mock_generate_one_bbox.assert_called_once_with(gui, retry_frame)
+    assert running_during_job == [True]
+    assert SessionManager.isGeneratingBboxes() is False
+
+
+def test_generate_bboxes_stops_reporting_running_even_if_the_job_fails():
+    gui = MagicMock()
+    SessionManager._SessionManager__pool = [_make_bare_abstract(selected=True)]
+
+    class FakeThread:
+        def __init__(self, target=None, daemon=None):
+            self.target = target
+
+        def start(self):
+            try:
+                self.target()
+            except RuntimeError:
+                pass
+
+    with patch("fishGUI_multichannel.services.session_manager.threading.Thread", side_effect=FakeThread), \
+         patch("fishGUI_multichannel.services.session_manager.box_generation_worker_limit", side_effect=RuntimeError("boom")):
+        SessionManager.generate_bboxes(gui)
+
+    assert SessionManager.isGeneratingBboxes() is False
+
+
 def test_generate_one_bbox_logs_a_failure_instead_of_hiding_it():
     frame = MagicMock(sample_id=7)
     type(frame).bbox = property(lambda self: (_ for _ in ()).throw(RuntimeError("dino failed")))

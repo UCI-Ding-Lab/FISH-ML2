@@ -442,9 +442,42 @@ class funcButton:
         focused.drawBbox = False
         self.gui.getStove().cook(focused)
 
+    def _gdino_nucleus_boxes_ready(self, frame_pool) -> bool:
+        """
+        Return True when GroundingDINO + SAM can segment every frame.
+        Frames without boxes either wait for the purple dot or offer a retry when box finding failed.
+        """
+        if self.gui.getWorkflowMode() != "nucleus_gdino":
+            return True
+        missing = [frame for frame in frame_pool if not frame.bbox_generated]
+        if not missing:
+            return True
+        names = ", ".join(str(frame.sample_id) for frame in missing[:10])
+        if len(missing) > 10:
+            names += f", ... and {len(missing) - 10} more"
+        if SessionManager.isGeneratingBboxes():
+            self.gui.popBox(
+                "i",
+                "Nucleus Boxes Not Ready",
+                f"Nucleus boxes are still being prepared for {len(missing)} frame(s) ({names}).\n\n"
+                "Wait until every frame shows a purple dot, then click Segment again.",
+            )
+            return False
+        retry = tkinter.messagebox.askretrycancel(
+            "Nucleus Boxes Missing",
+            f"Nucleus boxes could not be made for {len(missing)} frame(s) ({names}).\n\n"
+            "Retry to make them again in the background, then click Segment once every frame shows a purple dot.",
+            parent=self.gui.getRoot(),
+        )
+        if retry:
+            SessionManager.generate_bboxes(self.gui, missing)
+        return False
+
     def _run_nucleus_segmentation(self, focused):
         """Run nucleus segmentation for every loaded frame and refresh the focused view."""
         frame_pool = SessionManager.getPool()
+        if not self._gdino_nucleus_boxes_ready(frame_pool):
+            return
         frames_with_masks = [frame for frame in frame_pool if frame.has_nucleus_segments()]
         frames_to_resegment = choose_frames_to_resegment(
             self.gui.getRoot(), "Stored Nucleus Masks", frame_pool, frames_with_masks, "nucleus masks"

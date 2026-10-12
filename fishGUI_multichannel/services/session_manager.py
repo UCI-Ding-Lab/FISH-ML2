@@ -22,6 +22,8 @@ class SessionManager:
     __importPath = None
     __segmentation_timing_rows = []
     __segmentation_timing_lock = threading.Lock()
+    __bbox_generation_jobs = 0
+    __bbox_generation_lock = threading.Lock()
     # --- Pool Management ---
     @classmethod
     def addToPool(cls, abstract_object):
@@ -121,25 +123,38 @@ class SessionManager:
         return cls.__importPath
 
     @classmethod
-    def generate_bboxes(cls, gui):
-        """Start background nucleus center generation for every loaded frame."""
-        abstracts = cls.getPool()
+    def generate_bboxes(cls, gui, frames=None):
+        """Start background nucleus center generation for the given frames, or every loaded frame."""
+        abstracts = cls.getPool() if frames is None else list(frames)
         if not abstracts:
             return
 
+        with cls.__bbox_generation_lock:
+            cls.__bbox_generation_jobs += 1
+
         def job():
             start = time.perf_counter()
-            max_workers = box_generation_worker_limit(len(abstracts))
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                for abs_obj in abstracts:
-                    executor.submit(cls._generate_one_bbox, gui, abs_obj)
-            logger.info(
-                "Prepared nucleus bbox and centers for %s frames in %.2f seconds",
-                len(abstracts),
-                time.perf_counter() - start,
-            )
+            try:
+                max_workers = box_generation_worker_limit(len(abstracts))
+                with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    for abs_obj in abstracts:
+                        executor.submit(cls._generate_one_bbox, gui, abs_obj)
+                logger.info(
+                    "Prepared nucleus bbox and centers for %s frames in %.2f seconds",
+                    len(abstracts),
+                    time.perf_counter() - start,
+                )
+            finally:
+                with cls.__bbox_generation_lock:
+                    cls.__bbox_generation_jobs -= 1
 
         threading.Thread(target=job, daemon=True).start()
+
+    @classmethod
+    def isGeneratingBboxes(cls) -> bool:
+        """Return True while background nucleus box generation is still running."""
+        with cls.__bbox_generation_lock:
+            return cls.__bbox_generation_jobs > 0
 
     @classmethod
     def _generate_one_bbox(cls, gui, abs_obj):

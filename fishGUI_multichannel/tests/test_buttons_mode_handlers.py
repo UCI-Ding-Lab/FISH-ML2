@@ -1,5 +1,7 @@
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from fishGUI_multichannel.gui.buttons import funcButton, get_apply_channel_source_choices
 from fishGUI_multichannel.services.session_manager import SessionManager
 
@@ -336,3 +338,81 @@ def test_cytoplasm_segmentation_passes_the_frames_to_resegment():
 
     assert mock_choose.call_args.args[3] == [with_masks]
     mock_segment_selected.assert_called_once_with(button.gui, [with_masks])
+
+
+def _make_box_frame(sample_id, boxes_ready):
+    frame = _make_nucleus_frame(False)
+    frame.sample_id = sample_id
+    frame.bbox_generated = boxes_ready
+    return frame
+
+
+def _run_nucleus_in_mode(button, mode, frames, generating=False, retry=False):
+    button._set_nucleus_segment_running = MagicMock()
+    button.gui.getWorkflowMode.return_value = mode
+    with patch.object(SessionManager, "getPool", return_value=frames), \
+         patch.object(SessionManager, "isGeneratingBboxes", return_value=generating), \
+         patch.object(SessionManager, "generate_bboxes") as mock_generate, \
+         patch("fishGUI_multichannel.gui.buttons.tkinter.messagebox.askretrycancel", return_value=retry) as mock_retry, \
+         patch("fishGUI_multichannel.gui.buttons.choose_frames_to_resegment", return_value=[]) as mock_choose, \
+         patch("fishGUI_multichannel.gui.buttons.threading.Thread") as mock_thread:
+        button._run_nucleus_segmentation(MagicMock())
+    return mock_generate, mock_retry, mock_choose, mock_thread
+
+
+def test_cellpose_nucleus_segmentation_never_checks_boxes():
+    button = _make_button_handler()
+    frames = [_make_box_frame(1, boxes_ready=False)]
+
+    _, mock_retry, mock_choose, mock_thread = _run_nucleus_in_mode(button, "nucleus_cellpose", frames)
+
+    mock_choose.assert_called_once()
+    mock_thread.assert_called_once()
+    mock_retry.assert_not_called()
+    button.gui.popBox.assert_not_called()
+
+
+def test_gdino_nucleus_segmentation_runs_when_every_frame_has_boxes():
+    button = _make_button_handler()
+    frames = [_make_box_frame(1, True), _make_box_frame(2, True)]
+
+    _, _, mock_choose, mock_thread = _run_nucleus_in_mode(button, "nucleus_gdino", frames)
+
+    mock_choose.assert_called_once()
+    mock_thread.assert_called_once()
+
+
+def test_gdino_nucleus_segmentation_asks_to_wait_while_boxes_are_being_made():
+    button = _make_button_handler()
+    frames = [_make_box_frame(1, True), _make_box_frame(4, False)]
+
+    mock_generate, mock_retry, mock_choose, mock_thread = _run_nucleus_in_mode(
+        button, "nucleus_gdino", frames, generating=True
+    )
+
+    title, message = button.gui.popBox.call_args.args[1:]
+    assert title == "Nucleus Boxes Not Ready"
+    assert "1 frame(s) (4)" in message and "purple dot" in message
+    mock_choose.assert_not_called()
+    mock_thread.assert_not_called()
+    mock_retry.assert_not_called()
+    mock_generate.assert_not_called()
+
+
+@pytest.mark.parametrize("retry", [True, False])
+def test_gdino_nucleus_segmentation_offers_retry_when_box_finding_failed(retry):
+    button = _make_button_handler()
+    missing = _make_box_frame(4, False)
+    frames = [_make_box_frame(1, True), missing]
+
+    mock_generate, mock_retry, mock_choose, mock_thread = _run_nucleus_in_mode(
+        button, "nucleus_gdino", frames, generating=False, retry=retry
+    )
+
+    mock_retry.assert_called_once()
+    if retry:
+        mock_generate.assert_called_once_with(button.gui, [missing])
+    else:
+        mock_generate.assert_not_called()
+    mock_choose.assert_not_called()
+    mock_thread.assert_not_called()
