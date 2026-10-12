@@ -144,7 +144,12 @@ class SessionManager:
     @classmethod
     def _generate_one_bbox(cls, gui, abs_obj):
         """Prepare nucleus centers and masks for one frame in the background."""
-        _ = abs_obj.bbox
+        try:
+            _ = abs_obj.bbox
+        except Exception:
+            # The worker pool would otherwise hide this error and the frame would silently stay without boxes
+            logger.exception("Nucleus box generation failed for sample %s", abs_obj.sample_id)
+            return
         cls._refresh_if_loaded(gui, abs_obj)
 
     @classmethod

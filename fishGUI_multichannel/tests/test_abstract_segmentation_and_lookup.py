@@ -127,3 +127,26 @@ def test_segment_channel_still_asks_when_no_choice_is_given(bare_abstract_factor
 
     assert abs_obj.segment_channel("488") == [1]
     abs_obj.gui.ask_use_stored_masks.assert_called_once()
+
+
+def test_bbox_runs_box_finding_once_when_two_threads_ask_at_the_same_time(bare_abstract_factory):
+    import threading
+    import time
+
+    abs_obj = bare_abstract_factory()
+    calls = []
+
+    def slow_generate(_img):
+        calls.append(1)
+        time.sleep(0.05)
+        return [(0, 0, 4, 6)]
+
+    abs_obj.gui.getNucleusBackend.return_value.generate_bboxes.side_effect = slow_generate
+    threads = [threading.Thread(target=lambda: abs_obj.bbox) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert len(calls) == 1
+    assert abs_obj.bbox_generated is True

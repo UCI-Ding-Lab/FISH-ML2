@@ -1,3 +1,4 @@
+import threading
 import time
 import pathlib
 import numpy as np
@@ -19,6 +20,9 @@ from ..utils.image_preprocessing import (
 from ..utils.sample_channels import get_cytoplasm_paths_and_names
 
 logger = logging.getLogger('fishcore')
+
+# GroundingDINO box finding runs one frame at a time across the whole app
+_NUCLEUS_BOX_LOCK = threading.Lock()
 
 class abstract():
     """
@@ -296,16 +300,20 @@ class abstract():
         """
         if self.bbox_generated:
             return self.__bbox
-        total_start = time.perf_counter()
-        bbox_start = time.perf_counter()
-        nucleus_backend = self.gui.getNucleusBackend()
-        nucleus_boxes = nucleus_backend.generate_bboxes(self.__img_np_nucleus_native)
-        self._log_bbox_generation(time.perf_counter() - bbox_start)
-        self.nucleus_centers = self._compute_nucleus_centers_from_boxes(nucleus_boxes)
-        self.__bbox = self._build_editable_bbox_objects(nucleus_boxes)
-        self._log_total_nucleus_preparation(time.perf_counter() - total_start)
-        self.bbox_generated = True
-        return self.__bbox
+        with _NUCLEUS_BOX_LOCK:
+            # Another thread may have finished this frame's boxes while we waited
+            if self.bbox_generated:
+                return self.__bbox
+            total_start = time.perf_counter()
+            bbox_start = time.perf_counter()
+            nucleus_backend = self.gui.getNucleusBackend()
+            nucleus_boxes = nucleus_backend.generate_bboxes(self.__img_np_nucleus_native)
+            self._log_bbox_generation(time.perf_counter() - bbox_start)
+            self.nucleus_centers = self._compute_nucleus_centers_from_boxes(nucleus_boxes)
+            self.__bbox = self._build_editable_bbox_objects(nucleus_boxes)
+            self._log_total_nucleus_preparation(time.perf_counter() - total_start)
+            self.bbox_generated = True
+            return self.__bbox
         
 
     # --- Segmentation Logic ---

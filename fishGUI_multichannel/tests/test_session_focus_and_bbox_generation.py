@@ -74,3 +74,15 @@ def test_generate_bboxes_submits_each_frame_to_the_background_worker_job():
         (mock_generate_one_bbox, (gui, first)),
         (mock_generate_one_bbox, (gui, second)),
     ]
+
+
+def test_generate_one_bbox_logs_a_failure_instead_of_hiding_it():
+    frame = MagicMock(sample_id=7)
+    type(frame).bbox = property(lambda self: (_ for _ in ()).throw(RuntimeError("dino failed")))
+    gui = MagicMock()
+
+    with patch("fishGUI_multichannel.services.session_manager.logger") as mock_logger:
+        SessionManager._generate_one_bbox(gui, frame)
+
+    mock_logger.exception.assert_called_once_with("Nucleus box generation failed for sample %s", 7)
+    gui.getRoot.return_value.after.assert_not_called()
