@@ -1,27 +1,7 @@
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from fishGUI_multichannel.gui.abstract import abstract
 from fishGUI_multichannel.services.session_manager import SessionManager
-
-
-@pytest.mark.parametrize("device", ["cpu", "cuda"])
-@pytest.mark.parametrize("total_jobs", [1, 5])
-def test_nucleus_processing_uses_one_worker(device, total_jobs):
-    """Use one nucleus worker even when several frames are waiting"""
-    gui = MagicMock()
-    gui.getNucleusBackend.return_value.device = device
-    assert SessionManager._get_nucleus_worker_limit(gui, total_jobs) == 1
-
-
-@pytest.mark.parametrize("device", ["cpu", "cuda"])
-@pytest.mark.parametrize("total_jobs", [1, 5])
-def test_cytoplasm_processing_uses_one_worker(device, total_jobs):
-    """Use one cytoplasm worker even when several frames are waiting"""
-    gui = MagicMock()
-    gui.getCytoplasmBackend.return_value.device = device
-    assert SessionManager._get_cytoplasm_worker_limit(gui, total_jobs) == 1
 
 
 def _make_bare_abstract(selected=False):
@@ -82,11 +62,11 @@ def test_generate_bboxes_submits_each_frame_to_the_background_worker_job():
 
     with patch("fishGUI_multichannel.services.session_manager.ThreadPoolExecutor", return_value=FakeExecutor()) as mock_executor, \
          patch("fishGUI_multichannel.services.session_manager.threading.Thread", side_effect=FakeThread) as mock_thread, \
-         patch.object(SessionManager, "_get_nucleus_worker_limit", return_value=2) as mock_limit, \
+         patch("fishGUI_multichannel.services.session_manager.box_generation_worker_limit", return_value=2) as mock_limit, \
          patch.object(SessionManager, "_generate_one_bbox") as mock_generate_one_bbox:
         SessionManager.generate_bboxes(gui)
 
-    mock_limit.assert_called_once_with(gui, 2)
+    mock_limit.assert_called_once_with(2)
     mock_executor.assert_called_once_with(max_workers=2)
     mock_thread.assert_called_once()
     assert mock_thread.call_args.kwargs["daemon"] is True

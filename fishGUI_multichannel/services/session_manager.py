@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from ..services.bundle_data import bundle
 from ..services.apply_channel_mask import apply_channel_mask_to_frames
+from ..services.worker_limits import box_generation_worker_limit, segmentation_worker_limit
 from ..gui.abstract import abstract
 
 
@@ -120,23 +121,6 @@ class SessionManager:
         return cls.__importPath
 
     @classmethod
-    def _get_nucleus_worker_limit(cls, gui, total_jobs: int) -> int:
-        """Choose a safe worker count for nucleus center generation."""
-        backend = gui.getNucleusBackend()
-        if backend.device == "cuda":
-            logger.info("GPU detected; limiting nucleus work to 1 worker.")
-            return 1
-        logger.info("CPU detected; limiting nucleus work to 2 workers to avoid bbox contention.")
-        return max(1, min(1, total_jobs))
-
-    @classmethod
-    def _get_cytoplasm_worker_limit(cls, gui, total_jobs: int) -> int:
-        """Choose a safe worker count for cytoplasm segmentation work."""
-        worker_count = max(1, min(1, total_jobs))
-        logger.info("Cytoplasm segmentation is using %s worker(s).", worker_count)
-        return worker_count
-
-    @classmethod
     def generate_bboxes(cls, gui):
         """Start background nucleus center generation for every loaded frame."""
         abstracts = cls.getPool()
@@ -145,7 +129,7 @@ class SessionManager:
 
         def job():
             start = time.perf_counter()
-            max_workers = cls._get_nucleus_worker_limit(gui, len(abstracts))
+            max_workers = box_generation_worker_limit(len(abstracts))
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 for abs_obj in abstracts:
                     executor.submit(cls._generate_one_bbox, gui, abs_obj)
@@ -234,7 +218,9 @@ class SessionManager:
         gui.popBox("i", "Segmentation", f"Started segmentation for {len(selected_frames)} images.")
 
         def monitor_threads():
-            max_workers = cls._get_cytoplasm_worker_limit(gui, len(selected_frames))
+            max_workers = segmentation_worker_limit(
+                gui.getCytoplasmBackend(), len(selected_frames), gpu_workers=1, cpu_workers=1
+            )
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = [
                     executor.submit(cls._segment_each, abs_obj, gui)

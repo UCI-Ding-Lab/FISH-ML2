@@ -6,6 +6,8 @@ import os
 import logging
 import time
 
+from .worker_limits import segmentation_worker_limit
+
 logger = logging.getLogger("fishcore")
 
 def is_cytoplasm_channel(channel):
@@ -113,21 +115,16 @@ def apply_channel_mask_to_frames(
         seg_mode_on = False
     root = _get_gui_root(abstract_cls, frame_pool)
 
-    def _get_cytoplasm_worker_limit(total_jobs):
-        """Choose a safe worker count for cytoplasm mask preparation."""
+    def _find_cytoplasm_backend():
+        """Return the cytoplasm backend from the focused or first frame, or None."""
         try:
             if focused_frame is not None and focused_frame.gui is not None:
-                backend = focused_frame.gui.getCytoplasmBackend()
-            elif frame_pool and frame_pool[0].gui is not None:
-                backend = frame_pool[0].gui.getCytoplasmBackend()
-            else:
-                backend = None
-            if backend is not None and backend.device == "cuda":
-                logger.info("GPU detected; limiting copy-mask concurrency to 1 worker.")
-                return 1
+                return focused_frame.gui.getCytoplasmBackend()
+            if frame_pool and frame_pool[0].gui is not None:
+                return frame_pool[0].gui.getCytoplasmBackend()
         except Exception:
             pass
-        return max(1, min(5, os.cpu_count() or 1, total_jobs))
+        return None
 
     def compute_worker(i):
         frame = frame_pool[i]
@@ -169,7 +166,9 @@ def apply_channel_mask_to_frames(
     def coordinator():
         start = time.perf_counter()
         results = []
-        max_workers = _get_cytoplasm_worker_limit(len(frame_indices))
+        max_workers = segmentation_worker_limit(
+            _find_cytoplasm_backend(), len(frame_indices), gpu_workers=1, cpu_workers=min(5, os.cpu_count() or 1)
+        )
         with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="ApplyMask") as ex:
             futures = {ex.submit(compute_worker, i): i for i in frame_indices}
             for fut in as_completed(futures):
