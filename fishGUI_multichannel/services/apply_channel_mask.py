@@ -27,14 +27,12 @@ def filter_cytoplasm_channels(channels):
 def ensure_channel_segmented(frame, channel):
     """
     Ensures the segmentation for the given channel is computed for this frame.
-    If not already segmented, triggers segmentation for the selected channel.
+    If not already segmented, triggers segmentation for that channel.
+    Runs on a worker thread, so it leaves selected_channel alone; switching it here would race with the user's channel selector.
     """
     if not frame._get_seg_list_for_channel(channel):
-        current_focused_channel = frame.selected_channel
-        frame.selected_channel = channel
         logger.debug(f"  segmenting channel {channel} for frame {frame.sample_id}")
-        _ = frame.segment  # calls segment property in abstract.py -- triggers segmentation for selected channel
-        frame.selected_channel = current_focused_channel 
+        frame.segment_channel(channel, use_stored_masks=False)
         logger.debug(f"  segmentation done for channel {channel} for frame {frame.sample_id}")
 
 

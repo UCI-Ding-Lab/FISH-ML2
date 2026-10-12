@@ -576,6 +576,14 @@ class abstract():
     def bbox_generated(self, value: bool):
         """Store whether nucleus prompt boxes are ready and refresh the thumbnail."""
         self.__bbox_generated = value
+        # Box generation runs on worker threads; the select-mode check reads a Tk variable
+        if not self._is_main_thread():
+            self.gui.getRoot().after(0, self._update_thumbnail_unless_select_mode)
+            return
+        self._update_thumbnail_unless_select_mode()
+
+    def _update_thumbnail_unless_select_mode(self):
+        """Refresh the thumbnail unless frame-select mode is on."""
         if not self.gui.getFuncButton().selectButtonPressed():
             self.update_thumbnail()
     @segment.setter
@@ -596,10 +604,8 @@ class abstract():
     @segment_generated.setter
     def segment_generated(self, value: bool):
         """Store whether cytoplasm masks exist and refresh the thumbnail."""
-        self.update_thumbnail()
         self.__segment_generated = value
-        if not self.gui.getFuncButton().selectButtonPressed():
-            self.update_thumbnail()
+        self.update_thumbnail()
 
     def on_click(self, event):
         """
@@ -678,7 +684,11 @@ class abstract():
     def update_thumbnail(self):
         """
         Rebuild the thumbnail image for the currently displayed channel.
+        Calls from worker threads are moved to the Tk main thread, because Tk images and widgets are not thread-safe.
         """
+        if not self._is_main_thread():
+            self.gui.getRoot().after(0, self.update_thumbnail)
+            return
         self.__img_np_rgb = self._get_rgb_for_display_channel(self.__current_channel)
         self.__img_pil_thumbnail = Image.fromarray(self.__img_np_rgb).resize((64, 64))
         self.__img_tk_thumbnail = ImageTk.PhotoImage(self.__img_pil_thumbnail)
@@ -696,6 +706,11 @@ class abstract():
             self.thumbnail = "crossout"
             return
         self.thumbnail = self._get_mode_thumbnail_state()
+
+    @staticmethod
+    def _is_main_thread() -> bool:
+        """Return True when running on the Tk main thread."""
+        return threading.current_thread() is threading.main_thread()
 
     def _get_thumbnail_image_for_state(self, state: str):
         """

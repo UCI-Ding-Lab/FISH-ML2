@@ -257,7 +257,8 @@ class SessionManager:
                             failed_frames.append(f"{abs_obj.sample_id}: {error}")
                 cls._export_segmentation_timing_csv()
             finally:
-                gui.getFuncButton().toggle["SEGMENTATION_SELECTION"].set(0)
+                # Tk variables and widgets must only be changed on the main thread
+                gui.getRoot().after(0, lambda: gui.getFuncButton().toggle["SEGMENTATION_SELECTION"].set(0))
                 gui.getRoot().after(0, lambda: gui.getFuncButton()._set_cytoplasm_segment_running(False))
             if failed_frames:
                 failure_message = describe_failed_frames("Cytoplasm segmentation", failed_frames)
@@ -296,13 +297,12 @@ class SessionManager:
         logger.debug(f"Thread {thread_name} STARTED for sample {abs_obj.sample_id}")
         start = time.perf_counter()
 
-        original_channel = abs_obj.selected_channel
+        # segment_channel takes the channel directly, so selected_channel (owned by the UI) is never changed here
         channels_to_segment = list(abs_obj.available_channels)
         for ch in channels_to_segment:
             if abs_obj.get_segments(ch) and not resegment:
                 continue
             abs_obj.segment_channel(ch, use_stored_masks=False)
-        abs_obj.selected_channel = original_channel
         abs_obj.segment_generated = abs_obj.has_all_channel_segments()
 
         elapsed = time.perf_counter() - start
