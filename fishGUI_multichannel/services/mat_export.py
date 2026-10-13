@@ -46,6 +46,7 @@ def export_session_to_mat(gui, export_mode: str = BOTH):
     include_dapi_only_frames = export_mode == NUCLEUS_ONLY and all_selected_frames_are_dapi_only(toSave)
     empty_frame_names = []
     skipped_dapi_only_names = []
+    left_out = {"cells": 0, "nuclei": 0}
 
     for abs in toSave:
         first_channel = first_cytoplasm_channel_and_path(abs)
@@ -63,6 +64,8 @@ def export_session_to_mat(gui, export_mode: str = BOTH):
             nucleus_masks = []
         else:
             xy, masks, nucleus_masks = build_frame_cells(abs, channel, export_mode)
+            if export_mode == BOTH:
+                add_left_out_counts(left_out, abs.get_pairings(channel))
         if abs.selected and not xy:
             empty_frame_names.append(path.name)
 
@@ -96,8 +99,30 @@ def export_session_to_mat(gui, export_mode: str = BOTH):
         f"Pairing PDF: {debug_pdf_path.name if debug_pdf_path else 'not written'}\n"
         f"Total {total_seconds:.2f}s"
     )
+    if export_mode == BOTH:
+        summary += "\n\n" + describe_left_out(left_out, debug_pdf_path is not None)
     warning = build_export_warning(empty_frame_names, skipped_dapi_only_names, export_mode)
     show_export_complete(gui, summary, warning)
+
+
+def add_left_out_counts(left_out: dict, pairing: dict) -> None:
+    """Add one frame's whole-cell and nucleus masks that found no partner to the running totals."""
+    left_out["cells"] += len(pairing["unmatched_cytoplasms"])
+    left_out["nuclei"] += len(pairing["unmatched_nuclei"])
+
+
+def describe_left_out(left_out: dict, debug_pdf_written: bool) -> str:
+    """Say how many masks paired export left out, and how to see which ones."""
+    cells, nuclei = left_out["cells"], left_out["nuclei"]
+    text = (
+        f"Left out (no partner): {cells} whole-cell mask{'' if cells == 1 else 's'} "
+        f"and {nuclei} nucleus mask{'' if nuclei == 1 else 's'}"
+    )
+    if cells + nuclei == 0:
+        return text
+    if debug_pdf_written:
+        return text + "\nThey are outlined in red in the pairing PDF."
+    return text + "\nStart FishGUI with --export-pairing-debug-pdf to see which ones."
 
 
 def build_export_warning(empty_frame_names: list, skipped_dapi_only_names: list, export_mode: str) -> str | None:

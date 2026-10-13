@@ -224,3 +224,33 @@ def test_show_export_complete_uses_a_warning_popup_only_when_needed(warning, pop
     used[popup].assert_called_once()
     other = "showwarning" if popup == "showinfo" else "showinfo"
     used[other].assert_not_called()
+
+
+def test_describe_left_out_says_nothing_was_left_out():
+    text = mat_export.describe_left_out({"cells": 0, "nuclei": 0}, debug_pdf_written=False)
+    assert text == "Left out (no partner): 0 whole-cell masks and 0 nucleus masks"
+
+
+def test_describe_left_out_points_to_the_pdf_flag_when_no_pdf_was_written():
+    text = mat_export.describe_left_out({"cells": 12, "nuclei": 1}, debug_pdf_written=False)
+    assert text.startswith("Left out (no partner): 12 whole-cell masks and 1 nucleus mask\n")
+    assert "--export-pairing-debug-pdf" in text
+
+
+def test_describe_left_out_points_to_the_pdf_when_it_was_written():
+    text = mat_export.describe_left_out({"cells": 1, "nuclei": 3}, debug_pdf_written=True)
+    assert text.endswith("They are outlined in red in the pairing PDF.")
+
+
+@pytest.mark.parametrize("export_mode, shows_counts", [(BOTH, True), (NUCLEUS_ONLY, False), (WHOLE_CELL_ONLY, False)])
+def test_paired_export_summary_adds_up_left_out_masks(export_mode, shows_counts, single_mode_spies):
+    """Paired export totals the unpaired masks of every exported frame in the summary popup"""
+    frames = [make_export_frame(sample, ["647"]) for sample in ("s001", "s002")]
+    frames[0].get_pairings.return_value = {"unmatched_cytoplasms": [0, 4], "unmatched_nuclei": [1]}
+    frames[1].get_pairings.return_value = {"unmatched_cytoplasms": [2], "unmatched_nuclei": []}
+    for frame in frames:
+        frame.has_nucleus_segments.return_value = True
+    with patch.object(mat_export, "show_export_complete") as show:
+        export_frames(frames, export_mode)
+    summary = show.call_args.args[1]
+    assert ("Left out (no partner): 3 whole-cell masks and 1 nucleus mask" in summary) == shows_counts
