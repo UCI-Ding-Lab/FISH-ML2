@@ -283,7 +283,7 @@ class stove():
             b.rect.set_height(h)
             self.nucleus_center = b.rect.get_center()
             b.anchorUpdate()
-            self.canvas.draw()
+            self.canvas.draw_idle()
 
         elif self._can_collect_mask_stroke():
             current_x, current_y = event.xdata, event.ydata
