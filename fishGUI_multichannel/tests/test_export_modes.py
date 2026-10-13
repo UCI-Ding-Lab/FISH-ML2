@@ -1,3 +1,4 @@
+from fishGUI_multichannel.services.export_cell_data import frame_has_any_masks
 from fishGUI_multichannel.services.export_modes import (
     BOTH,
     NUCLEUS_ONLY,
@@ -10,11 +11,12 @@ from fishGUI_multichannel.services.export_modes import (
 class FakeFrame:
     """Store which masks one frame has for export mode tests."""
 
-    def __init__(self, nuclei=False, whole_cells=False, selected=True, dapi_only=False):
+    def __init__(self, nuclei=False, whole_cells=False, selected=True, dapi_only=False, segmented_channel="488"):
         self.selected = selected
         self.nuclei = nuclei
         self.whole_cells = whole_cells
         self.dapi_only = dapi_only
+        self.segmented_channel = segmented_channel
 
     def has_nucleus_segments(self):
         """Return whether this frame has nucleus masks."""
@@ -27,8 +29,8 @@ class FakeFrame:
         return {"488": "img_w2-488_s001.tif", "647": "img_w3-647_s001.tif"}
 
     def has_segments(self, channel):
-        """Return whether the first cytoplasm channel has whole-cell masks."""
-        return self.whole_cells and channel == "488"
+        """Return whether this cytoplasm channel has whole-cell masks (only the segmented channel does)."""
+        return self.whole_cells and channel == self.segmented_channel
 
 
 def test_guess_is_both_when_frames_have_nuclei_and_whole_cells():
@@ -74,3 +76,15 @@ def test_guess_ignores_an_unavailable_last_mode():
 
 def test_guess_is_nucleus_only_for_unsegmented_dapi_only_frames():
     assert guess_export_mode([FakeFrame(dapi_only=True)]) == NUCLEUS_ONLY
+
+
+def test_frame_has_any_masks_is_true_with_only_nucleus_masks():
+    assert frame_has_any_masks(FakeFrame(nuclei=True))
+
+
+def test_frame_has_any_masks_is_true_with_whole_cells_in_a_later_channel():
+    assert frame_has_any_masks(FakeFrame(whole_cells=True, segmented_channel="647"))
+
+
+def test_frame_has_any_masks_is_false_when_nothing_is_segmented():
+    assert not frame_has_any_masks(FakeFrame())

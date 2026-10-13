@@ -236,11 +236,52 @@ def test_export_call_warns_and_resets_toggle_when_no_image_is_loaded():
     button.toggle["EXPORT"].set.assert_called_once_with(0)
 
 
+def _export_frame(selected=True, nuclei=True):
+    """Build one frame for export tests: selected or not, with or without masks."""
+    frame = MagicMock(selected=selected)
+    frame.has_nucleus_segments.return_value = nuclei
+    frame.has_segments.return_value = False
+    frame.getCytoplasmChannelsAndPaths.return_value = {"488": "img_w2-488_s001.tif"}
+    return frame
+
+
+def test_export_call_warns_and_stops_when_no_frames_are_selected():
+    button = _make_button_handler()
+    button.gui.getStove.return_value.isLoaded.return_value = True
+
+    with patch.object(SessionManager, "getPool", return_value=[_export_frame(selected=False)]), \
+         patch("fishGUI_multichannel.gui.buttons.tkinter.messagebox.showwarning") as mock_warning, \
+         patch("fishGUI_multichannel.gui.buttons.ask_export_mode") as mock_popup, \
+         patch("fishGUI_multichannel.gui.buttons.threading.Thread") as mock_thread:
+        button.EXPORT_call()
+
+    assert mock_warning.call_args.args[0] == "No Frames to Export"
+    mock_popup.assert_not_called()
+    mock_thread.assert_not_called()
+    button.toggle["EXPORT"].set.assert_called_once_with(0)
+
+
+def test_export_call_warns_and_stops_when_nothing_is_segmented():
+    button = _make_button_handler()
+    button.gui.getStove.return_value.isLoaded.return_value = True
+
+    with patch.object(SessionManager, "getPool", return_value=[_export_frame(nuclei=False)]), \
+         patch("fishGUI_multichannel.gui.buttons.tkinter.messagebox.showwarning") as mock_warning, \
+         patch("fishGUI_multichannel.gui.buttons.ask_export_mode") as mock_popup, \
+         patch("fishGUI_multichannel.gui.buttons.threading.Thread") as mock_thread:
+        button.EXPORT_call()
+
+    assert mock_warning.call_args.args[0] == "Nothing Segmented"
+    mock_popup.assert_not_called()
+    mock_thread.assert_not_called()
+    button.toggle["EXPORT"].set.assert_called_once_with(0)
+
+
 def test_export_call_cancelled_popup_stops_export_and_resets_toggle():
     button = _make_button_handler()
     button.gui.getStove.return_value.isLoaded.return_value = True
 
-    with patch.object(SessionManager, "getPool", return_value=[]),          patch("fishGUI_multichannel.gui.buttons.ask_export_mode", return_value=None),          patch("fishGUI_multichannel.gui.buttons.threading.Thread") as mock_thread:
+    with patch.object(SessionManager, "getPool", return_value=[_export_frame()]),          patch("fishGUI_multichannel.gui.buttons.ask_export_mode", return_value=None),          patch("fishGUI_multichannel.gui.buttons.threading.Thread") as mock_thread:
         button.EXPORT_call()
 
     mock_thread.assert_not_called()
@@ -254,7 +295,7 @@ def test_export_call_remembers_and_exports_the_chosen_mode():
     button.gui.getStove.return_value.isLoaded.return_value = True
     button.gui.getLastExportMode.return_value = "nucleus_only"
 
-    with patch.object(SessionManager, "getPool", return_value=[]),          patch("fishGUI_multichannel.gui.buttons.ask_export_mode", return_value="whole_cell_only") as mock_popup,          patch("fishGUI_multichannel.gui.buttons.export_session_to_mat") as mock_export,          patch("fishGUI_multichannel.gui.buttons.threading.Thread") as mock_thread:
+    with patch.object(SessionManager, "getPool", return_value=[_export_frame()]),          patch("fishGUI_multichannel.gui.buttons.ask_export_mode", return_value="whole_cell_only") as mock_popup,          patch("fishGUI_multichannel.gui.buttons.export_session_to_mat") as mock_export,          patch("fishGUI_multichannel.gui.buttons.threading.Thread") as mock_thread:
         button.EXPORT_call()
         mock_thread.call_args.kwargs["target"]()
 

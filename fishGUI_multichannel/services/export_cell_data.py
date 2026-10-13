@@ -43,6 +43,15 @@ def frame_has_whole_cell_masks(frame) -> bool:
     return first_channel is not None and frame.has_segments(first_channel[0])
 
 
+def frame_has_any_masks(frame) -> bool:
+    """
+    Return True when one frame has nucleus masks or whole-cell masks in any cytoplasm channel.
+    """
+    if frame.has_nucleus_segments():
+        return True
+    return any(frame.has_segments(channel) for channel in frame.getCytoplasmChannelsAndPaths())
+
+
 def build_paired_export_data(abs_obj, channel: str) -> tuple[list, list, list]:
     """
     Build matched cell positions plus cytoplasm and nucleus masks for one channel.

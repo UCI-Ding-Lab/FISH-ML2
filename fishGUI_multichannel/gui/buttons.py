@@ -9,6 +9,7 @@ import tkinter as tk
 from concurrent.futures import ThreadPoolExecutor
 from tkinter import filedialog
 
+from ..services.export_cell_data import frame_has_any_masks
 from ..services.export_modes import available_export_modes, guess_export_mode
 from ..services.mat_export import export_session_to_mat
 from ..services.segmentation import describe_failed_frames
@@ -721,6 +722,12 @@ class funcButton:
     def _ask_export_mode(self):
         """Ask which masks to export, starting on the last choice or a guess; None means cancel."""
         frames = SessionManager.getPool()
+        if not any(frame.selected for frame in frames):
+            tkinter.messagebox.showwarning("No Frames to Export", "No frames are selected for export.\nSelect at least one frame and try again.")
+            return None
+        if not any(frame_has_any_masks(frame) for frame in frames if frame.selected):
+            tkinter.messagebox.showwarning("Nothing Segmented", "None of the selected frames have nucleus or whole-cell masks yet.\nSegment at least one frame before exporting.")
+            return None
         available_modes = available_export_modes(frames)
         initial_mode = guess_export_mode(frames, self.gui.getLastExportMode())
         export_mode = ask_export_mode(self.gui.getRoot(), initial_mode, available_modes)
