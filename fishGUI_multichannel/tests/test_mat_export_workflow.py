@@ -15,6 +15,7 @@ def make_export_frame(sample_id, channels, selected=True, has_masks=True):
         channel: Path(f"{sample_id}_w{channel}.tif") for channel in channels
     }
     frame.has_segments.return_value = has_masks
+    frame.has_nucleus_segments.return_value = has_masks
     return frame
 
 
@@ -254,3 +255,25 @@ def test_paired_export_summary_adds_up_left_out_masks(export_mode, shows_counts,
         export_frames(frames, export_mode)
     summary = show.call_args.args[1]
     assert ("Left out (no partner): 3 whole-cell masks and 1 nucleus mask" in summary) == shows_counts
+
+
+def test_paired_export_does_not_count_one_sided_masks_as_left_out(single_mode_spies):
+    """Direct paired export writes no cells for one-sided frames and does not report unmatched masks."""
+    writer, pairing, nucleus_only, whole_cell_only, debug_pdf = single_mode_spies
+    nucleus_only_frame = make_export_frame("s001", ["647"], has_masks=False)
+    nucleus_only_frame.has_nucleus_segments.return_value = True
+    nucleus_only_frame.has_segments.return_value = False
+    nucleus_only_frame.get_pairings.return_value = {"unmatched_cytoplasms": [], "unmatched_nuclei": [0, 1]}
+    whole_cell_only_frame = make_export_frame("s002", ["647"], has_masks=True)
+    whole_cell_only_frame.has_nucleus_segments.return_value = False
+    whole_cell_only_frame.get_pairings.return_value = {"unmatched_cytoplasms": [0], "unmatched_nuclei": []}
+
+    with patch.object(mat_export, "show_export_complete") as show:
+        export_frames([nucleus_only_frame, whole_cell_only_frame], BOTH)
+
+    pairing.assert_not_called()
+    nucleus_only.assert_not_called()
+    whole_cell_only.assert_not_called()
+    writer.assert_called_once_with(["s001_w647.tif", "s002_w647.tif"], [[], []], [[], []], [[], []], "result.mat", dirname=".")
+    summary = show.call_args.args[1]
+    assert "Left out (no partner): 0 whole-cell masks and 0 nucleus masks" in summary

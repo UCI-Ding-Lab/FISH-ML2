@@ -58,14 +58,16 @@ def export_session_to_mat(gui, export_mode: str = BOTH):
             channel, path = None, abs.getNucleusPath()
         else:
             channel, path = first_channel
+        if abs.selected and export_mode == BOTH and channel is not None and frame_has_masks_for_mode(abs, channel, export_mode):
+            abs.update_pairings_for_channel(channel)
+            add_left_out_counts(left_out, abs.get_pairings(channel))
+
         if not abs.selected or not frame_has_masks_for_mode(abs, channel, export_mode):
             xy = []
             masks = []
             nucleus_masks = []
         else:
             xy, masks, nucleus_masks = build_frame_cells(abs, channel, export_mode)
-            if export_mode == BOTH:
-                add_left_out_counts(left_out, abs.get_pairings(channel))
         if abs.selected and not xy:
             empty_frame_names.append(path.name)
 
@@ -173,6 +175,8 @@ def frame_has_masks_for_mode(frame, channel: str, export_mode: str) -> bool:
     """Return True when one frame has the masks the chosen export mode needs."""
     if export_mode == NUCLEUS_ONLY:
         return frame.has_nucleus_segments()
+    if export_mode == BOTH:
+        return frame.has_nucleus_segments() and frame.has_segments(channel)
     return frame.has_segments(channel)
 
 
