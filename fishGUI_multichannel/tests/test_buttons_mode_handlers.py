@@ -236,11 +236,11 @@ def test_export_call_warns_and_resets_toggle_when_no_image_is_loaded():
     button.toggle["EXPORT"].set.assert_called_once_with(0)
 
 
-def _export_frame(selected=True, nuclei=True):
-    """Build one frame for export tests: selected or not, with or without masks."""
+def _export_frame(selected=True, nuclei=True, whole_cells=False):
+    """Build one frame for export tests: selected or not, with or without nucleus and whole-cell masks."""
     frame = MagicMock(selected=selected)
     frame.has_nucleus_segments.return_value = nuclei
-    frame.has_segments.return_value = False
+    frame.has_segments.return_value = whole_cells
     frame.getCytoplasmChannelsAndPaths.return_value = {"488": "img_w2-488_s001.tif"}
     return frame
 
@@ -295,7 +295,7 @@ def test_export_call_remembers_and_exports_the_chosen_mode():
     button.gui.getStove.return_value.isLoaded.return_value = True
     button.gui.getLastExportMode.return_value = "nucleus_only"
 
-    with patch.object(SessionManager, "getPool", return_value=[_export_frame()]),          patch("fishGUI_multichannel.gui.buttons.ask_export_mode", return_value="whole_cell_only") as mock_popup,          patch("fishGUI_multichannel.gui.buttons.export_session_to_mat") as mock_export,          patch("fishGUI_multichannel.gui.buttons.threading.Thread") as mock_thread:
+    with patch.object(SessionManager, "getPool", return_value=[_export_frame(whole_cells=True)]),          patch("fishGUI_multichannel.gui.buttons.ask_export_mode", return_value="whole_cell_only") as mock_popup,          patch("fishGUI_multichannel.gui.buttons.export_session_to_mat") as mock_export,          patch("fishGUI_multichannel.gui.buttons.threading.Thread") as mock_thread:
         button.EXPORT_call()
         mock_thread.call_args.kwargs["target"]()
 
