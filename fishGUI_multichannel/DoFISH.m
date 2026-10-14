@@ -298,13 +298,6 @@ ParseArguments(nargin)
 
     % find H threshold
     function [H_thres, f, X, Y] = estimate_H_thres(channel)
-        if is_dapi_channel(FISH{channel,1}.channel)
-            H_thres = 10;
-            f = [];
-            X = [];
-            Y = [];
-            return
-        end
         all_maxH  = [];
         for cframe=1:min(length(Tracked),10)
             for num_cell = 1:length(Tracked{1,cframe}.cells)
