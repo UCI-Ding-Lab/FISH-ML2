@@ -69,7 +69,7 @@ class anchor():
 
     def contains(self, x: float, y: float) -> bool:
         p = self.gui.getStove().subplot.transData.transform((x, y))
-        return self.patch.contains_point(p)
+        return self.patch.contains_point(p, radius=8)
 
     @classmethod
     def setBuffer(cls, anchor: 'anchor'):

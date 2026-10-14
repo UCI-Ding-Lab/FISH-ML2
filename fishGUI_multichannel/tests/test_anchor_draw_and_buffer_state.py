@@ -59,7 +59,7 @@ def test_contains_uses_transformed_data_coordinates():
 
     assert result is True
     anchor_obj.gui.getStove.return_value.subplot.transData.transform.assert_called_once_with((1.5, 2.5))
-    anchor_obj.patch.contains_point.assert_called_once_with((15, 25))
+    anchor_obj.patch.contains_point.assert_called_once_with((15, 25), radius=8)
 
 
 def test_clear_buffer_deselects_the_buffered_anchor_and_clears_it():
