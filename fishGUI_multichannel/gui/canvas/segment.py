@@ -6,6 +6,8 @@ from skimage import measure
 
 logger = logging.getLogger('fishcore')
 
+MAX_UNDO_STEPS = 50
+
 class segment():
     __buffer: 'segment' = None
     __deleted_stack = []
@@ -191,6 +193,8 @@ class segment():
             return
         segment.__redo_actions.clear()
         self._undo_stack.append(cur.copy())
+        if len(self._undo_stack) > MAX_UNDO_STEPS:
+            self._undo_stack.pop(0)
         self._redo_stack.clear()
         segment.__action_history.append(("edit", self))
 
