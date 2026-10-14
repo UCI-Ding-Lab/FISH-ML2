@@ -15,9 +15,9 @@ def write_tracked_mat_file(
     Pass nucleus_masks=None to leave the nucleus_mask field out of every cell.
     """
     tracked_dtype_head = np.dtype([
+        ("dirname", "O"),
         ("filename", "O"),
         ("cells", "O"),
-        ("dirname", "O"),
     ])
     tracked_dtype_tail = np.dtype([
         ("filename", "O"),
@@ -45,7 +45,7 @@ def write_tracked_mat_file(
         # dirname only for the first entry
         if eachImg == 0:
             entry = np.zeros((1, 1), dtype=tracked_dtype_head)
-            entry[0, 0]["dirname"] = np.array([[dirname if dirname else ""]], dtype="O")
+            entry[0, 0]["dirname"] = dirname if dirname else ""
         else:
             entry = np.zeros((1, 1), dtype=tracked_dtype_tail)
 
