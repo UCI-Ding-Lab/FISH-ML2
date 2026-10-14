@@ -64,6 +64,22 @@ def test_all_modes_are_available_when_a_frame_has_cytoplasm_images():
     assert available_export_modes(frames) == [NUCLEUS_ONLY, WHOLE_CELL_ONLY, BOTH]
 
 
+def test_only_nucleus_export_is_available_when_only_nuclei_are_segmented():
+    frames = [FakeFrame(nuclei=True)]
+    assert available_export_modes(frames) == [NUCLEUS_ONLY]
+
+
+def test_only_whole_cell_export_is_available_when_only_whole_cells_are_segmented():
+    frames = [FakeFrame(whole_cells=True)]
+    assert available_export_modes(frames) == [WHOLE_CELL_ONLY]
+
+
+def test_paired_export_is_available_only_when_a_frame_has_both_mask_types():
+    frames = [FakeFrame(nuclei=True), FakeFrame(whole_cells=True)]
+    assert available_export_modes(frames) == [NUCLEUS_ONLY, WHOLE_CELL_ONLY]
+    assert available_export_modes([FakeFrame(nuclei=True, whole_cells=True)]) == [NUCLEUS_ONLY, WHOLE_CELL_ONLY, BOTH]
+
+
 def test_only_nucleus_only_is_available_when_every_frame_is_dapi_only():
     frames = [FakeFrame(dapi_only=True), FakeFrame(dapi_only=True)]
     assert available_export_modes(frames) == [NUCLEUS_ONLY]

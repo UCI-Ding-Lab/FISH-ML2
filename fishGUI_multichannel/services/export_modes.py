@@ -13,12 +13,23 @@ EXPORT_MODE_LABELS = {
 
 def available_export_modes(frames: list) -> list[str]:
     """
-    Return the export modes that can work for the selected frames.
-    Whole-cell modes need cytoplasm images, so only Nucleus only is left when every selected frame is DAPI-only.
+    Return the export modes that can work for the selected frames and their stored masks.
     """
     if all_selected_frames_are_dapi_only(frames):
         return [NUCLEUS_ONLY]
-    return list(EXPORT_MODE_LABELS)
+    selected = [frame for frame in frames if frame.selected]
+    has_nuclei = any(frame.has_nucleus_segments() for frame in selected)
+    has_whole_cells = any(frame_has_whole_cell_masks(frame) for frame in selected)
+    has_pairs = any(frame.has_nucleus_segments() and frame_has_whole_cell_masks(frame) for frame in selected)
+
+    modes = []
+    if has_nuclei:
+        modes.append(NUCLEUS_ONLY)
+    if has_whole_cells:
+        modes.append(WHOLE_CELL_ONLY)
+    if has_pairs:
+        modes.append(BOTH)
+    return modes or list(EXPORT_MODE_LABELS)
 
 
 def guess_export_mode(frames: list, last_mode: str | None = None) -> str:
