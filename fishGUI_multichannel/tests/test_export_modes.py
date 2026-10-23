@@ -4,6 +4,7 @@ from fishGUI_multichannel.services.export_modes import (
     NUCLEUS_ONLY,
     WHOLE_CELL_ONLY,
     available_export_modes,
+    export_mode_note,
     guess_export_mode,
 )
 
@@ -104,3 +105,26 @@ def test_frame_has_any_masks_is_true_with_whole_cells_in_a_later_channel():
 
 def test_frame_has_any_masks_is_false_when_nothing_is_segmented():
     assert not frame_has_any_masks(FakeFrame())
+
+
+def test_no_note_when_every_mode_is_available():
+    assert export_mode_note([FakeFrame(nuclei=True, whole_cells=True)]) is None
+
+
+def test_note_mentions_dapi_only_images_when_every_frame_is_dapi_only():
+    assert "Only DAPI images are loaded" in export_mode_note([FakeFrame(nuclei=True, dapi_only=True)])
+
+
+def test_note_mentions_missing_whole_cell_masks_when_cytoplasm_images_are_loaded():
+    note = export_mode_note([FakeFrame(nuclei=True)])
+    assert "whole-cell masks" in note
+    assert "DAPI" not in note
+
+
+def test_note_mentions_missing_nucleus_masks():
+    note = export_mode_note([FakeFrame(whole_cells=True)])
+    assert note == "No selected frame has DAPI nucleus masks yet."
+
+
+def test_note_explains_paired_export_when_no_frame_has_both_mask_types():
+    assert "both" in export_mode_note([FakeFrame(nuclei=True), FakeFrame(whole_cells=True)])

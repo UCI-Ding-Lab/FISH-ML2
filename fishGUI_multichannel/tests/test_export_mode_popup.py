@@ -75,3 +75,15 @@ def test_unavailable_modes_are_greyed_out(root):
 
     assert run() == NUCLEUS_ONLY
     assert states == {NUCLEUS_ONLY: tk.NORMAL, WHOLE_CELL_ONLY: tk.DISABLED, BOTH: tk.DISABLED}
+
+
+def test_popup_shows_the_given_note(root):
+    texts = []
+
+    def read_labels_then_cancel(popup):
+        texts.extend(label.cget("text") for label in find_widgets(popup, tk.Label))
+        click_button(popup, "Cancel")
+
+    root.after(50, lambda: read_labels_then_cancel(find_widgets(root, tk.Toplevel)[-1]))
+    ask_export_mode(root, NUCLEUS_ONLY, [NUCLEUS_ONLY], "No selected frame has whole-cell masks yet.")
+    assert "No selected frame has whole-cell masks yet." in texts

@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from tkinter import filedialog
 
 from ..services.export_cell_data import frame_has_any_masks
-from ..services.export_modes import available_export_modes, guess_export_mode
+from ..services.export_modes import available_export_modes, export_mode_note, guess_export_mode
 from ..services.mat_export import export_session_to_mat
 from ..services.segmentation import describe_failed_frames
 from ..services.session_manager import SessionManager
@@ -730,7 +730,8 @@ class funcButton:
             return None
         available_modes = available_export_modes(frames)
         initial_mode = guess_export_mode(frames, self.gui.getLastExportMode())
-        export_mode = ask_export_mode(self.gui.getRoot(), initial_mode, available_modes)
+        note = export_mode_note(frames)
+        export_mode = ask_export_mode(self.gui.getRoot(), initial_mode, available_modes, note)
         if export_mode is not None:
             self.gui.setLastExportMode(export_mode)
         return export_mode

@@ -3,10 +3,10 @@ import tkinter as tk
 from ..services.export_modes import EXPORT_MODE_LABELS
 
 
-def ask_export_mode(root, initial_mode: str, available_modes: list[str] | None = None) -> str | None:
+def ask_export_mode(root, initial_mode: str, available_modes: list[str] | None = None, note: str | None = None) -> str | None:
     """
     Show the export mode popup and return the chosen mode, or None when the user cancels.
-    Modes missing from available_modes are shown greyed out.
+    Modes missing from available_modes are shown greyed out, with note explaining why.
     """
     if available_modes is None:
         available_modes = list(EXPORT_MODE_LABELS)
@@ -21,8 +21,7 @@ def ask_export_mode(root, initial_mode: str, available_modes: list[str] | None =
     for mode, label in EXPORT_MODE_LABELS.items():
         state = tk.NORMAL if mode in available_modes else tk.DISABLED
         tk.Radiobutton(popup, text=label, variable=choice, value=mode, state=state).pack(anchor="w", padx=20)
-    if len(available_modes) < len(EXPORT_MODE_LABELS):
-        note = "Whole-cell modes need cytoplasm images.\nOnly DAPI images are loaded."
+    if note:
         tk.Label(popup, text=note, fg="gray").pack(padx=20, pady=(4, 0))
 
     def confirm():

@@ -32,6 +32,25 @@ def available_export_modes(frames: list) -> list[str]:
     return modes or list(EXPORT_MODE_LABELS)
 
 
+def export_mode_note(frames: list) -> str | None:
+    """
+    Explain why some export modes are greyed out for the selected frames, or None when all are available.
+    """
+    available = available_export_modes(frames)
+    if len(available) == len(EXPORT_MODE_LABELS):
+        return None
+    if all_selected_frames_are_dapi_only(frames):
+        return "Whole-cell modes need cytoplasm images.\nOnly DAPI images are loaded."
+    reasons = []
+    if NUCLEUS_ONLY not in available:
+        reasons.append("No selected frame has DAPI nucleus masks yet.")
+    if WHOLE_CELL_ONLY not in available:
+        reasons.append("No selected frame has whole-cell masks yet.")
+    if not reasons:
+        reasons.append("Paired export needs a frame with both\nnucleus and whole-cell masks.")
+    return "\n".join(reasons)
+
+
 def guess_export_mode(frames: list, last_mode: str | None = None) -> str:
     """
     Pick the export mode the popup starts on, always one of the available modes.
