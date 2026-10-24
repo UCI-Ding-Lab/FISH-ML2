@@ -61,8 +61,8 @@ class stove():
     def pack(self):
         self.pit.pack(side=tkinter.LEFT, fill=tkinter.BOTH, expand=True)
         self.sep.pack(side=tkinter.LEFT, fill=tkinter.Y)
+        self.toolbar.pack(side=tkinter.BOTTOM, fill=tkinter.X)  # before the canvas so it keeps its space when the window is short
         self.canvas.get_tk_widget().pack(side=tkinter.TOP, fill=tkinter.BOTH, expand=True)
-        self.toolbar.pack(side=tkinter.BOTTOM, fill=tkinter.X)
 
     def set_mode_banner(self, text: str, bg: str, fg: str):
         """Keep a simple hook for mode updates without drawing a second banner."""
