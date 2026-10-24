@@ -1,4 +1,3 @@
-import numpy as np
 import pytest
 from unittest.mock import MagicMock, patch
 
@@ -95,3 +94,59 @@ def test_draw_segmentation_uses_dapi_masks_even_when_segment_generated_is_false(
     abs_obj.drawSegmentation = True
 
     assert dapi_seg.draw is True
+
+
+@pytest.mark.parametrize("use_stored_masks, expected", [(True, [1]), (False, [2])])
+def test_segment_nucleus_uses_the_given_choice_without_asking(bare_abstract_factory, use_stored_masks, expected):
+    abs_obj = bare_abstract_factory()
+    abs_obj.set_nucleus_segments([1])
+
+    with patch("fishGUI_multichannel.gui.abstract.run_nucleus_segmentation", return_value=[2]):
+        result = abs_obj.segment_nucleus(use_stored_masks=use_stored_masks)
+
+    assert result == expected
+    abs_obj.gui.ask_use_stored_masks.assert_not_called()
+
+
+@pytest.mark.parametrize("use_stored_masks, expected", [(True, [1]), (False, [2])])
+def test_segment_channel_uses_the_given_choice_without_asking(bare_abstract_factory, use_stored_masks, expected):
+    abs_obj = bare_abstract_factory()
+    abs_obj.set_segments("488", [1])
+
+    with patch("fishGUI_multichannel.gui.abstract.run_cytoplasm_segmentation", return_value={"488": [2]}):
+        result = abs_obj.segment_channel("488", use_stored_masks=use_stored_masks)
+
+    assert result == expected
+    abs_obj.gui.ask_use_stored_masks.assert_not_called()
+
+
+def test_segment_channel_still_asks_when_no_choice_is_given(bare_abstract_factory):
+    abs_obj = bare_abstract_factory()
+    abs_obj.set_segments("488", [1])
+    abs_obj.gui.ask_use_stored_masks.return_value = True
+
+    assert abs_obj.segment_channel("488") == [1]
+    abs_obj.gui.ask_use_stored_masks.assert_called_once()
+
+
+def test_bbox_runs_box_finding_once_when_two_threads_ask_at_the_same_time(bare_abstract_factory):
+    import threading
+    import time
+
+    abs_obj = bare_abstract_factory()
+    calls = []
+
+    def slow_generate(_img):
+        calls.append(1)
+        time.sleep(0.05)
+        return [(0, 0, 4, 6)]
+
+    abs_obj.gui.getNucleusBackend.return_value.generate_bboxes.side_effect = slow_generate
+    threads = [threading.Thread(target=lambda: abs_obj.bbox) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert len(calls) == 1
+    assert abs_obj.bbox_generated is True

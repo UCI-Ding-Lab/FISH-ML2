@@ -31,7 +31,6 @@ def _make_bare_abstract(select_mode=False):
     func_button.bboxButtonPressed.return_value = False
     func_button.displayMaskButtonPressed.return_value = False
     gui.getSeasoning.return_value.update_channel_selector_for_image = MagicMock()
-    gui.getStove.return_value.bufferSetCurrent = MagicMock()
     gui.getStove.return_value.dump = MagicMock()
     gui.getStove.return_value.cook = MagicMock()
     abs_obj.gui = gui
@@ -46,7 +45,6 @@ def test_on_click_updates_focus_highlight_and_loads_the_image_into_the_stove():
     current_abs.on_click(None)
 
     current_abs.gui.getSeasoning.return_value.update_channel_selector_for_image.assert_called_once_with(current_abs)
-    current_abs.gui.getStove.return_value.bufferSetCurrent.assert_called_once_with(3)
     current_abs.gui.getStove.return_value.dump.assert_called_once_with()
     current_abs.gui.getStove.return_value.cook.assert_called_once_with(current_abs)
     assert SessionManager.getBuffer() is current_abs

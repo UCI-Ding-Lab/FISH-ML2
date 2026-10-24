@@ -13,38 +13,48 @@ from fishGUI_multichannel.services.apply_channel_mask import (
 )
 
 
-class FrameWithSegmentProperty:
+class FrameWithSegmentChannel:
     def __init__(self, seg_lists=None, selected_channel="647"):
         self._seg_lists = seg_lists or {}
-        self.selected_channel = selected_channel
         self.sample_id = "sample-001"
-        self.segment_accesses = 0
+        self.segmented_channels = []
+        self.channel_changes = []
+        self._selected_channel = selected_channel
+
+    @property
+    def selected_channel(self):
+        return self._selected_channel
+
+    @selected_channel.setter
+    def selected_channel(self, value):
+        self.channel_changes.append(value)
+        self._selected_channel = value
 
     def _get_seg_list_for_channel(self, channel):
         return self._seg_lists.get(channel, [])
 
-    @property
-    def segment(self):
-        self.segment_accesses += 1
+    def segment_channel(self, channel, use_stored_masks=None):
+        self.segmented_channels.append((channel, use_stored_masks))
         return ["generated-mask"]
 
 
-def test_ensure_channel_segmented_generates_missing_channel_masks_and_restores_focus_channel():
-    frame = FrameWithSegmentProperty(seg_lists={"647": ["existing"]}, selected_channel="647")
+def test_ensure_channel_segmented_generates_missing_channel_masks_without_switching_focus_channel():
+    frame = FrameWithSegmentChannel(seg_lists={"647": ["existing"]}, selected_channel="647")
 
     ensure_channel_segmented(frame, "488")
 
-    assert frame.segment_accesses == 1
+    assert frame.segmented_channels == [("488", False)]
+    assert frame.channel_changes == []
     assert frame.selected_channel == "647"
 
 
 def test_ensure_channel_segmented_skips_generation_when_masks_already_exist():
-    frame = FrameWithSegmentProperty(seg_lists={"488": ["existing"]}, selected_channel="647")
+    frame = FrameWithSegmentChannel(seg_lists={"488": ["existing"]}, selected_channel="647")
 
     ensure_channel_segmented(frame, "488")
 
-    assert frame.segment_accesses == 0
-    assert frame.selected_channel == "647"
+    assert frame.segmented_channels == []
+    assert frame.channel_changes == []
 
 
 def test_extract_finalized_masks_transposes_masks_and_stores_them_on_the_frame():

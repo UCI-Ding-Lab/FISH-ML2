@@ -298,13 +298,6 @@ ParseArguments(nargin)
 
     % find H threshold
     function [H_thres, f, X, Y] = estimate_H_thres(channel)
-        if is_dapi_channel(FISH{channel,1}.channel)
-            H_thres = 10;
-            f = [];
-            X = [];
-            Y = [];
-            return
-        end
         all_maxH  = [];
         for cframe=1:min(length(Tracked),10)
             for num_cell = 1:length(Tracked{1,cframe}.cells)
@@ -564,17 +557,25 @@ ParseArguments(nargin)
         end
         
         % construct slider for image caxis
-        caxis_low{channel_num} = [];
-        caxis_high{channel_num} = [];
+        caxis_low = cell(1,channel_num);
+        caxis_high = cell(1,channel_num);
+        sMin = min(0, -0.1*FISH{1,1}.H_thres_default);
+        sMax = max(500, 2*FISH{1,1}.H_thres_default);
+        if sMax <= sMin
+            sMax = sMin + 1;
+        end
+        lowVal = min(max(0, sMin), sMax);
+        highVal = min(max(1.3*FISH{1,1}.H_thres_default, sMin), sMax);
+        if highVal <= lowVal
+            highVal = min(lowVal + 1, sMax);
+        end
         for n= 1:channel_num
+            xpos = 0.05*n+(n-1)*size_lim/channel_num*guiH/guiW*AR/max([guiH/guiW*AR, 1]);
+            wid = size_lim/channel_num*guiH/guiW*AR/max([guiH/guiW*AR, 1]);
             caxis_low{n} = uicontrol( 'Parent', fh, 'Style','slider','Units','normalized',...
-                'Position',[0.05*n+(n-1)*size_lim/channel_num*guiH/guiW*AR/max([guiH/guiW*AR, 1]),0.04,...
-                size_lim/channel_num*guiH/guiW*AR/max([guiH/guiW*AR, 1]), 0.015], 'min', -0.1*FISH{1,1}.H_thres_default, 'max', 50,'Callback',@SetCaxis); %1.5*FISH{1,1}.H_thres_default
+                'Position',[xpos,0.04,wid,0.015], 'Min', sMin, 'Max', sMax, 'Value', lowVal, 'Callback',@SetCaxis);
             caxis_high{n} = uicontrol( 'Parent', fh, 'Style','slider','Units','normalized',...
-                'Position',[0.05*n+(n-1)*size_lim/channel_num*guiH/guiW*AR/max([guiH/guiW*AR, 1]),0.01,...
-                size_lim/channel_num*guiH/guiW*AR/max([guiH/guiW*AR, 1]), 0.015], 'min', -0.1*FISH{1,1}.H_thres_default, 'max', 1000,'Callback',@SetCaxis); %1.5*FISH{1,1}.H_thres_default
-            caxis_low{n}.Value = 0;
-            caxis_high{n}.Value = 5*FISH{1,1}.H_thres_default;
+                'Position',[xpos,0.01,wid,0.015], 'Min', sMin, 'Max', sMax, 'Value', highVal, 'Callback',@SetCaxis);
         end
         
         plotframe;
@@ -846,10 +847,10 @@ ParseArguments(nargin)
                 size_lim/channel_num*guiH/guiW*AR/max([guiH/guiW*AR, 1]), 0.1]);
                 set(caxis_low{k},...
                     'Position',[0.05*k+(k-1)*size_lim/channel_num*guiH/guiW*AR/max([guiH/guiW*AR, 1]),0.04,...
-                    size_lim/channel_num*guiH/guiW*AR/max([guiH/guiW*AR, 1]), 0.015], 'min', -0.1*FISH{1,1}.H_thres_default, 'max', 1.5*FISH{1,1}.H_thres_default,'Callback',@SetCaxis);
+                    size_lim/channel_num*guiH/guiW*AR/max([guiH/guiW*AR, 1]), 0.015]);
                 set(caxis_high{k},...
                     'Position',[0.05*k+(k-1)*size_lim/channel_num*guiH/guiW*AR/max([guiH/guiW*AR, 1]),0.01,...
-                    size_lim/channel_num*guiH/guiW*AR/max([guiH/guiW*AR, 1]), 0.015], 'min', -0.1*FISH{1,1}.H_thres_default, 'max', 1.5*FISH{1,1}.H_thres_default,'Callback',@SetCaxis);
+                    size_lim/channel_num*guiH/guiW*AR/max([guiH/guiW*AR, 1]), 0.015]);
             end
         end
         
@@ -931,7 +932,12 @@ ParseArguments(nargin)
         
         function SetCaxis(src,evnt)
             for num = 1:channel_num
-                caxis(hPlotAxes{num}, [caxis_low{num}.Value caxis_high{num}.Value]);
+                lo = caxis_low{num}.Value;
+                hi = caxis_high{num}.Value;
+                if hi <= lo
+                    hi = lo + eps(max(1,abs(lo)));
+                end
+                caxis(hPlotAxes{num}, [lo hi]);
             end
         end
         

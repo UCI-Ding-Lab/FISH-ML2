@@ -109,12 +109,22 @@ Select `Segment` to segment the nuclei for all loaded frames
 ## 9. Export
 
 1. Select `Export`
-2. Save the result to your desired location
+2. Choose which masks to export, then select `Export` (or `Cancel` to stop)
+3. Save the result to your desired location
+
+| Export mode | What goes into DoFISH's `mask` | When to use it |
+|---|---|---|
+| `Nucleus only` | Every nucleus mask | Counting dots inside nuclei |
+| `Whole-cell only` | Every whole-cell mask | Counting dots in whole cells |
+| `Both (paired)` | Each whole-cell mask, with its paired nucleus in `nucleus_mask` | Comparing nucleus and whole-cell counts for the same cell |
 
 > Important
 >
 > - Export after segmentation review and editing are complete
 > - Export includes all currently loaded frames
+> - The popup starts on your last choice in this session, or on a guess from what you segmented
+> - If every selected frame only has a DAPI image, only `Nucleus only` can be chosen
+> - If some frames have nothing to export, a warning after export lists them
 
 ## Workflow Diagram
 

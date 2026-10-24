@@ -1,6 +1,6 @@
 import numpy as np
 
-from fishGUI_multichannel.services.export_pairs import build_paired_export_data
+from fishGUI_multichannel.services.export_cell_data import build_paired_export_data
 from fishGUI_multichannel.services.pairing import finalize_pairing
 
 

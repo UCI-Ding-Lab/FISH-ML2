@@ -1,7 +1,6 @@
 import logging
 import cv2
 import numpy as np
-from skimage import filters, morphology, segmentation
 from skimage.restoration import estimate_sigma
 
 logger = logging.getLogger('fishcore')
@@ -86,21 +85,6 @@ def remove_outliers(img, k=18.0, use_median=False, verbose=False, max_clip_frac=
     x_max = x_clipped.max()
     x_norm = (x_clipped - x_min) / (x_max - x_min + 1e-6)
     return x_norm
-
-def gradient(img: np.ndarray, ksize: int = 5) -> np.ndarray:
-        kern = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (ksize, ksize))
-        return cv2.morphologyEx(img, cv2.MORPH_GRADIENT, kern)
-
-def postproc_mask(m):
-    m = morphology.remove_small_objects(m.astype(bool), min_size=200)
-    m = morphology.binary_opening(m, footprint=morphology.disk(2))
-    return m.astype(np.uint8)
-
-def mask_to_bbox(mask):
-    ys, xs = np.where(mask)
-    if len(xs) == 0 or len(ys) == 0:
-        return None
-    return (xs.min(), ys.min(), xs.max(), ys.max())
 
 def preprocess_cytoplasm_channels(channel_images: dict) -> dict: # TODO currently all other than 647 are applied the same processing but still used elif in case we modify it 
     processed = {}

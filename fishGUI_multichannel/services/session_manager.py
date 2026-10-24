@@ -1,6 +1,5 @@
 import threading
 import logging
-import os
 import csv
 import pathlib
 import time
@@ -8,6 +7,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 from ..services.bundle_data import bundle
 from ..services.apply_channel_mask import apply_channel_mask_to_frames
+from ..services.segmentation import describe_failed_frames
+from ..services.worker_limits import box_generation_worker_limit, segmentation_worker_limit
 from ..gui.abstract import abstract
 
 
@@ -22,6 +23,8 @@ class SessionManager:
     __importPath = None
     __segmentation_timing_rows = []
     __segmentation_timing_lock = threading.Lock()
+    __bbox_generation_jobs = 0
+    __bbox_generation_lock = threading.Lock()
     # --- Pool Management ---
     @classmethod
     def addToPool(cls, abstract_object):
@@ -100,19 +103,6 @@ class SessionManager:
                 return
             
     @classmethod
-    def sendFocused(cls):
-        """
-        Focuses the currently buffered object, or the first selected one
-        if none is buffered. 
-        """
-        current = cls.getBuffer()
-        if not isinstance(current, abstract):
-            logger.debug(f"Object {current} is not an instance of abstract. Skipping.")
-            return
-        if current: current.on_click(None)
-        else: cls.sendFirst()
-
-    @classmethod
     def remove_segmentation_selection(cls):
         """
         Deselects all frames for segmentation in the pool.
@@ -134,47 +124,48 @@ class SessionManager:
         return cls.__importPath
 
     @classmethod
-    def _get_nucleus_worker_limit(cls, gui, total_jobs: int) -> int:
-        """Choose a safe worker count for nucleus center generation."""
-        backend = gui.getNucleusBackend()
-        if backend.device == "cuda":
-            logger.info("GPU detected; limiting nucleus work to 1 worker.")
-            return 1
-        logger.info("CPU detected; limiting nucleus work to 2 workers to avoid bbox contention.")
-        return max(1, min(1, total_jobs))
-
-    @classmethod
-    def _get_cytoplasm_worker_limit(cls, gui, total_jobs: int) -> int:
-        """Choose a safe worker count for cytoplasm segmentation work."""
-        worker_count = max(1, min(1, total_jobs))
-        logger.info("Cytoplasm segmentation is using %s worker(s).", worker_count)
-        return worker_count
-
-    @classmethod
-    def generate_bboxes(cls, gui):
-        """Start background nucleus center generation for every loaded frame."""
-        abstracts = cls.getPool()
+    def generate_bboxes(cls, gui, frames=None):
+        """Start background nucleus center generation for the given frames, or every loaded frame."""
+        abstracts = cls.getPool() if frames is None else list(frames)
         if not abstracts:
             return
 
+        with cls.__bbox_generation_lock:
+            cls.__bbox_generation_jobs += 1
+
         def job():
             start = time.perf_counter()
-            max_workers = cls._get_nucleus_worker_limit(gui, len(abstracts))
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                for abs_obj in abstracts:
-                    executor.submit(cls._generate_one_bbox, gui, abs_obj)
-            logger.info(
-                "Prepared nucleus bbox and centers for %s frames in %.2f seconds",
-                len(abstracts),
-                time.perf_counter() - start,
-            )
+            try:
+                max_workers = box_generation_worker_limit(len(abstracts))
+                with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    for abs_obj in abstracts:
+                        executor.submit(cls._generate_one_bbox, gui, abs_obj)
+                logger.info(
+                    "Prepared nucleus bbox and centers for %s frames in %.2f seconds",
+                    len(abstracts),
+                    time.perf_counter() - start,
+                )
+            finally:
+                with cls.__bbox_generation_lock:
+                    cls.__bbox_generation_jobs -= 1
 
         threading.Thread(target=job, daemon=True).start()
 
     @classmethod
+    def isGeneratingBboxes(cls) -> bool:
+        """Return True while background nucleus box generation is still running."""
+        with cls.__bbox_generation_lock:
+            return cls.__bbox_generation_jobs > 0
+
+    @classmethod
     def _generate_one_bbox(cls, gui, abs_obj):
         """Prepare nucleus centers and masks for one frame in the background."""
-        _ = abs_obj.bbox
+        try:
+            _ = abs_obj.bbox
+        except Exception:
+            # The worker pool would otherwise hide this error and the frame would silently stay without boxes
+            logger.exception("Nucleus box generation failed for sample %s", abs_obj.sample_id)
+            return
         cls._refresh_if_loaded(gui, abs_obj)
 
     @classmethod
@@ -183,34 +174,6 @@ class SessionManager:
         if loaded is not abs_obj:
             return
         gui.getRoot().after(0, lambda a=abs_obj: gui.getStove().cook(a))
-
-    @classmethod
-    def saveBboxChanges(cls):
-        """
-        Ensures GUI is now in a view-only mode. 
-        Called when:
-        - The user exits Show Centers mode 
-        - The user clicks on "Save" and Progress.save is called
-
-        Note for Shizuka:
-        Checkout ADDBOX_CALL in tools_panel.py
-        Checkout abstract.py def bbox and its setter
-        Checkout box.py and anchor.py
-        1st line: this simply hides the overlay. the new bbox is saved in self.__bbox in abstract.py
-        """
-        cls.getBuffer().drawBbox = False 
-        cls.sendFocused()
-
-    @classmethod
-    def saveSegChanges(cls):
-        """
-        Ensures GUI is now in a view-only mode. 
-        Called when:
-        - The user hides masks with Display Masks 
-        - The user clicks on "Save" and Progress.save is called
-        """
-        cls.getBuffer().drawSegmentation = False
-        cls.sendFocused()
 
     @classmethod
     def grabPool(cls) -> list['bundle']:
@@ -262,9 +225,10 @@ class SessionManager:
 
 
     @classmethod
-    def segment_selected(cls, gui):
+    def segment_selected(cls, gui, frames_to_resegment=()):
         """
-        Runs segmentation on all frames that the user has marked as "selected for segmentation"
+        Runs segmentation on all frames that the user has marked as "selected for segmentation".
+        Frames in frames_to_resegment replace their stored masks; other frames only fill in missing channels.
         """
         with cls.__segmentation_timing_lock:
             cls.__segmentation_timing_rows = []
@@ -276,17 +240,29 @@ class SessionManager:
         gui.popBox("i", "Segmentation", f"Started segmentation for {len(selected_frames)} images.")
 
         def monitor_threads():
-            max_workers = cls._get_cytoplasm_worker_limit(gui, len(selected_frames))
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                futures = [
-                    executor.submit(cls._segment_each, abs_obj, gui)
-                    for abs_obj in selected_frames
-                ]
-                for future in futures:
-                    future.result()
-            cls._export_segmentation_timing_csv()
-            gui.getFuncButton().toggle["SEGMENTATION_SELECTION"].set(0)
-            gui.getRoot().after(0, lambda: gui.getFuncButton()._set_cytoplasm_segment_running(False))
+            failed_frames = []
+            try:
+                max_workers = segmentation_worker_limit(gui.getCytoplasmBackend(), len(selected_frames))
+                with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    futures = [
+                        (abs_obj, executor.submit(cls._segment_each, abs_obj, gui, abs_obj in frames_to_resegment))
+                        for abs_obj in selected_frames
+                    ]
+                    for abs_obj, future in futures:
+                        try:
+                            future.result()
+                        except Exception as error:
+                            # One failed frame must not stop the others or leave the button stuck in "running"
+                            logger.exception("Cytoplasm segmentation failed for sample %s", abs_obj.sample_id)
+                            failed_frames.append(f"{abs_obj.sample_id}: {error}")
+                cls._export_segmentation_timing_csv()
+            finally:
+                # Tk variables and widgets must only be changed on the main thread
+                gui.getRoot().after(0, lambda: gui.getFuncButton().toggle["SEGMENTATION_SELECTION"].set(0))
+                gui.getRoot().after(0, lambda: gui.getFuncButton()._set_cytoplasm_segment_running(False))
+            if failed_frames:
+                failure_message = describe_failed_frames("Cytoplasm segmentation", failed_frames)
+                gui.getRoot().after(0, lambda: gui.popBox("e", "Cytoplasm Segmentation Error", failure_message))
 
         threading.Thread(target=monitor_threads, daemon=True).start()
 
@@ -307,17 +283,6 @@ class SessionManager:
         return selected_frames
 
     @classmethod
-    def _split_by_bbox_generated(cls, frames):
-        ready = []
-        not_ready = []
-        for obj in frames:
-            if obj.bbox_generated:
-                ready.append(obj)
-            else:
-                not_ready.append(obj)
-        return ready, not_ready
-    
-    @classmethod
     def _ui_show_segmented(cls, a, gui):
         a.thumbnail = "segmented" # refresh thumbnail so the right-side status stack is rebuilt
         a.selected_for_segmentation = False
@@ -326,17 +291,18 @@ class SessionManager:
 
 
     @classmethod
-    def _segment_each(cls, abs_obj: abstract, gui):
-        """Run segmentation for every available channel in one frame."""
+    def _segment_each(cls, abs_obj: abstract, gui, resegment: bool = False):
+        """Run segmentation for every available channel in one frame without asking the user."""
         thread_name = threading.current_thread().name
         logger.debug(f"Thread {thread_name} STARTED for sample {abs_obj.sample_id}")
         start = time.perf_counter()
 
-        original_channel = abs_obj.selected_channel
+        # segment_channel takes the channel directly, so selected_channel (owned by the UI) is never changed here
         channels_to_segment = list(abs_obj.available_channels)
         for ch in channels_to_segment:
-            abs_obj.segment_channel(ch)
-        abs_obj.selected_channel = original_channel
+            if abs_obj.get_segments(ch) and not resegment:
+                continue
+            abs_obj.segment_channel(ch, use_stored_masks=False)
         abs_obj.segment_generated = abs_obj.has_all_channel_segments()
 
         elapsed = time.perf_counter() - start

@@ -12,6 +12,46 @@ def extract_export_channel(path: pathlib.Path) -> str | None:
     return channel
 
 
+def first_cytoplasm_channel_and_path(frame) -> tuple[str, pathlib.Path] | None:
+    """
+    Return the cytoplasm channel and image path that export uses for one frame, or None.
+    """
+    channel_items = list(frame.getCytoplasmChannelsAndPaths().items())
+    return channel_items[0] if channel_items else None
+
+
+def frame_is_dapi_only(frame) -> bool:
+    """
+    Return True when one frame has a DAPI image but no cytoplasm channel images.
+    """
+    return first_cytoplasm_channel_and_path(frame) is None
+
+
+def all_selected_frames_are_dapi_only(frames: list) -> bool:
+    """
+    Return True when there is at least one selected frame and every selected frame is DAPI-only.
+    """
+    selected = [frame for frame in frames if frame.selected]
+    return bool(selected) and all(frame_is_dapi_only(frame) for frame in selected)
+
+
+def frame_has_whole_cell_masks(frame) -> bool:
+    """
+    Return True when the exported cytoplasm channel of one frame has whole-cell masks.
+    """
+    first_channel = first_cytoplasm_channel_and_path(frame)
+    return first_channel is not None and frame.has_segments(first_channel[0])
+
+
+def frame_has_any_masks(frame) -> bool:
+    """
+    Return True when one frame has nucleus masks or whole-cell masks in any cytoplasm channel.
+    """
+    if frame.has_nucleus_segments():
+        return True
+    return any(frame.has_segments(channel) for channel in frame.getCytoplasmChannelsAndPaths())
+
+
 def build_paired_export_data(abs_obj, channel: str) -> tuple[list, list, list]:
     """
     Build matched cell positions plus cytoplasm and nucleus masks for one channel.
@@ -23,6 +63,41 @@ def build_paired_export_data(abs_obj, channel: str) -> tuple[list, list, list]:
     masks = [cell["mask"] for cell in cells]
     nucleus_masks = [cell["nucleus_mask"] for cell in cells]
     return xy, masks, nucleus_masks
+
+
+def build_nucleus_only_export_data(abs_obj) -> tuple[list, list]:
+    """
+    Build cell positions and masks from every nucleus mask, without pairing.
+    """
+    return build_single_mask_export_data(abs_obj.get_nucleus_segments())
+
+
+def build_whole_cell_only_export_data(abs_obj, channel: str) -> tuple[list, list]:
+    """
+    Build cell positions and masks from every whole-cell mask of one channel, without pairing.
+    """
+    return build_single_mask_export_data(abs_obj.get_segments(channel))
+
+
+def build_single_mask_export_data(segs: list) -> tuple[list, list]:
+    """
+    Crop each segment to its own bounds and return matching positions and masks.
+    """
+    cells = [build_single_mask_cell(segment_to_mask(seg)) for seg in segs]
+    xy = [cell["pos"] for cell in cells]
+    masks = [cell["mask"] for cell in cells]
+    return xy, masks
+
+
+def build_single_mask_cell(mask: object) -> dict:
+    """
+    Build one export cell from a single full-image mask.
+    """
+    bounds = collect_mask_bounds(mask)
+    return {
+        "pos": build_export_position(bounds),
+        "mask": crop_mask(mask, bounds),
+    }
 
 
 def collect_valid_export_pairs(abs_obj, channel: str) -> list[dict]:

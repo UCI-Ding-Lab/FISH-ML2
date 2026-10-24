@@ -23,6 +23,7 @@ class FishGUI(object):
         self.__root.geometry("870x1000")
         self.__workflow_mode = "neutral"
         self.__export_pairing_debug_pdf = export_pairing_debug_pdf
+        self.__last_export_mode = None
 
         self.__config_path = pathlib.Path("./config.ini")
         self.__nucleus_backend_mode = "cellpose_sam"
@@ -213,10 +214,6 @@ class FishGUI(object):
         """Return the selected backend mode used for nucleus segmentation."""
         return self.__nucleus_backend_mode
 
-    def getCytoplasmBackendMode(self) -> str:
-        """Return the fixed backend mode used for cytoplasm segmentation."""
-        return self.__cytoplasm_backend_mode
-
     def setWorkflowMode(self, mode: str):
         """Store the current workflow mode used by the GUI."""
         self.__workflow_mode = mode
@@ -270,6 +267,14 @@ class FishGUI(object):
     def shouldExportPairingDebugPdf(self) -> bool:
         """Return True when export should write the optional pairing debug PDF."""
         return self.__export_pairing_debug_pdf
+
+    def getLastExportMode(self) -> str | None:
+        """Return the export mode chosen earlier in this session, if any."""
+        return self.__last_export_mode
+
+    def setLastExportMode(self, mode: str) -> None:
+        """Remember the export mode so the next export popup starts on it."""
+        self.__last_export_mode = mode
 
 
 def parse_cli_args():

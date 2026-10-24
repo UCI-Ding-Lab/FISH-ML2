@@ -6,10 +6,17 @@ import threading
 import time
 import tkinter
 import tkinter as tk
+from concurrent.futures import ThreadPoolExecutor
 from tkinter import filedialog
 
-from ..services.progress import Progress
+from ..services.export_cell_data import frame_has_any_masks
+from ..services.export_modes import available_export_modes, export_mode_note, guess_export_mode
+from ..services.mat_export import export_session_to_mat
+from ..services.segmentation import describe_failed_frames
 from ..services.session_manager import SessionManager
+from ..services.worker_limits import segmentation_worker_limit
+from .export_mode_popup import ask_export_mode
+from .stored_masks_popup import choose_frames_to_resegment
 from .composite_window import compositeWindow
 
 
@@ -451,35 +458,107 @@ class funcButton:
         focused.drawBbox = False
         self.gui.getStove().cook(focused)
 
+    def _gdino_nucleus_boxes_ready(self, frame_pool) -> bool:
+        """
+        Return True when GroundingDINO + SAM can segment every frame.
+        Frames without boxes either wait for the purple dot or offer a retry when box finding failed.
+        """
+        if self.gui.getWorkflowMode() != "nucleus_gdino":
+            return True
+        missing = [frame for frame in frame_pool if not frame.bbox_generated]
+        if not missing:
+            return True
+        names = ", ".join(str(frame.sample_id) for frame in missing[:10])
+        if len(missing) > 10:
+            names += f", ... and {len(missing) - 10} more"
+        if SessionManager.isGeneratingBboxes():
+            self.gui.popBox(
+                "i",
+                "Nucleus Boxes Not Ready",
+                f"Nucleus boxes are still being prepared for {len(missing)} frame(s) ({names}).\n\n"
+                "Wait until every frame shows a purple dot, then click Segment again.",
+            )
+            return False
+        retry = tkinter.messagebox.askretrycancel(
+            "Nucleus Boxes Missing",
+            f"Nucleus boxes could not be made for {len(missing)} frame(s) ({names}).\n\n"
+            "Retry to make them again in the background, then click Segment once every frame shows a purple dot.",
+            parent=self.gui.getRoot(),
+        )
+        if retry:
+            SessionManager.generate_bboxes(self.gui, missing)
+        return False
+
     def _run_nucleus_segmentation(self, focused):
         """Run nucleus segmentation for every loaded frame and refresh the focused view."""
+        frame_pool = SessionManager.getPool()
+        if not self._gdino_nucleus_boxes_ready(frame_pool):
+            return
+        frames_with_masks = [frame for frame in frame_pool if frame.has_nucleus_segments()]
+        frames_to_resegment = choose_frames_to_resegment(
+            self.gui.getRoot(), "Stored Nucleus Masks", frame_pool, frames_with_masks, "nucleus masks"
+        )
+        if frames_to_resegment is None:
+            return
+        frames_to_segment = [
+            frame for frame in frame_pool
+            if not frame.has_nucleus_segments() or frame in frames_to_resegment
+        ]
+        if not frames_to_segment:
+            self.gui.getStove().cook(focused)
+            return
         self._set_nucleus_segment_running(True)
         self.gui.indicateWait("Nucleus segmentation")
 
         def job():
             total_start = time.perf_counter()
             try:
-                frame_pool = SessionManager.getPool()
-                for frame in frame_pool:
-                    frame.segment_nucleus()
+                failed_frames = self._segment_nuclei_in_parallel(frames_to_segment)
                 total_seconds = time.perf_counter() - total_start
                 logger.info(
                     "Completed nucleus segmentation for %s frames in %.2f seconds",
-                    len(frame_pool),
+                    len(frames_to_segment),
                     total_seconds,
                 )
                 self.gui.getRoot().after(0, lambda: self.gui.getStove().cook(focused))
                 self.gui.getRoot().after(0, self.gui._refresh_workflow_thumbnails)
+                if failed_frames:
+                    failure_message = describe_failed_frames("Nucleus segmentation", failed_frames)
+                    self.gui.getRoot().after(
+                        0,
+                        lambda: self.gui.popBox("e", "Nucleus Segmentation Error", failure_message),
+                    )
             except Exception as error:
+                # Keep the message: Python deletes `error` when this block ends, before the popup runs
+                error_message = str(error)
                 self.gui.getRoot().after(
                     0,
-                    lambda: self.gui.popBox("e", "Nucleus Segmentation Error", str(error)),
+                    lambda: self.gui.popBox("e", "Nucleus Segmentation Error", error_message),
                 )
             finally:
                 self.gui.getRoot().after(0, lambda: self._set_nucleus_segment_running(False))
                 self.gui.getRoot().after(0, self.gui.dismissWait)
 
         threading.Thread(target=job, daemon=True).start()
+
+    def _segment_nuclei_in_parallel(self, frames) -> list[str]:
+        """
+        Segment nuclei for several frames at once and store each result on the main thread.
+        Return one "sample: error" line for every frame that failed; the other frames still finish.
+        """
+        max_workers = segmentation_worker_limit(self.gui.getNucleusBackend(), len(frames))
+        failed_frames = []
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [(frame, executor.submit(frame.compute_nucleus_segments)) for frame in frames]
+            for frame, future in futures:
+                try:
+                    segments = future.result()
+                except Exception as error:
+                    logger.exception("Nucleus segmentation failed for sample %s", frame.sample_id)
+                    failed_frames.append(f"{frame.sample_id}: {error}")
+                    continue
+                self.gui.getRoot().after(0, lambda f=frame, s=segments: f.set_nucleus_segments(s))
+        return failed_frames
 
     def SEGMENT_SELECTION_call(self):
         """Toggles which frames will be used by the Segment action."""
@@ -540,7 +619,14 @@ class funcButton:
             return
         if self._run_selected_cytoplasm_segmentation():
             return
-        _ = focused.segment
+        try:
+            _ = focused.segment
+        except Exception as error:
+            logger.exception("Cytoplasm segmentation failed for sample %s", focused.sample_id)
+            self.gui.popBox(
+                "e", "Cytoplasm Segmentation Error", describe_failed_frames("Cytoplasm segmentation", [f"{focused.sample_id}: {error}"])
+            )
+            return
         self.gui.getStove().cook(focused)
 
     def _run_selected_cytoplasm_segmentation(self):
@@ -548,9 +634,18 @@ class funcButton:
         selected_frames = self._get_selected_frames_for_segmentation()
         if not selected_frames:
             return False
+        frames_with_masks = [
+            frame for frame in selected_frames
+            if any(frame.get_segments(channel) for channel in frame.available_channels)
+        ]
+        frames_to_resegment = choose_frames_to_resegment(
+            self.gui.getRoot(), "Stored Cytoplasm Masks", selected_frames, frames_with_masks, "cytoplasm masks"
+        )
+        if frames_to_resegment is None:
+            return True
         self._set_cytoplasm_segment_running(True)
         self.toggle["SEGMENTATION_SELECTION"].set(0)
-        SessionManager.segment_selected(self.gui)
+        SessionManager.segment_selected(self.gui, frames_to_resegment)
         return True
 
     def SEGMENT_NUCLEUS_call(self):
@@ -629,15 +724,36 @@ class funcButton:
             tkinter.messagebox.showwarning("Image Not Loaded", "Please select an image first")
             self.toggle["EXPORT"].set(0)
             return
+        export_mode = self._ask_export_mode()
+        if export_mode is None:
+            self.toggle["EXPORT"].set(0)
+            return
         self._reset_main_mode_toggles_before_export()
         self.gui.indicateWait("Dataset conversion")
 
         def job():
             """Runs export work off the main Tk thread."""
-            Progress.export(self.gui)
+            export_session_to_mat(self.gui, export_mode)
             self.gui.getRoot().after(0, self._finish_export)
 
         threading.Thread(target=job, daemon=True).start()
+
+    def _ask_export_mode(self):
+        """Ask which masks to export, starting on the last choice or a guess; None means cancel."""
+        frames = SessionManager.getPool()
+        if not any(frame.selected for frame in frames):
+            tkinter.messagebox.showwarning("No Frames to Export", "No frames are selected for export.\nSelect at least one frame and try again.")
+            return None
+        if not any(frame_has_any_masks(frame) for frame in frames if frame.selected):
+            tkinter.messagebox.showwarning("Nothing Segmented", "None of the selected frames have nucleus or whole-cell masks yet.\nSegment at least one frame before exporting.")
+            return None
+        available_modes = available_export_modes(frames)
+        initial_mode = guess_export_mode(frames, self.gui.getLastExportMode())
+        note = export_mode_note(frames)
+        export_mode = ask_export_mode(self.gui.getRoot(), initial_mode, available_modes, note)
+        if export_mode is not None:
+            self.gui.setLastExportMode(export_mode)
+        return export_mode
 
     def _finish_export(self):
         """Clear the export button and close the waiting popup."""
@@ -749,11 +865,6 @@ def get_apply_channel_source_choices():
     return [channel for channel in channels if channel != "DAPI"]
 
 
-def get_frame_names():
-    """Returns the sample IDs for every loaded frame."""
-    return [frame.sample_id for frame in SessionManager.getPool()]
-
-
 def get_selected_frames(selection):
     """Maps one frame-selection shortcut to the chosen frame objects."""
     pool = SessionManager.getPool()
@@ -817,95 +928,4 @@ class ChannelSelectPopup(tk.Toplevel):
     def on_next(self):
         """Sends the chosen source channel back to the caller."""
         self.callback(self.selected_channel.get())
-        self.destroy()
-
-
-class CytoplasmActionPopup(tk.Toplevel):
-    """Let the user choose which cytoplasm action to run next."""
-
-    def __init__(self, parent, select_callback, segment_callback, copy_callback):
-        """Build the popup that groups the cytoplasm workflow actions."""
-        super().__init__(parent)
-        self.title("Segment Cytoplasm")
-        self._select_callback = select_callback
-        self._segment_callback = segment_callback
-        self._copy_callback = copy_callback
-        tk.Label(self, text="Choose the next cytoplasm action.").pack(padx=20, pady=12)
-        tk.Button(self, text="Select Cytoplasm Frames", command=self._run_select).pack(
-            fill="x",
-            padx=20,
-            pady=4,
-        )
-        tk.Button(self, text="Run Cytoplasm Segmentation", command=self._run_segmentation).pack(
-            fill="x",
-            padx=20,
-            pady=4,
-        )
-        tk.Button(self, text="Copy Channel Mask", command=self._run_copy).pack(
-            fill="x",
-            padx=20,
-            pady=(0, 12),
-        )
-
-    def _run_select(self):
-        """Close the popup and toggle cytoplasm frame selection mode."""
-        self.destroy()
-        self._select_callback()
-
-    def _run_segmentation(self):
-        """Close the popup and start the cytoplasm segmentation path."""
-        self.destroy()
-        self._segment_callback()
-
-    def _run_copy(self):
-        """Close the popup and start the cytoplasm mask copy path."""
-        self.destroy()
-        self._copy_callback()
-
-
-class FrameSelectPopup(tk.Toplevel):
-    """Lets the user choose which frames should receive copied masks."""
-
-    def __init__(self, parent, frame_names, callback):
-        """Builds the popup that asks how many future frames to update."""
-        super().__init__(parent)
-        self.title("Choose Cytoplasm Frames")
-        self.callback = callback
-        self.selection = tk.StringVar(value="all")
-        tk.Label(self, text="Which cytoplasm frames should receive the copied mask?").pack(pady=10)
-        self._build_frame_preview(frame_names)
-        self._build_selection_choices()
-        tk.Button(self, text="Copy Mask", command=self.on_apply).pack(pady=10)
-
-    def _build_frame_preview(self, frame_names):
-        """Shows a short horizontal preview of the available frame IDs."""
-        canvas = tk.Canvas(self, height=120)
-        scrollbar = tk.Scrollbar(self, orient="horizontal", command=canvas.xview)
-        canvas.configure(xscrollcommand=scrollbar.set)
-        frame = tk.Frame(canvas)
-        canvas.create_window((0, 0), window=frame, anchor="nw")
-        canvas.pack(fill="x")
-        scrollbar.pack(fill="x")
-        for name in frame_names:
-            tk.Label(frame, text=name, relief=tk.RIDGE, width=18).pack(side=tk.LEFT, padx=2, pady=2)
-        frame.update_idletasks()
-        canvas.config(scrollregion=canvas.bbox("all"))
-
-    def _build_selection_choices(self):
-        """Creates the radio buttons that choose the frame selection size."""
-        tk.Radiobutton(self, text="Next 5 Frames", variable=self.selection, value="next5").pack(
-            anchor="w",
-            padx=20,
-        )
-        tk.Radiobutton(self, text="All Frames", variable=self.selection, value="all").pack(
-            anchor="w",
-            padx=20,
-        )
-
-    def on_apply(self):
-        """Runs the caller callback with the chosen frame selection."""
-        try:
-            self.callback(self.selection.get())
-        except Exception:
-            logger.exception("Exception in FrameSelectPopup callback")
         self.destroy()

@@ -14,11 +14,6 @@ class lf():
         self.__b.pack(fill=tkinter.X)
         self.__c.pack(fill=tkinter.X)
     
-    def unpack(self):
-        self.__a.pack_forget()
-        self.__b.pack_forget()
-        self.__c.pack_forget()
-    
     def getFrameA(self) -> tkinter.Frame:
         return self.__a
     def getFrameB(self) -> tkinter.Frame:

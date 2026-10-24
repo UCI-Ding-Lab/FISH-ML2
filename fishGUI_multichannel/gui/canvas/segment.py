@@ -6,6 +6,8 @@ from skimage import measure
 
 logger = logging.getLogger('fishcore')
 
+MAX_UNDO_STEPS = 50
+
 class segment():
     __buffer: 'segment' = None
     __deleted_stack = []
@@ -17,7 +19,6 @@ class segment():
         self.gui = gui
         self.__patch: PathPatch = None
         self.__draw: bool = False
-        self.__exist: bool = True
         self.__selected: bool = False
         
         # history containers
@@ -55,10 +56,6 @@ class segment():
                 path = Path(vertices, codes)
                 self.__patch = PathPatch(path, facecolor='none', edgecolor='orange', linewidth=0.5)
         return self.__patch
-
-    @property
-    def exist(self) -> bool:
-        return self.__exist
 
     @property
     def selected(self) -> bool:
@@ -196,6 +193,8 @@ class segment():
             return
         segment.__redo_actions.clear()
         self._undo_stack.append(cur.copy())
+        if len(self._undo_stack) > MAX_UNDO_STEPS:
+            self._undo_stack.pop(0)
         self._redo_stack.clear()
         segment.__action_history.append(("edit", self))
 

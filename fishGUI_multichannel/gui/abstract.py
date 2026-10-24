@@ -21,6 +21,9 @@ from ..utils.sample_channels import get_cytoplasm_paths_and_names
 
 logger = logging.getLogger('fishcore')
 
+# GroundingDINO box finding runs one frame at a time across the whole app
+_NUCLEUS_BOX_LOCK = threading.Lock()
+
 class abstract():
     """
     The abstract class represent one frame's state 
@@ -95,7 +98,6 @@ class abstract():
         
         # Segmentation masks
         self.__nucleus_segments = []
-        self.__last_nucleus_prompt_signature = None
         self.__channel_segments = {ch: [] for ch in self.__cyto_channels}
         self.__channel_pairings = {ch: make_empty_pairing_result() for ch in self.__cyto_channels}
         self.__segment_generated: bool = False
@@ -273,21 +275,6 @@ class abstract():
             elapsed,
         )
 
-    def _is_nucleus_workflow_mode(self) -> bool:
-        """Return True when the GUI is in one nucleus workflow mode."""
-        mode = self.gui.getWorkflowMode()
-        return mode in ("nucleus_gdino", "nucleus_cellpose")
-
-    def _shows_bbox_indicator(self) -> bool:
-        """Return True when the computed-center status should be shown."""
-        return self.bbox_generated
-
-    def _shows_orange_mask_indicator(self) -> bool:
-        """Return True when one segmentation-complete status should be shown."""
-        if self._is_nucleus_workflow_mode():
-            return self.has_nucleus_segments()
-        return self.has_all_channel_segments()
-
     def _has_any_right_status_indicator(self) -> bool:
         """Return True when one right-side status dot should be visible."""
         return (
@@ -313,16 +300,20 @@ class abstract():
         """
         if self.bbox_generated:
             return self.__bbox
-        total_start = time.perf_counter()
-        bbox_start = time.perf_counter()
-        nucleus_backend = self.gui.getNucleusBackend()
-        nucleus_boxes = nucleus_backend.generate_bboxes(self.__img_np_nucleus_native)
-        self._log_bbox_generation(time.perf_counter() - bbox_start)
-        self.nucleus_centers = self._compute_nucleus_centers_from_boxes(nucleus_boxes)
-        self.__bbox = self._build_editable_bbox_objects(nucleus_boxes)
-        self._log_total_nucleus_preparation(time.perf_counter() - total_start)
-        self.bbox_generated = True
-        return self.__bbox
+        with _NUCLEUS_BOX_LOCK:
+            # Another thread may have finished this frame's boxes while we waited
+            if self.bbox_generated:
+                return self.__bbox
+            total_start = time.perf_counter()
+            bbox_start = time.perf_counter()
+            nucleus_backend = self.gui.getNucleusBackend()
+            nucleus_boxes = nucleus_backend.generate_bboxes(self.__img_np_nucleus_native)
+            self._log_bbox_generation(time.perf_counter() - bbox_start)
+            self.nucleus_centers = self._compute_nucleus_centers_from_boxes(nucleus_boxes)
+            self.__bbox = self._build_editable_bbox_objects(nucleus_boxes)
+            self._log_total_nucleus_preparation(time.perf_counter() - total_start)
+            self.bbox_generated = True
+            return self.__bbox
         
 
     # --- Segmentation Logic ---
@@ -349,15 +340,6 @@ class abstract():
         self.__nucleus_segments = seg_objs if seg_objs is not None else []
         self.update_thumbnail()
 
-    def _get_nucleus_prompt_signature(self) -> tuple:
-        """
-        Return a stable snapshot of the current bbox prompts for cache checks.
-        """
-        signature = []
-        for bbox_values in self.boundingBoxRevised:
-            signature.append(tuple(round(value, 4) for value in bbox_values))
-        return tuple(signature)
-
     def has_nucleus_segments(self) -> bool:
         """
         Return True when this frame already has DAPI nucleus masks.
@@ -370,27 +352,33 @@ class abstract():
         """
         return self.__img_np_nucleus_native
 
-    def segment_nucleus(self) -> list[segment]:
+    def segment_nucleus(self, use_stored_masks: bool | None = None) -> list[segment]:
         """
         Run DAPI nucleus segmentation once and store the resulting masks.
+        use_stored_masks: True keeps stored masks, False re-segments, None asks the user.
         """
-        prompt_signature = self._get_nucleus_prompt_signature()
         if self.has_nucleus_segments():
-            use_stored_masks = self.gui.ask_use_stored_masks(
-                "Stored Nucleus Masks",
-                "This image already has stored nucleus masks. Use the stored masks instead of resegmenting?",
-            )
+            if use_stored_masks is None:
+                use_stored_masks = self.gui.ask_use_stored_masks(
+                    "Stored Nucleus Masks",
+                    "This image already has stored nucleus masks. Use the stored masks instead of resegmenting?",
+                )
             if use_stored_masks:
                 return self.get_nucleus_segments()
-        nucleus_segments = run_nucleus_segmentation(
+        self.set_nucleus_segments(self.compute_nucleus_segments())
+        return self.get_nucleus_segments()
+
+    def compute_nucleus_segments(self) -> list[segment]:
+        """
+        Run nucleus segmentation and return the masks without storing them.
+        Safe to call from a worker thread because it does not touch the thumbnail.
+        """
+        return run_nucleus_segmentation(
             self._get_nucleus_segmentation_input(),
             self.gui,
             self.sample_id,
             bbox_list=self.boundingBoxRevised,
         )
-        self.set_nucleus_segments(nucleus_segments)
-        self.__last_nucleus_prompt_signature = prompt_signature
-        return self.get_nucleus_segments()
 
     def _is_dapi_channel(self, channel) -> bool:
         """Returns True when the requested channel is the DAPI display channel."""
@@ -442,8 +430,11 @@ class abstract():
                 return False
         return True
 
-    def segment_channel(self, channel=None) -> list[segment]:
-        """Run nucleus segmentation for DAPI or cytoplasm segmentation for one channel."""
+    def segment_channel(self, channel=None, use_stored_masks: bool | None = None) -> list[segment]:
+        """
+        Run nucleus segmentation for DAPI or cytoplasm segmentation for one channel.
+        use_stored_masks: True keeps stored masks, False re-segments, None asks the user.
+        """
         target_channel = self.__current_channel if channel is None else channel
         if target_channel is None:
             return []
@@ -452,10 +443,11 @@ class abstract():
                 return self.get_nucleus_segments()
             return self.segment_nucleus()
         if self.get_segments(target_channel):
-            use_stored_masks = self.gui.ask_use_stored_masks(
-                "Stored Cytoplasm Masks",
-                f"Channel {target_channel} already has stored masks. Use the stored masks instead of resegmenting?",
-            )
+            if use_stored_masks is None:
+                use_stored_masks = self.gui.ask_use_stored_masks(
+                    "Stored Cytoplasm Masks",
+                    f"Channel {target_channel} already has stored masks. Use the stored masks instead of resegmenting?",
+                )
             if use_stored_masks:
                 return self.get_segments(target_channel)
 
@@ -570,14 +562,6 @@ class abstract():
         self.set_pairings(channel, pairing_result)
         return pairing_result
 
-    def refresh_all_pairings(self) -> None:
-        """
-        Rebuild pairings for every available cytoplasm channel in this frame.
-        """
-        for channel in self.available_channels:
-            if self.get_segments(channel):
-                self.update_pairings_for_channel(channel)
-
     @bbox.setter
     def bbox(self, value: list[box]):
         """Store editable nucleus prompt boxes for this frame."""
@@ -600,6 +584,14 @@ class abstract():
     def bbox_generated(self, value: bool):
         """Store whether nucleus prompt boxes are ready and refresh the thumbnail."""
         self.__bbox_generated = value
+        # Box generation runs on worker threads; the select-mode check reads a Tk variable
+        if not self._is_main_thread():
+            self.gui.getRoot().after(0, self._update_thumbnail_unless_select_mode)
+            return
+        self._update_thumbnail_unless_select_mode()
+
+    def _update_thumbnail_unless_select_mode(self):
+        """Refresh the thumbnail unless frame-select mode is on."""
         if not self.gui.getFuncButton().selectButtonPressed():
             self.update_thumbnail()
     @segment.setter
@@ -620,10 +612,8 @@ class abstract():
     @segment_generated.setter
     def segment_generated(self, value: bool):
         """Store whether cytoplasm masks exist and refresh the thumbnail."""
-        self.update_thumbnail()
         self.__segment_generated = value
-        if not self.gui.getFuncButton().selectButtonPressed():
-            self.update_thumbnail()
+        self.update_thumbnail()
 
     def on_click(self, event):
         """
@@ -632,7 +622,6 @@ class abstract():
         it to focus
         """
         self.gui.getSeasoning().update_channel_selector_for_image(self)
-        self.gui.getStove().bufferSetCurrent(3)
         self.gui.getStove().dump()
         from ..services.session_manager import SessionManager
         prev_thumbnail = SessionManager.getBuffer()
@@ -703,7 +692,11 @@ class abstract():
     def update_thumbnail(self):
         """
         Rebuild the thumbnail image for the currently displayed channel.
+        Calls from worker threads are moved to the Tk main thread, because Tk images and widgets are not thread-safe.
         """
+        if not self._is_main_thread():
+            self.gui.getRoot().after(0, self.update_thumbnail)
+            return
         self.__img_np_rgb = self._get_rgb_for_display_channel(self.__current_channel)
         self.__img_pil_thumbnail = Image.fromarray(self.__img_np_rgb).resize((64, 64))
         self.__img_tk_thumbnail = ImageTk.PhotoImage(self.__img_pil_thumbnail)
@@ -721,6 +714,11 @@ class abstract():
             self.thumbnail = "crossout"
             return
         self.thumbnail = self._get_mode_thumbnail_state()
+
+    @staticmethod
+    def _is_main_thread() -> bool:
+        """Return True when running on the Tk main thread."""
+        return threading.current_thread() is threading.main_thread()
 
     def _get_thumbnail_image_for_state(self, state: str):
         """
@@ -898,15 +896,15 @@ class abstract():
                         b.draw = value
                         if not value:
                             box.clearBufferAndDeselect()
-                    except Exception as e:
+                    except Exception:
                         logger.warning("Error setting drawBbox for sample %s", self.sample_id, exc_info=True)
                         continue
-            except Exception as e:
+            except Exception:
                 logger.warning("Error in drawBbox setter for sample %s", self.sample_id, exc_info=True)
         
         try:
             self.gui.getStove().canvas.draw()
-        except Exception as e:
+        except Exception:
             logger.warning("Error drawing canvas in drawBbox for sample %s", self.sample_id, exc_info=True)
         
         self.__drawBbox = value

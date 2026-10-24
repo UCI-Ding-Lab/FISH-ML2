@@ -302,7 +302,7 @@ Expected behavior:
 - the system ensures the source channel has segmentation
 - if needed, generate segmentation for that source channel first
 - extract finalized masks from the source channel
-- apply those masks onto cytoplasm target channels across the chosen frames
+- apply those masks onto cytoplasm target channels across all loaded frames
 - preserve the focused sample's selected channel after temporary processing
 - update overlays when needed
 
@@ -323,9 +323,19 @@ Expected behavior:
 
 - export should require at least one loaded sample
 - export should include all currently loaded frames
-- export should iterate through all available cytoplasm channels for each loaded frame
+- export uses the first cytoplasm channel of each frame (see `TODO.md` for the open channel question)
 - finalized mask data may come from edited segmentation results or applied channel masks
 - the export step is the end of the workflow, after inspection and correction
+
+Export modes:
+
+- before exporting, a popup asks which masks to export: `Nucleus only`, `Whole-cell only`, or `Both (paired)`
+- the popup starts on the mode chosen earlier in the session, or on a guess based on what the selected frames have
+- `Nucleus only` stores every nucleus mask in `mask`, with no `nucleus_mask` field
+- `Whole-cell only` stores every whole-cell mask in `mask`, with no `nucleus_mask` field
+- `Both (paired)` stores the whole-cell mask in `mask` and its paired nucleus in `nucleus_mask`; only nucleus-whole-cell pairs are exported
+- DAPI-only frames are exported only in `Nucleus only`, and only when every selected frame is DAPI-only; otherwise the whole-cell modes are greyed out or the DAPI-only frames are left out
+- after export, a warning lists selected frames exported with 0 cells and DAPI-only frames that were left out
 
 Important intention:
 
@@ -390,6 +400,75 @@ The thumbnail overlays communicate processing state and should remain meaningful
 ### Export is the final step
 
 The goal of the workflow is finalized masks ready for downstream use.
+
+---
+
+## Code Structure: Nucleus and Cytoplasm Modes
+
+### Workflow modes
+
+The current mode is stored on the main app object, `FishGUI` in `app.py`, with `setWorkflowMode()` / `getWorkflowMode()`:
+
+| Mode | Meaning | Banner |
+|---|---|---|
+| `"neutral"` | Main menu | "Main Mode" (purple) |
+| `"nucleus_cellpose"` | Nucleus mode with the Cellpose-SAM backend | "Nucleus Mode" (blue) |
+| `"nucleus_gdino"` | Nucleus mode with GroundingDINO + SAM (uses prompt boxes) | "Nucleus Mode" (blue) |
+| `"cytoplasm"` | Cytoplasm mode | "Cytoplasm Mode" (orange) |
+
+Which nucleus mode is used depends on the backend picked at startup (`getNucleusWorkflowMode()`).
+
+### Buttons per mode
+
+`_render_toolbar_for_mode()` in `gui/buttons.py` shows only the buttons for the current mode:
+
+| Mode | Buttons |
+|---|---|
+| neutral | Import, Select Frames, Segment Nucleus, Segment Cytoplasm, Display/Edit, Export |
+| nucleus_cellpose | Segment, Display/Edit, <- Back to Main Mode |
+| nucleus_gdino | BBOX, Segment, Display/Edit, <- Back to Main Mode |
+| cytoplasm | Select Cytoplasm Frames, Segment All Channels for Selected Frames, Copy Best Channel Mask to All Frames, Display/Edit, <- Back to Main Mode |
+
+`<- Back to Main Mode` returns to neutral.
+
+### How each mode flows through the layers
+
+```text
+            NUCLEUS MODE                                CYTOPLASM MODE
+ UI          buttons.py                                  buttons.py
+             SEGMENT_NUCLEUS_call()                      SEGMENT_call()
+               1st click (neutral) → _enter_nucleus_mode   1st click (neutral) → check a cytoplasm channel exists,
+               next clicks → _run_nucleus_segmentation       set mode "cytoplasm", switch frames to 1st cyto channel
+                 (background thread, every loaded frame)   next clicks → _run_cytoplasm_segmentation
+                                                             (focused frame, or the frames you selected)
+                    │                                           │
+ Frame       abstract.py                                 abstract.py
+             segment_nucleus()                           segment_channel(channel)
+               asks "use stored masks?"                    asks "use stored masks?"
+               stores → set_nucleus_segments()             stores → set_segments(channel, ...)
+                    │                                           │
+ Logic       services/segmentation.py                    services/segmentation.py
+             run_nucleus_segmentation(DAPI, bboxes)      run_cytoplasm_segmentation(DAPI, cyto images, channel)
+                    │                                           │  stacks [DAPI, chosen channel, best 2nd channel]
+ Model       backends/ (via gui.getNucleusBackend())     backends/ (via gui.getCytoplasmBackend())
+             predict_nucleus()                           predict_cytoplasm()
+```
+
+### Where masks are stored
+
+Each frame is one `abstract` object in `gui/abstract.py`:
+
+| Data | Stored in | Read with |
+|---|---|---|
+| Nuclei (one set per frame) | `__nucleus_segments` | `get_nucleus_segments()` |
+| Whole cells (one set per channel) | `__channel_segments[channel]` | `get_segments(channel)` |
+| Pairs (one result per channel) | `__channel_pairings[channel]` | `get_pairings(channel)` |
+
+`get_segments("DAPI")` returns the nuclei, so code that loops over every channel can treat DAPI like any other channel.
+
+### Why cytoplasm segmentation needs DAPI
+
+`run_cytoplasm_segmentation` builds a 3-layer model input: `[DAPI, chosen channel, best other channel]`. The model uses the nucleus layer to find cells, so it stops with a warning when DAPI is missing. A frame with no cytoplasm channel is stopped earlier by the "No Cytoplasm Channel" popup in `_prepare_cytoplasm_source_channel`.
 
 ---
 

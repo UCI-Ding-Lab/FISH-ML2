@@ -83,9 +83,10 @@ def run_nucleus_segmentation(nucleus_img: np.ndarray, gui, sample_id, bbox_list=
         segs = _segment_mask_array(mask_output, gui)
         logger.info("Completed nucleus segmentation for sample %s in %.2f seconds", sample_id, time.perf_counter() - start,)
         return segs
-    except Exception as error:
-        logger.exception("Nucleus predict failed: %s", error)
-        return []
+    except Exception:
+        # Re-raise so the caller can report this frame instead of silently storing 0 nuclei
+        logger.exception("Nucleus predict failed for sample %s", sample_id)
+        raise
 
 
 def run_cytoplasm_segmentation(
@@ -118,8 +119,15 @@ def run_cytoplasm_segmentation(
     try:
         mask_output = cytoplasm_backend.predict_cytoplasm(img)
         results[selected_channel] = _segment_mask_array(mask_output, gui)
-    except Exception as e:
-        logger.exception(f"Cytoplasm predict failed: {e}")
+    except Exception:
+        # Re-raise so the caller can report this frame instead of silently storing 0 masks
+        logger.exception("Cytoplasm predict failed for channel %s", selected_channel)
+        raise
 
     return results
 
+
+def describe_failed_frames(step: str, failed_frames: list[str]) -> str:
+    """Build one popup message listing every frame that failed during a segmentation step."""
+    lines = "\n".join(f"  {failure}" for failure in failed_frames)
+    return f"{step} failed for {len(failed_frames)} frame(s):\n{lines}"

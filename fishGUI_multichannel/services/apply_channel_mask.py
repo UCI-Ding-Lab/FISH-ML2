@@ -2,9 +2,11 @@ from ..gui.canvas.segment import segment
 from tkinter import messagebox
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
-import os
 import logging
 import time
+
+from .segmentation import describe_failed_frames
+from .worker_limits import segmentation_worker_limit
 
 logger = logging.getLogger("fishcore")
 
@@ -25,14 +27,12 @@ def filter_cytoplasm_channels(channels):
 def ensure_channel_segmented(frame, channel):
     """
     Ensures the segmentation for the given channel is computed for this frame.
-    If not already segmented, triggers segmentation for the selected channel.
+    If not already segmented, triggers segmentation for that channel.
+    Runs on a worker thread, so it leaves selected_channel alone; switching it here would race with the user's channel selector.
     """
     if not frame._get_seg_list_for_channel(channel):
-        current_focused_channel = frame.selected_channel
-        frame.selected_channel = channel
         logger.debug(f"  segmenting channel {channel} for frame {frame.sample_id}")
-        _ = frame.segment  # calls segment property in abstract.py -- triggers segmentation for selected channel
-        frame.selected_channel = current_focused_channel 
+        frame.segment_channel(channel, use_stored_masks=False)
         logger.debug(f"  segmentation done for channel {channel} for frame {frame.sample_id}")
 
 
@@ -113,44 +113,41 @@ def apply_channel_mask_to_frames(
         seg_mode_on = False
     root = _get_gui_root(abstract_cls, frame_pool)
 
-    def _get_cytoplasm_worker_limit(total_jobs):
-        """Choose a safe worker count for cytoplasm mask preparation."""
+    def _find_cytoplasm_backend():
+        """Return the cytoplasm backend from the focused or first frame, or None."""
         try:
             if focused_frame is not None and focused_frame.gui is not None:
-                backend = focused_frame.gui.getCytoplasmBackend()
-            elif frame_pool and frame_pool[0].gui is not None:
-                backend = frame_pool[0].gui.getCytoplasmBackend()
-            else:
-                backend = None
-            if backend is not None and backend.device == "cuda":
-                logger.info("GPU detected; limiting copy-mask concurrency to 1 worker.")
-                return 1
+                return focused_frame.gui.getCytoplasmBackend()
+            if frame_pool and frame_pool[0].gui is not None:
+                return frame_pool[0].gui.getCytoplasmBackend()
         except Exception:
             pass
-        return max(1, min(5, os.cpu_count() or 1, total_jobs))
+        return None
 
     def compute_worker(i):
         frame = frame_pool[i]
         sid = frame.sample_id
         if not frame.bbox_generated:
             logger.info(f"Skipping frame {sid}: no bbox")
-            return ("skipped", sid, frame, None, None)
+            return ("skipped", sid, frame, None, None, None)
         try:
             ensure_channel_segmented(frame, source_channel)
             masks = extract_finalized_masks(frame, source_channel)
             targets = filter_cytoplasm_channels(frame.available_channels)
-            return ("ok", sid, frame, masks, targets)
+            return ("ok", sid, frame, masks, targets, None)
         except Exception as e:
             logger.error(f"Compute failed for {sid}: {e}", exc_info=True)
-            return ("error", sid, frame, None, None)
+            return ("error", sid, frame, None, None, str(e))
 
     def apply_results_on_main(results):
         skipped = []
-        for status, sid, frame, masks, targets in results:
+        failed = []
+        for status, sid, frame, masks, targets, error in results:
             if status == "skipped":
                 skipped.append(sid)
                 continue
             if status == "error":
+                failed.append(f"{sid}: {error}")
                 continue
             apply_masks_on_main(frame, source_channel, targets, masks)
             update_ui_for_focused_frame(frame, focused_frame, seg_mode_on)
@@ -160,6 +157,11 @@ def apply_channel_mask_to_frames(
                 messagebox.showinfo("Skipped Frames", f"No nucleus centers for: {', '.join(skipped)}")
             except Exception:
                 logger.info(f"Skipped Frames without centers: {', '.join(skipped)}")
+        if failed:
+            try:
+                messagebox.showerror("Copy Mask Error", describe_failed_frames("Copying the channel mask", failed))
+            except Exception:
+                logger.info(f"Copy mask failed for: {', '.join(failed)}")
         if on_done:
             try:
                 on_done()
@@ -169,7 +171,7 @@ def apply_channel_mask_to_frames(
     def coordinator():
         start = time.perf_counter()
         results = []
-        max_workers = _get_cytoplasm_worker_limit(len(frame_indices))
+        max_workers = segmentation_worker_limit(_find_cytoplasm_backend(), len(frame_indices))
         with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="ApplyMask") as ex:
             futures = {ex.submit(compute_worker, i): i for i in frame_indices}
             for fut in as_completed(futures):

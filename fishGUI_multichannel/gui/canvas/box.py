@@ -1,5 +1,5 @@
 import logging
-from matplotlib.patches import Rectangle, Circle
+from matplotlib.patches import Rectangle
 from .anchor import anchor
 
 logger = logging.getLogger('fishcore')
@@ -75,8 +75,8 @@ class box():
         if abs and self in abs.bbox:
             abs.bbox.remove(self)
             self.draw = False
-            for anchor in self.anchors.values():
-                anchor.draw = False
+            for corner_anchor in self.anchors.values():
+                corner_anchor.draw = False
             box.clearBuffer()
             self.gui.getStove().canvas.flush_events()
             

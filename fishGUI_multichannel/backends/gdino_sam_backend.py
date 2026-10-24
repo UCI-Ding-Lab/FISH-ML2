@@ -1,4 +1,5 @@
 import pathlib
+import numpy as np
 from core import fishCore_gdino_sam
 
 
@@ -30,10 +31,13 @@ class GdinoSamBackend:
         return self._core.AppIntDINOwrapper(nucleus_img)
 
     def predict_nucleus(self, nucleus_img, bbox_list=None):
-        """Segment nuclei using SAM with bbox prompts when they exist."""
-        prompt_boxes = bbox_list if bbox_list else None
+        """Segment nuclei using SAM, prompted by the frame's reviewed boxes."""
+        if not bbox_list:
+            # Boxes are always made before segmenting, so no boxes means the user removed them all
+            height, width = np.shape(nucleus_img)[:2]
+            return np.zeros((0, height, width), dtype=np.uint8)
         predictor = self._core.sam_nucleus_predictor
-        return predictor.AppIntPREDICTwrapper(nucleus_img, prompt_boxes)
+        return predictor.AppIntPREDICTwrapper(nucleus_img, bbox_list)
 
     def predict_cytoplasm(self, model_input):
         """Legacy gdino and SAM backend does not support current cytoplasm segmentation flow."""

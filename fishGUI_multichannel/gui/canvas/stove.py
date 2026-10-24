@@ -2,7 +2,7 @@ import tkinter
 import numpy as np
 from matplotlib.figure import Figure 
 from matplotlib.backend_bases import MouseEvent
-from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg, NavigationToolbar2Tk)
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.patches import Circle
 
 
@@ -14,8 +14,6 @@ from .segment import segment
 
 class stove():
     BILT_BUFFER1 = None
-    BILT_BUFFER2 = None
-    BILT_BUFFER3 = None
     
     def __init__(self, gui):
         self.gui = gui
@@ -37,7 +35,6 @@ class stove():
         self.canvas.mpl_connect("motion_notify_event", self.onCanvasDrag)
         self.toolbar = FishToolBar(self.canvas, self.pit, self.gui)
         self.toolbar.update()
-        self.tb_pointer = Circle((0, 0), 15, linewidth=0.5, edgecolor='cyan', facecolor='none')
         self.xs = []
         self.ys = []
         self.nucleus_center = None
@@ -53,10 +50,6 @@ class stove():
     def bufferSetCurrent(self, buffer):
         if buffer == 1:
             self.BILT_BUFFER1 = self.biltbg
-        elif buffer == 2:
-            self.BILT_BUFFER2 = self.biltbg
-        elif buffer == 3:
-            self.BILT_BUFFER3 = self.biltbg
 
     def pack(self):
         self.pit.pack(side=tkinter.LEFT, fill=tkinter.BOTH, expand=True)
@@ -198,7 +191,6 @@ class stove():
                         self.xs = [event.xdata]
                         self.ys = [event.ydata]
                         self.bufferSetCurrent(1)
-                        self.bufferSetCurrent(2)
                         try:
                             self.canvas.restore_region(self.BILT_BUFFER1)
                         except Exception:
@@ -291,7 +283,7 @@ class stove():
             b.rect.set_height(h)
             self.nucleus_center = b.rect.get_center()
             b.anchorUpdate()
-            self.canvas.draw()
+            self.canvas.draw_idle()
 
         elif self._can_collect_mask_stroke():
             current_x, current_y = event.xdata, event.ydata
@@ -337,7 +329,6 @@ class stove():
         self.xs = [event.xdata]
         self.ys = [event.ydata]
         self.bufferSetCurrent(1)
-        self.bufferSetCurrent(2)
         self.marker_draw(event.xdata, event.ydata)
         self.canvas.blit(self.subplot.bbox)
 

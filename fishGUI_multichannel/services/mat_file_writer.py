@@ -2,57 +2,30 @@ import pathlib
 import numpy as np
 import scipy.io
 
-def read(mat: dict, img_number: int, target: str, cell: int, title: str):
-    """
-    Read one value back from the exported MATLAB structure.
-    """
-    if target == "filename":
-        return mat["Tracked"][0, img_number]["filename"][0, 0]
-    # dirname exists only on the first entry (if written)
-    if target == "dirname":
-        first = mat["Tracked"][0, 0]
-        dtype = first.dtype
-        if dtype is not None and dtype.names and ("dirname" in dtype.names):
-            return first["dirname"][0, 0]
-        return None
-    return mat["Tracked"][0, img_number][target][0, 0][0, cell][title][0, 0]
-
-def create(
+def write_tracked_mat_file(
     name: list[str],
     xy: list[list[tuple[float, float]]],
     masks: list[list[np.ndarray]],
-    nucleus_masks: list[list[np.ndarray]],
+    nucleus_masks: list[list[np.ndarray]] | None,
     saveFile: pathlib.Path,
     dirname: str = None,
 ):
     """
     Build the MATLAB Tracked structure for every exported image entry.
+    Pass nucleus_masks=None to leave the nucleus_mask field out of every cell.
     """
     tracked_dtype_head = np.dtype([
+        ("dirname", "O"),
         ("filename", "O"),
         ("cells", "O"),
-        ("dirname", "O"),
     ])
     tracked_dtype_tail = np.dtype([
         ("filename", "O"),
         ("cells", "O"),
-    ])      
-
-    cell_dtype = np.dtype([
-        ('mask', 'O'),
-        ('nucleus_mask', 'O'),
-        ('pos', 'O'),
-        ('size', 'O'),
-        ('progenitor', 'O'),
-        ('descendants', 'O'),
-        ('Fmask', 'O'),
-        ('area', 'O'),
-        ('Acom', 'O'),
-        ('Fpixels', 'O'),
-        ('Ftotal', 'O'),
-        ('Fmax', 'O'),
-        ('Fmean', 'O')
     ])
+
+    include_nucleus_mask = nucleus_masks is not None
+    cell_dtype = build_cell_dtype(include_nucleus_mask)
 
     imgCount = len(name)
     tracked = np.empty((1, imgCount), dtype="O")
@@ -61,17 +34,18 @@ def create(
         cellCount = len(xy[eachImg])
         cells = np.empty((1, cellCount), dtype="O")
         for eachCell in range(cellCount):
+            nucleus_mask = nucleus_masks[eachImg][eachCell] if include_nucleus_mask else None
             cells[0, eachCell] = build_cell_data(
                 cell_dtype,
                 masks[eachImg][eachCell],
-                nucleus_masks[eachImg][eachCell],
+                nucleus_mask,
                 xy[eachImg][eachCell],
             )
 
         # dirname only for the first entry
         if eachImg == 0:
             entry = np.zeros((1, 1), dtype=tracked_dtype_head)
-            entry[0, 0]["dirname"] = np.array([[dirname if dirname else ""]], dtype="O")
+            entry[0, 0]["dirname"] = dirname if dirname else ""
         else:
             entry = np.zeros((1, 1), dtype=tracked_dtype_tail)
 
@@ -84,13 +58,37 @@ def create(
     scipy.io.savemat(saveFile, {"Tracked": tracked})
 
 
-def build_cell_data(cell_dtype, cyto_mask: np.ndarray, nucleus_mask: np.ndarray, xy: tuple[float, float]):
+def build_cell_dtype(include_nucleus_mask: bool) -> np.dtype:
     """
-    Build one exported MATLAB cell entry with paired cytoplasm and nucleus masks.
+    Return the MATLAB cell field layout, with or without the nucleus_mask field.
+    """
+    fields = [('mask', 'O')]
+    if include_nucleus_mask:
+        fields.append(('nucleus_mask', 'O'))
+    fields += [
+        ('pos', 'O'),
+        ('size', 'O'),
+        ('progenitor', 'O'),
+        ('descendants', 'O'),
+        ('Fmask', 'O'),
+        ('area', 'O'),
+        ('Acom', 'O'),
+        ('Fpixels', 'O'),
+        ('Ftotal', 'O'),
+        ('Fmax', 'O'),
+        ('Fmean', 'O')
+    ]
+    return np.dtype(fields)
+
+
+def build_cell_data(cell_dtype, cyto_mask: np.ndarray, nucleus_mask: np.ndarray | None, xy: tuple[float, float]):
+    """
+    Build one exported MATLAB cell entry; nucleus_mask is stored only when given.
     """
     cell_data = np.zeros((1, 1), dtype=cell_dtype)
     cell_data[0, 0]["mask"] = cyto_mask.astype(np.double)
-    cell_data[0, 0]["nucleus_mask"] = nucleus_mask.astype(np.double)
+    if nucleus_mask is not None:
+        cell_data[0, 0]["nucleus_mask"] = nucleus_mask.astype(np.double)
     cell_data[0, 0]["pos"] = np.array(xy).T.astype(np.double)
     cell_data[0, 0]["size"] = np.array([cyto_mask.shape[0], cyto_mask.shape[1]], dtype=np.double)
     cell_data[0, 0]["area"] = np.array([np.sum(cyto_mask)])

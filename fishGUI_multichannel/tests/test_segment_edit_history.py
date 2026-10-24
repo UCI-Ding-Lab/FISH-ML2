@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
-from fishGUI_multichannel.gui.canvas.segment import segment
+from fishGUI_multichannel.gui.canvas.segment import MAX_UNDO_STEPS, segment
 
 
 @pytest.fixture(autouse=True)
@@ -88,6 +88,19 @@ def test_push_undo_undo_and_redo_round_trip_mask_state():
 
     assert seg.redo() is True
     assert np.array_equal(seg._get_mask(), changed)
+
+
+def test_push_undo_keeps_latest_undo_snapshots_only():
+    seg, _, _ = _make_segment(np.array([[0, 0], [0, 0]], dtype=np.uint8))
+
+    for i in range(MAX_UNDO_STEPS + 1):
+        current = seg._get_mask().copy()
+        current[0, 0] = i
+        seg._set_mask(current)
+        seg.push_undo()
+
+    assert len(seg._undo_stack) == MAX_UNDO_STEPS
+    assert seg._undo_stack[0][0, 0] == 1
 
 
 def test_undo_latest_action_restores_last_deleted_segment():
