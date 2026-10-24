@@ -506,6 +506,14 @@ class abstract():
         """Return the RGB display image for DAPI or one cytoplasm channel."""
         return self._get_rgb_for_display_channel(channel)
 
+    def getCompositeChannelImages(self) -> dict[str, np.ndarray]:
+        """Return the grayscale display image of DAPI and each loaded cytoplasm channel."""
+        images = {"DAPI": self.__img_np_nucleus_normalized}
+        for ch in self.available_channels:
+            if ch in self.__img_np_cyto:
+                images[ch] = self.__img_np_cyto[ch]
+        return images
+
     @property
     def current_channel_mask(self):
         """Returns the mask list that belongs to the currently shown channel."""

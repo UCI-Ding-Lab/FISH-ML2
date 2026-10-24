@@ -10,6 +10,7 @@ from tkinter import filedialog
 
 from ..services.progress import Progress
 from ..services.session_manager import SessionManager
+from .composite_window import compositeWindow
 
 
 logger = logging.getLogger("fishcore")
@@ -176,6 +177,14 @@ class funcButton:
             indicatoron=False,
             command=self.DISPLAY_MASKS_call,
         )
+        self.VIEW_COMPOSITE = tkinter.Button(
+            self.container,
+            text="View Composite",
+            height=2,
+            relief=tkinter.RAISED,
+            command=self.VIEW_COMPOSITE_call,
+        )
+        self.composite_window = None
         self.APPLY_CHANNEL_MASK = tkinter.Button(
             self.container,
             text="Copy Best Channel Mask to All Frames",
@@ -220,6 +229,7 @@ class funcButton:
             self.SEGMENTATION_SELECTION,
             self.SEGMENT,
             self.DISPLAY_MASKS,
+            self.VIEW_COMPOSITE,
             self.APPLY_CHANNEL_MASK,
             self.EXPORT,
             self.DONE,
@@ -257,6 +267,7 @@ class funcButton:
                 self.SEGMENT_NUCLEUS,
                 self.SEGMENT,
                 self.DISPLAY_MASKS,
+                self.VIEW_COMPOSITE,
                 self.EXPORT,
             ]
         )
@@ -264,12 +275,12 @@ class funcButton:
     def _pack_nucleus_gdino_toolbar(self):
         """Show the nucleus toolbar for GroundingDINO and SAM workflow."""
         self.SEGMENT_NUCLEUS.config(text="Segment")
-        self._pack_toolbar_buttons([self.BBOX, self.SEGMENT_NUCLEUS, self.DISPLAY_MASKS, self.DONE])
+        self._pack_toolbar_buttons([self.BBOX, self.SEGMENT_NUCLEUS, self.DISPLAY_MASKS, self.VIEW_COMPOSITE, self.DONE])
 
     def _pack_nucleus_cellpose_toolbar(self):
         """Show the nucleus toolbar for Cellpose-SAM workflow."""
         self.SEGMENT_NUCLEUS.config(text="Segment")
-        self._pack_toolbar_buttons([self.SEGMENT_NUCLEUS, self.DISPLAY_MASKS, self.DONE])
+        self._pack_toolbar_buttons([self.SEGMENT_NUCLEUS, self.DISPLAY_MASKS, self.VIEW_COMPOSITE, self.DONE])
 
     def _pack_cytoplasm_toolbar(self):
         """Show the cytoplasm toolbar for segmentation and mask copying."""
@@ -280,6 +291,7 @@ class funcButton:
                 self.SEGMENT,
                 self.APPLY_CHANNEL_MASK,
                 self.DISPLAY_MASKS,
+                self.VIEW_COMPOSITE,
                 self.DONE,
             ]
         )
@@ -580,6 +592,13 @@ class funcButton:
         self._clear_edit_subtools()
         for abs_obj in SessionManager.getPool():
             abs_obj.drawSegmentation = False
+
+    def VIEW_COMPOSITE_call(self):
+        """Opens the composite window, or brings it to the front when it is already open."""
+        if self.composite_window is not None and self.composite_window.is_open():
+            self.composite_window.lift()
+            return
+        self.composite_window = compositeWindow(self.gui)
 
     def APPLY_CHANNEL_MASK_call(self):
         """Copies one channel mask to chosen frames and channels."""

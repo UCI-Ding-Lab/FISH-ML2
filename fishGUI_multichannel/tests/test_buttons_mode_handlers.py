@@ -208,3 +208,39 @@ def test_export_call_warns_and_resets_toggle_when_no_image_is_loaded():
 
     mock_warning.assert_called_once_with("Image Not Loaded", "Please select an image first")
     button.toggle["EXPORT"].set.assert_called_once_with(0)
+
+
+def test_view_composite_opens_the_composite_window():
+    button = _make_button_handler()
+    button.composite_window = None
+
+    with patch("fishGUI_multichannel.gui.buttons.compositeWindow") as mock_window:
+        button.VIEW_COMPOSITE_call()
+
+    mock_window.assert_called_once_with(button.gui)
+    assert button.composite_window is mock_window.return_value
+
+
+def test_view_composite_brings_an_open_window_to_the_front_instead_of_opening_another():
+    button = _make_button_handler()
+    open_window = MagicMock()
+    open_window.is_open.return_value = True
+    button.composite_window = open_window
+
+    with patch("fishGUI_multichannel.gui.buttons.compositeWindow") as mock_window:
+        button.VIEW_COMPOSITE_call()
+
+    mock_window.assert_not_called()
+    open_window.lift.assert_called_once_with()
+
+
+def test_view_composite_reopens_after_the_window_was_closed():
+    button = _make_button_handler()
+    closed_window = MagicMock()
+    closed_window.is_open.return_value = False
+    button.composite_window = closed_window
+
+    with patch("fishGUI_multichannel.gui.buttons.compositeWindow") as mock_window:
+        button.VIEW_COMPOSITE_call()
+
+    mock_window.assert_called_once_with(button.gui)
